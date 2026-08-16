@@ -12,6 +12,11 @@
       "types": "./dist/model/index.d.ts",
       "development": "./src/model/index.ts",
       "import": "./dist/model/index.js"
+    },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "development": "./src/store/index.ts",
+      "import": "./dist/store/index.js"
     }
   },
   "files": [

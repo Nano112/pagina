@@ -10,4 +10,10 @@ export default tseslint.config(
       "no-restricted-imports": ["error", { patterns: [{ group: ["node:*", "fs", "path", "os", "url", "child_process"], message: "@pagina/core is environment-agnostic; inject a ContentFs instead." }] }],
     },
   },
+  {
+    files: ["packages/editor/src/store/**/*.ts", "packages/editor/src/ui/**/*.ts", "packages/editor/src/ui/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [{ group: ["node:*", "fs", "path", "os", "url", "child_process", "vite", "vite/*"], message: "The editor is backend-agnostic: talk to an ArticleBackend, not to the filesystem or Vite." }] }],
+    },
+  },
 );
