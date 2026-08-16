@@ -65,6 +65,28 @@ describe("spec ⇄ module source", () => {
     const source = specToModuleSource(SPEC).replace(/\n/g, "\n\n").replace("export default", "export  default");
     expect(parseSpecFromModule(source)).toEqual(SPEC);
   });
+
+  /**
+   * The brace counter walks the source character by character, so the characters that *look* like
+   * structure are the ones that can break it: a `}` inside a string, an escaped quote, a newline in
+   * a label. All three are things an author types into a figure without thinking about it.
+   */
+  it("round-trips text carrying quotes, braces and newlines", () => {
+    const awkward: SimpleSceneSpec = {
+      version: 1,
+      id: "awkward",
+      title: 'A "quoted" {title}',
+      description: "line one\nline two\twith a tab",
+      layout: "stack",
+      nodes: [
+        { id: "a", kind: "text", text: 'he said "}" and then \\ left' },
+        { id: "b", kind: "code", text: 'const x = { "k": "v" };\nreturn x;' },
+      ],
+      edges: [{ from: "a", to: "b", label: 'why "not"' }],
+    };
+    const source = specToModuleSource(awkward);
+    expect(parseSpecFromModule(source)).toEqual(awkward);
+  });
 });
 
 describe("paths", () => {
@@ -127,6 +149,58 @@ describe("<FigureBuilder>", () => {
     // The file the builder wrote is a file the builder can re-open. That is the whole contract.
     expect(parseSpecFromModule(written)).toEqual(SPEC);
     expect(saved.spec).toEqual(SPEC);
+  });
+
+  /** A store that has actually listed its folder, which is what a collision check reads. */
+  const loaded = async (files: Record<string, string>): Promise<ArticleStore> => {
+    const articles = new ArticleStore(new MemoryBackend({ "article.yaml": "slug: x\ntitle: X\n", ...files }));
+    await articles.load();
+    return articles;
+  };
+
+  const idField = (): HTMLInputElement =>
+    screen.getByLabelText(/^Id/, { selector: "input" }) as HTMLInputElement;
+  const saveButton = (): HTMLButtonElement => screen.getByRole("button", { name: "Save figure" }) as HTMLButtonElement;
+
+  /**
+   * The id is a file name and the author can type anything into it, so a *new* figure whose id
+   * happens to name an existing scene would replace that scene's source without a word — including
+   * a scene nobody has opened this session, which is exactly the one that would go unnoticed.
+   */
+  it("refuses to write a new figure over a scene that already exists", async () => {
+    const articles = await loaded({ "scenes/pipeline.mjs": "// someone else's figure\nexport default {};\n" });
+    const saved: string[] = [];
+    render(
+      <FigureBuilder store={articles} request={{ spec: SPEC, onSave: (path) => saved.push(path) }} onClose={() => {}} />,
+    );
+
+    expect(saveButton().disabled).toBe(true);
+    expect(document.querySelector(".pge-field__error")?.textContent).toBe("A scene with this id already exists");
+    fireEvent.click(saveButton());
+    expect(saved).toHaveLength(0);
+    expect(articles.files.get("scenes/pipeline.mjs")?.text).toBeUndefined();
+
+    // A different id is a different file, and the objection goes away with it.
+    fireEvent.change(idField(), { target: { value: "pipeline-2" } });
+    expect(saveButton().disabled).toBe(false);
+    expect(document.querySelector(".pge-field__error")).toBeNull();
+  });
+
+  it("still overwrites the scene it was opened on, which is what saving means", async () => {
+    const articles = await loaded({ "scenes/pipeline.mjs": "// someone else's figure\nexport default {};\n" });
+    const saved: string[] = [];
+    render(
+      <FigureBuilder
+        store={articles}
+        request={{ spec: SPEC, scenePath: "scenes/pipeline.mjs", onSave: (path) => saved.push(path) }}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(saveButton().disabled).toBe(false);
+    fireEvent.click(saveButton());
+    await vi.waitFor(() => expect(saved).toEqual(["scenes/pipeline.mjs"]));
+    expect(articles.files.get("scenes/pipeline.mjs")?.text).toContain(SPEC_MARKER);
   });
 
   it("derives the id from the title until the author says otherwise", () => {

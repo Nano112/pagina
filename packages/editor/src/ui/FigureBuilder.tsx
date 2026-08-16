@@ -431,8 +431,28 @@ export function FigureBuilder({ store, request, onClose }: FigureBuilderProps): 
   const setTitle = (title: string): void =>
     setSpec((current) => ({ ...withOptional(current, "title", title), ...(autoId ? { id: slugify(title) } : {}) }));
 
+  const target = request.scenePath ?? `scenes/${spec.id}.mjs`;
+
+  /**
+   * A *new* figure whose id names a file that already exists.
+   *
+   * The id is a file name, and it is editable, so nothing stops an author from typing one another
+   * scene already uses — and the write would replace that scene's source without a word. Re-opening
+   * an existing figure (`request.scenePath`) is the opposite case and must still overwrite: that is
+   * what saving means. The whole folder listing is consulted, not just the mirrored files, because
+   * a scene nobody has opened in this session is exactly the one that would be lost silently.
+   */
+  const collides = useMemo(
+    () => request.scenePath === undefined && spec.id !== "" && store.list().some((f) => f.path === target),
+    [request.scenePath, spec.id, store, target],
+  );
+
   const save = (): void => {
-    const path = request.scenePath ?? `scenes/${spec.id}.mjs`;
+    if (collides) {
+      setSaveError(`${target} already exists — choose another id`);
+      return;
+    }
+    const path = target;
     const source = specToModuleSource(spec);
     setSaveError(undefined);
     const write = store.files.has(path)
@@ -462,7 +482,7 @@ export function FigureBuilder({ store, request, onClose }: FigureBuilderProps): 
             <Field label="Title" problem={problemAt("title")}>
               <input className="pge-input" value={spec.title ?? ""} autoFocus onChange={(e) => setTitle(e.target.value)} />
             </Field>
-            <Field label="Id" problem={problemAt("id")}>
+            <Field label="Id" problem={problemAt("id") ?? (collides ? "A scene with this id already exists" : undefined)}>
               <input
                 className="pge-input"
                 value={spec.id}
@@ -578,7 +598,7 @@ export function FigureBuilder({ store, request, onClose }: FigureBuilderProps): 
           <button type="button" className="pge-btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="pge-btn pge-btn--primary" disabled={!valid} onClick={save}>
+          <button type="button" className="pge-btn pge-btn--primary" disabled={!valid || collides} onClick={save}>
             Save figure
           </button>
         </footer>

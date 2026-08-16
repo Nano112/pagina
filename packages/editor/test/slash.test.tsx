@@ -112,6 +112,36 @@ describe("slash menu", () => {
     expect(menu()).toBeNull();
   });
 
+  // Both forms of code, because `/` is a character there and not a command — and because a menu
+  // that opens over code also *eats* what was typed when the author presses Enter.
+  it("does not open inside a fenced code block", async () => {
+    const editor = editorOf();
+    await act(async () => {
+      editor.commands.insertContentAt(editor.state.doc.content.size, { type: "paragraph" });
+      editor.commands.focus("end");
+      editor.commands.setCodeBlock();
+      editor.commands.insertContent("/warning");
+    });
+    expect(editorOf().isActive("codeBlock")).toBe(true);
+    expect(menu()).toBeNull();
+  });
+
+  it("does not open inside inline code", async () => {
+    const editor = editorOf();
+    await act(async () => {
+      editor.commands.insertContentAt(editor.state.doc.content.size, { type: "paragraph" });
+      editor.commands.focus("end");
+      editor.commands.setMark("code");
+      editor.commands.insertContent("/warning");
+    });
+    expect(editorOf().isActive("code")).toBe(true);
+    expect(menu()).toBeNull();
+
+    // …and still opens on the next plain line, so the guard is not a blanket "never again".
+    await typeOnNewLine("/warning");
+    expect(menu()).not.toBeNull();
+  });
+
   it("inserts the chosen block on Enter and removes the `/` text", async () => {
     await typeOnNewLine("/warning");
     expect(items()).toHaveLength(1);

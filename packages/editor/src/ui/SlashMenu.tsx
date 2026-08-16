@@ -27,12 +27,23 @@ interface Trigger {
   readonly top: number;
 }
 
-/** Reads the trigger out of the current selection, or `undefined` when there is not one. */
+/**
+ * Reads the trigger out of the current selection, or `undefined` when there is not one.
+ *
+ * Code is excluded in both of its forms, for the same reason: `/` is a character there, not a
+ * command. A fenced block is a node (`codeBlock`); inline code is a *mark*, which has to be read
+ * off the stored marks (set but not yet applied, right after `⌘E`) as well as off the marks either
+ * side of the caret, or `/join` inside `` `…` `` opens the menu and then eats what was typed.
+ */
 function triggerAt(editor: Editor): Trigger | undefined {
   const { selection } = editor.state;
   if (!selection.empty) return undefined;
   const { $from } = selection;
   if (!$from.parent.isTextblock || $from.parent.type.name === "codeBlock") return undefined;
+  const code = editor.schema.marks["code"];
+  if (code !== undefined && code.isInSet(editor.state.storedMarks ?? $from.marks()) !== undefined) {
+    return undefined;
+  }
   const start = $from.start();
   const text = editor.state.doc.textBetween(start, $from.pos, "\n", "￼");
   const match = TRIGGER.exec(text);
