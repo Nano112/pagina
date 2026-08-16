@@ -90,6 +90,13 @@ describe("anchors + title", () => {
     const r2 = renderMarkdown(md, `# A\n\n!!! note "N"\n\n    ## Inside\n\n## After`);
     expect(r2.headings.map((h) => h.id)).toEqual(["a", "inside", "after"]);
   });
+  it("dedupes slugs in document order across tab and admonition bodies", () => {
+    // Before tabs/admonitions emitted structured tokens their bodies were rendered during the
+    // outer *block parse*, so a nested heading claimed the bare slug and the earlier outer
+    // heading got the `-2` suffix. Now every heading is deduped where it appears.
+    const r = renderMarkdown(md, `## Same\n\n=== "T"\n\n    ## Same\n\n!!! note\n\n    ## Same\n`);
+    expect(r.headings.map((h) => h.id)).toEqual(["same", "same-2", "same-3"]);
+  });
   it("passes raw HTML through", () => {
     expect(renderMarkdown(md, `<figure class="kg" data-scene="x.mjs"></figure>`).html).toContain(`<figure class="kg"`);
   });

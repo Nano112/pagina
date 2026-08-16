@@ -13,13 +13,17 @@ export function slugify(text: string): string {
 export interface AnchorEnv { headings?: Heading[] | undefined; slugCounts?: Map<string, number> }
 
 /**
- * Renders markdown that will be spliced into an enclosing `html_block` (tab panels, admonition
- * bodies, `markdown="1"` HTML blocks). Such a nested render runs during *block parsing* of the
- * outer document, i.e. before the outer `pg_anchors` core rule has seen a single heading — so
- * letting it push into the shared `env.headings` would hoist every inner heading ahead of the
- * outer ones. Instead the inner headings are collected separately and handed back to the caller,
- * which attaches them to the emitted token as `token.meta.headings`; `pg_anchors` then splices
- * them in at the token's own position, keeping `headings[]` in document order.
+ * Renders markdown that will be spliced into an enclosing `html_block` — today only
+ * `markdown="1"` HTML blocks, whose inner markdown has to become HTML *inside* raw HTML that
+ * the main token stream cannot represent. (Tabs and admonitions used to come through here too;
+ * they now emit structured tokens, so their bodies are ordinary block tokens in the main stream.)
+ *
+ * Such a nested render runs while the outer document is still being parsed, i.e. before the
+ * outer `pg_anchors` core rule has seen a single heading — so letting it push into the shared
+ * `env.headings` would hoist every inner heading ahead of the outer ones. Instead the inner
+ * headings are collected separately and handed back to the caller, which attaches them to the
+ * emitted token as `token.meta.headings`; `pg_anchors` then splices them in at the token's own
+ * position, keeping `headings[]` in document order.
  *
  * The slug-dedupe bookkeeping (`env.slugCounts`) deliberately stays shared, so ids remain unique
  * across the whole page.

@@ -1,6 +1,5 @@
 import type MarkdownIt from "markdown-it";
-import { readIndentedBody } from "./tabs.js";
-import { renderNested, type NestedHeadings } from "./anchors.js";
+import { parseBodyInto, readIndentedBody } from "./tabs.js";
 
 const ADM_RE = /^(!!!|\?\?\?)\s+([\w-]+)(?:\s+"([^"]*)")?\s*$/;
 
@@ -13,18 +12,25 @@ export function admonitionPlugin(md: MarkdownIt): void {
     const [, marker, kind, rawTitle] = m as unknown as [string, string, string, string | undefined];
     const title = rawTitle ?? kind.charAt(0).toUpperCase() + kind.slice(1);
     const [body, next] = readIndentedBody(state, startLine + 1);
-    const inner = renderNested(md, body, state.env);
-    const cls = `pg-admonition pg-admonition--${md.utils.escapeHtml(kind)}`;
-    const html =
-      marker === "???"
-        ? `<details class="${cls}"><summary>${md.utils.escapeHtml(title)}</summary>\n${inner.html}</details>\n`
-        : `<aside class="${cls}"><p class="pg-admonition__title">${md.utils.escapeHtml(title)}</p>\n${inner.html}</aside>\n`;
-    const token = state.push("html_block", "", 0);
-    // See `renderNested`: these belong at this point in `headings[]`, not ahead of it.
-    token.meta = { headings: inner.headings } satisfies NestedHeadings;
-    token.content = html;
-    token.map = [startLine, next];
+    const open = state.push("pg_admonition_open", "", 1);
+    open.markup = marker;
+    open.attrSet("kind", kind);
+    open.attrSet("title", title);
+    open.attrSet("collapsible", marker === "???" ? "true" : "false");
+    open.map = [startLine, next];
+    parseBodyInto(state, body, startLine + 1);
+    state.push("pg_admonition_close", "", -1).markup = marker;
     state.line = next;
     return true;
   });
+
+  md.renderer.rules["pg_admonition_open"] = (tokens, idx) => {
+    const token = tokens[idx]!;
+    const cls = `pg-admonition pg-admonition--${md.utils.escapeHtml(token.attrGet("kind") ?? "")}`;
+    const title = md.utils.escapeHtml(token.attrGet("title") ?? "");
+    return token.attrGet("collapsible") === "true"
+      ? `<details class="${cls}"><summary>${title}</summary>\n`
+      : `<aside class="${cls}"><p class="pg-admonition__title">${title}</p>\n`;
+  };
+  md.renderer.rules["pg_admonition_close"] = (tokens, idx) => (tokens[idx]!.markup === "???" ? "</details>\n" : "</aside>\n");
 }
