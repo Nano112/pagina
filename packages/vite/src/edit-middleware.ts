@@ -6,6 +6,7 @@
  * GET    {base}/files                        → { files: [{ path, size, version, mtime }] }
  * GET    {base}/files/{path}                 → text or binary; ETag = version
  * PUT    {base}/files/{path} (If-Match: v)   → { version }        409 → { theirs, version }
+ *                            (If-Match: *)   → the file must already exist; 412 when it does not
  * DELETE {base}/files/{path}                 → 204
  * POST   {base}/upload  (multipart file,path?) → { path, url, version }
  * POST   {base}/rename  { from, to }         → { version }
@@ -421,16 +422,22 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         try { current = await readFile(path); } catch { current = undefined; }
         const ifMatch = req.headers["if-match"];
         const expected = typeof ifMatch === "string" ? unquoteETag(ifMatch) : "";
-        if (expected !== "") {
-          const theirs = current === undefined ? "" : current.toString("utf8");
-          const version = current === undefined ? "" : sha1(current);
-          // `*` is HTTP's "any current representation", i.e. the file must exist. A conflict (not
-          // a 412) because that is the shape `HttpBackend` turns into the editor's conflict UI.
-          const stale = expected === "*" ? current === undefined : version !== expected;
-          if (stale) {
-            sendJson(res, 409, { theirs, version, message: `${rel} changed on the server` });
+        if (expected === "*") {
+          // RFC 9110: `*` is "any current representation", i.e. the file must exist. When it does
+          // not there is no `theirs` and no `version` to hand back, so a 409 conflict body would
+          // be a lie about what the server holds — a 412 with a message is the honest answer, and
+          // it is what the Laravel implementation of this contract returns.
+          if (current === undefined) {
+            sendJson(res, 412, { message: `${rel} does not exist` });
             return;
           }
+        } else if (expected !== "" && (current === undefined || sha1(current) !== expected)) {
+          sendJson(res, 409, {
+            theirs: current === undefined ? "" : current.toString("utf8"),
+            version: current === undefined ? "" : sha1(current),
+            message: `${rel} changed on the server`,
+          });
+          return;
         }
         const version = await atomicWrite(path, text);
         res.setHeader("etag", `"${version}"`);

@@ -284,7 +284,10 @@ describe("pagina dev --edit", () => {
     expect((await fetch(`${api}/files/.pagina/published.json`)).status).toBe(404);
   }, 30_000);
 
-  it("treats `If-Match: *` as must-exist", async () => {
+  // A missing file is a *precondition* failure, not a conflict: there is no `theirs` and no
+  // `version` to hand back, so a 409 body would be a lie about what the server holds. The Laravel
+  // implementation of this contract answers the same way, and one contract needs one answer.
+  it("treats `If-Match: *` as must-exist, answering 412 when it does not", async () => {
     const ok = await fetch(`${api}/files/index.md`, {
       method: "PUT", headers: { "If-Match": "*" }, body: "# Fixture\n\nstill here\n",
     });
@@ -293,8 +296,23 @@ describe("pagina dev --edit", () => {
     const missing = await fetch(`${api}/files/never/created.md`, {
       method: "PUT", headers: { "If-Match": "*" }, body: "# Nope\n",
     });
-    expect(missing.status).toBe(409);
-    expect(await missing.json()).toMatchObject({ theirs: "", version: "" });
+    expect(missing.status).toBe(412);
+    const body = (await missing.json()) as Record<string, unknown>;
+    expect(body["message"]).toContain("never/created.md");
+    expect(body["theirs"]).toBeUndefined();
+    expect(existsSync(join(folder, "never/created.md"))).toBe(false);
+  }, 30_000);
+
+  // A *specific* version against a file that has since been deleted stays a 409: the client named
+  // a version it believed in, and `theirs: ""` is the true answer — the server holds nothing.
+  it("still conflicts when a named version no longer exists", async () => {
+    const res = await fetch(`${api}/files/never/created.md`, {
+      method: "PUT",
+      headers: { "If-Match": `"0000000000000000000000000000000000000000"` },
+      body: "# Nope\n",
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ theirs: "", version: "" });
     expect(existsSync(join(folder, "never/created.md"))).toBe(false);
   }, 30_000);
 

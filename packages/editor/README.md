@@ -107,6 +107,7 @@ Full specification: [`docs/design/2026-08-17-editor-connectivity-laravel.md`](..
 GET    {base}/files                          → { files: [{ path, size, version, mtime }] }
 GET    {base}/files/{path}                   → text or binary; ETag = version
 PUT    {base}/files/{path} (If-Match: v)     → { version }        409 → { theirs, version }
+                           (If-Match: *)     → must already exist; 412 → { message } when absent
 DELETE {base}/files/{path}                   → 204
 POST   {base}/upload  (multipart file,path?) → { path, url, version }
 POST   {base}/rename  { from, to }           → { version }
@@ -115,7 +116,10 @@ GET    {base}/events  (SSE)                  → { type, path, version } frames
 ```
 
 `version` is the sha1 of the file's bytes, so two servers handing out the same version for the
-same content is a feature (a no-op write is not a conflict) and mtime jitter is not. Implement
+same content is a feature (a no-op write is not a conflict) and mtime jitter is not. A *version*
+mismatch is a `409` carrying `{ theirs, version }` — the pair the conflict banner is built from;
+`If-Match: *` means "must already exist" and is a `412` when it does not, because there is no
+`theirs` to hand back. A `PUT` with no `If-Match` creates or replaces unconditionally. Implement
 `ArticleBackend` (`src/store/types.ts`) to talk to something else entirely; `MemoryBackend` is the
 reference for tests and demos, `HttpBackend` for the contract above.
 

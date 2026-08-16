@@ -66,6 +66,12 @@ GET    {base}/events   (SSE, optional)      → file-changed events for other-ta
 ```
 `{base}` = `/api/articles/{slug}` in Laravel; `/__pagina/edit` in the Vite dev server.
 
+**`If-Match` semantics**, settled after both servers had implemented it: a *version* mismatch is a
+**409** carrying `{ theirs, version }`, which is what the editor turns into its conflict banner;
+`If-Match: *` means "must already exist" and answers **412** with `{ message }` when it does not —
+there is no `theirs` to return in that case, so a 409 body would misdescribe what the server holds.
+A `PUT` with no `If-Match` creates or replaces unconditionally.
+
 ### Editor document model (TipTap nodes)
 
 doc › (heading | paragraph | bulletList | orderedList | codeBlock | blockquote | table | image |

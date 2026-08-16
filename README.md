@@ -150,7 +150,9 @@ pagina build <folder> [--out dist] [--base /] [--no-strict]
 - `--edit` turns on the in-browser editor: `/__edit/` (and `/__edit/<page href>`) serves the
   editor, every page grows an "Edit this page" link, and the article folder is exposed for
   reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package
-  implements: `files`, `upload`, `rename`, `publish`, `events`). It is off by default and
+  implements: `files`, `upload`, `rename`, `publish`, `events`; a `PUT` whose `If-Match` names a
+  stale version is a `409` carrying the server's copy, and `If-Match: *` on a file that does not
+  exist is a `412`). It is off by default and
   inherits the loopback-only bind, because anyone who can reach the port can rewrite the folder.
   In dev the editor is served from `@pagina/editor`'s TypeScript source through Vite's `/@fs`; a
   packaged consumer points the same page at `dist/editor.js`/`.css`.
