@@ -1,11 +1,10 @@
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { parseArticleConfig, renderArticle, type RenderedArticle } from "@pagina/core";
+import { parseArticleConfig, renderArticle, type RenderedArticle, type Shell } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes } from "./prerender.js";
-import type { Shell } from "./build.js";
 
 export interface DevServerOptions {
   readonly folder: string;
@@ -49,6 +48,14 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
   const folder = resolve(o.folder);
   const kgWebEntry = resolveKineglyphBundle("development");
 
+  /** The folder-relative posix path of `file`, or `undefined` if it is outside the folder.
+   *  A plain `startsWith(folder)` would also match a sibling like `<folder>-backup/x.mjs`. */
+  const inFolder = (file: string): string | undefined => {
+    const rel = relative(folder, resolve(file));
+    if (rel.startsWith("..") || isAbsolute(rel)) return undefined;
+    return rel.split("\\").join("/");
+  };
+
   return createServer({
     configFile: false,
     root: folder,
@@ -77,8 +84,8 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       // boundary in the dynamic-import chain and falls back to a full page reload — which
       // would both duplicate the update and defeat the point of hot-swapping.
       handleHotUpdate(ctx) {
-        if (!ctx.file.startsWith(folder)) return;
-        const rel = relative(folder, ctx.file).split("\\").join("/");
+        const rel = inFolder(ctx.file);
+        if (rel === undefined) return;
         if (rel.endsWith(".mjs") || rel.endsWith(".js")) return [];
       },
       configureServer(s) {
@@ -118,8 +125,8 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
 
         s.watcher.add(folder);
         s.watcher.on("all", (_event, file) => {
-          if (!file.startsWith(folder)) return;
-          const rel = relative(folder, file).split("\\").join("/");
+          const rel = inFolder(file);
+          if (rel === undefined) return;
           if (rel.endsWith(".mjs") || rel.endsWith(".js")) {
             // A scene module may be the theme module too, so drop the memoised themes with it.
             themes = undefined;

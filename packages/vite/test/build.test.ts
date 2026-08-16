@@ -3,19 +3,10 @@ import { cp, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promise
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildStatic, type Shell } from "../src/index.js";
+import { buildStatic } from "../src/index.js";
+import { stubShell } from "./stub-shell.js";
 
 const fixture = new URL("../../core/test/fixture/", import.meta.url).pathname;
-const stubShell: Shell = {
-  clientEntry: new URL("./stub-client.ts", import.meta.url).pathname,
-  render: async (article, ctx) =>
-    Object.fromEntries(
-      Object.values(article.pages).map((p) => [
-        p.href === "/" ? "index.html" : `${p.href.replace(/^\/|\/$/g, "")}/index.html`,
-        `<!doctype html><script type="importmap">{"imports":{"kineglyph":"${ctx.kineglyphRuntimeUrl}"}}</script>${p.html}`,
-      ]),
-    ),
-};
 
 describe("buildStatic", () => {
   it("emits pages, copies assets, pre-renders figures, writes manifest and runtime", async () => {
