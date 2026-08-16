@@ -52,6 +52,16 @@ describe("renderPageHtml", () => {
     expect(html).toContain(`<script type="module" src="/_pagina/pagina.js"></script>`);
   });
 
+  it("JSON-escapes the import-map URL instead of HTML-escaping it", () => {
+    // `<script>` is raw text: HTML entities are not decoded there, so `&quot;` would land in
+    // the JSON verbatim and break the import map. Only `</script` needs neutralising.
+    const html = renderPageHtml(article, "/", { ...ctx, kineglyphRuntimeUrl: `/a"b\\c</script>d.js` });
+    expect(html).toContain(`{"imports":{"kineglyph":"/a\\"b\\\\c<\\/script>d.js"}}`);
+    expect(html).not.toContain("&quot;");
+    const map = /<script type="importmap">([\s\S]*?)<\/script>/.exec(html)![1]!;
+    expect(JSON.parse(map)).toEqual({ imports: { kineglyph: `/a"b\\c</script>d.js` } });
+  });
+
   it("escapes quotes/ampersands/tags inside attribute values", () => {
     const html = renderPageHtml(nastyArticle, "/", ctx);
     expect(html).not.toMatch(/href="[^"]*"[^"\s>]*"/);

@@ -42,10 +42,15 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
   }
   for (const f of figures) f.controller.setTheme(themes[next]);
   // Static `<picture>` fallbacks (pre-rendered SVGs) pick the dark variant via a
-  // `prefers-color-scheme` media query, which does not track an explicit manual toggle away
-  // from the system preference — swap the `<img>` src directly so they stay in sync too.
-  for (const img of document.querySelectorAll<HTMLImageElement>("picture.kg-static img"))
-    img.src = img.src.replace(/\.(light|dark)\.svg(\?.*)?$/, `.${next}.svg$2`);
+  // `prefers-color-scheme` media query on a `<source>`, which does not track an explicit manual
+  // toggle away from the system preference. Overriding each `<source>`'s `media` is what
+  // actually switches the picture: while a `<source>` matches, the browser ignores `img.src`
+  // entirely, so swapping the `<img>` would be a no-op. The `<img>` itself is the first theme
+  // (light), so disabling every `<source>` selects it.
+  for (const source of document.querySelectorAll<HTMLSourceElement>("picture.kg-static source")) {
+    const theme = /\.(light|dark)\.svg(?:\?.*)?$/.exec(source.getAttribute("srcset") ?? "")?.[1];
+    if (theme !== undefined) source.media = theme === next ? "all" : "not all";
+  }
 });
 
 // --- tabs (a11y: click + arrow-key roving tabindex) ---------------------------------------
