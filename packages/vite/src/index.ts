@@ -5,6 +5,8 @@ export { buildStatic, bundleClient, type BuildOptions, type Shell, type ShellCon
 export { createDevServer, type DevServerOptions } from "./dev.js";
 export {
   viteEditMiddleware,
-  type EditMiddleware, type EditMiddlewareHandle, type EditMiddlewareOptions, type EditWatcher,
+  type EditMiddleware, type EditMiddlewareOptions, type EditWatcher,
 } from "./edit-middleware.js";
-export { renderEditPage, pagePathForHref, type EditPageContext } from "./edit-page.js";
+export {
+  renderEditPage, pagePathForHref, SELF_WRITE_GUARD, SELF_WRITE_WINDOW_MS, type EditPageContext,
+} from "./edit-page.js";

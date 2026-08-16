@@ -28,28 +28,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 export type EditMiddleware = (req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void) => void;
 
 /**
- * The middleware, plus the one thing a *watcher* needs to know about it: whether a file change it
- * just saw came from the editor itself.
- *
- * Without this the dev server's watcher answers the editor's own `PUT` with a `full-reload`, which
- * throws away whatever the author has typed since — most visibly an upload, whose newly inserted
- * node is discarded before the serialize debounce has written it (task B4b, concern 1).
- */
-export interface EditMiddlewareHandle extends EditMiddleware {
-  /** True when this middleware wrote, renamed or deleted `file` within the last two seconds. */
-  wasSelfWrite(file: string): boolean;
-}
-
-/**
- * How long a write stays "ours".
- *
- * Long enough to cover the watcher's own latency (chokidar debounces, and fsevents can take a few
- * hundred milliseconds), short enough that a genuine external edit made straight after an editor
- * save is still noticed by the reader's page.
- */
-const SELF_WRITE_WINDOW_MS = 2000;
-
-/**
  * The slice of chokidar's `FSWatcher` the SSE endpoint needs. `dev.ts` hands over Vite's own
  * watcher so the folder is not watched twice; standalone callers get an `fs.watch` fallback.
  */
@@ -227,7 +205,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  * Writes are atomic: content goes to a sibling `.tmp` file and is `rename`d over the target, so a
  * crashed or truncated write can never leave a half-written page behind.
  */
-export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions = {}): EditMiddlewareHandle {
+export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions = {}): EditMiddleware {
   const root = resolve(folder);
   const base = (opts.base ?? "/__pagina/edit").replace(/\/+$/, "");
   const siteBase = (opts.siteBase ?? "/").replace(/\/+$/, "");
@@ -270,29 +248,10 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     if (dotSegment(rel) !== undefined) throw new HttpError(404, `no such file: ${rel}`);
   };
 
-  // ---- self-write bookkeeping ---------------------------------------------------------------
-  // Absolute path → the moment we touched it. Entries are pruned lazily, on read: the map only
-  // ever holds the handful of paths one editor session wrote in the last couple of seconds.
-  const selfWrites = new Map<string, number>();
-
-  /** Records `path` as ours. Called *before* the syscall, so the watcher can never win the race. */
-  const markSelfWrite = (path: string): void => { selfWrites.set(resolve(path), Date.now()); };
-
-  const wasSelfWrite = (file: string): boolean => {
-    const now = Date.now();
-    for (const [path, at] of selfWrites) if (now - at > SELF_WRITE_WINDOW_MS) selfWrites.delete(path);
-    const at = selfWrites.get(resolve(root, file));
-    return at !== undefined && now - at <= SELF_WRITE_WINDOW_MS;
-  };
-
   /** Write-then-rename, so a reader never observes a partial file and an error leaves no debris. */
   const atomicWrite = async (path: string, data: Uint8Array | string): Promise<string> => {
     await mkdir(dirname(path), { recursive: true });
     const temp = `${path}.${randomBytes(6).toString("hex")}.tmp`;
-    // The temp file is ours too: it is created and unlinked inside the folder, and a watcher that
-    // sees it would otherwise reload the site for a file that never existed as far as anyone cares.
-    markSelfWrite(temp);
-    markSelfWrite(path);
     try {
       await writeFile(temp, data, { flag: "wx" });
       await renameFile(temp, path); // atomic on POSIX; replaces the target in one step
@@ -449,7 +408,6 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         assertWritable(rel);
         const path = await inside(rel);
         try { await stat(path); } catch { throw new HttpError(404, `no such file: ${rel}`); }
-        markSelfWrite(path);
         await rm(path, { recursive: true, force: true });
         res.statusCode = 204;
         res.end();
@@ -470,8 +428,6 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       const target = await inside(to);
       try { await stat(source); } catch { throw new HttpError(404, `no such file: ${from}`); }
       await mkdir(dirname(target), { recursive: true });
-      markSelfWrite(source);
-      markSelfWrite(target);
       await renameFile(source, target);
       sendJson(res, 200, { version: sha1((await readContent(to)) ?? Buffer.alloc(0)) });
       return;
@@ -541,7 +497,7 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     throw new HttpError(404, `no such endpoint: ${rest || "/"}`);
   };
 
-  const middleware: EditMiddlewareHandle = Object.assign((req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void): void => {
+  return (req, res, next) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname !== base && !url.pathname.startsWith(`${base}/`)) { next(); return; }
     void handle(req, res, url).catch((error: unknown) => {
@@ -552,6 +508,5 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       const status = error instanceof HttpError ? error.status : 500;
       sendJson(res, status, { message: error instanceof Error ? error.message : String(error) });
     });
-  }, { wasSelfWrite });
-  return middleware;
+  };
 }

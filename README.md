@@ -171,10 +171,15 @@ The repo ships a `gerrymander.yaml`. On a machine running
 `https://pagina.test` to the dev server:
 
 ```sh
-gerry dev                                        # serves the fixture
+gerry dev                                        # serves .pagina-scratch/ (seeded from the fixture)
 PAGINA_CONTENT=path/to/docs gerry dev            # or any article folder
 gerry down
 ```
+
+The zone runs with `--edit`, so whatever it serves can be **rewritten from a browser**. That is why
+the default is `.pagina-scratch/` — a gitignored copy the `dev:` command makes from
+`packages/core/test/fixture` on first run — and not the fixture itself, which is tracked content a
+dozen tests assert against. Delete the folder to start over; `PAGINA_CONTENT` bypasses it entirely.
 
 ## Editor
 

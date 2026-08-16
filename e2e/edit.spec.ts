@@ -20,6 +20,12 @@ test("types into a page and the file on disk changes", async ({ page }) => {
   // The document is only really open once the markdown has been parsed into it.
   await expect(doc).toContainText("Tabs", { timeout: 30_000 });
 
+  // A mark that only survives if the page is never reloaded. The dev server broadcasts
+  // `full-reload` for the write this test is about to make, and the editor's own guard is the only
+  // reason that frame does not throw the document away — the bug this replaced lost an upload's
+  // freshly inserted node exactly here.
+  await page.evaluate(() => { (window as unknown as { __marker?: string }).__marker = "before-typing"; });
+
   const sentence = `Typed by Playwright at ${String(Date.now())}.`;
   await doc.click();
   await page.keyboard.press("ControlOrMeta+End");
@@ -32,6 +38,12 @@ test("types into a page and the file on disk changes", async ({ page }) => {
 
   // The preview renders the same document through @pagina/core.
   await expect(page.locator(".pge-preview")).toContainText(sentence, { timeout: 30_000 });
+
+  // Well past the watcher's latency and the guard's own 2 s window: if the write was going to
+  // reload this page, it has had every chance.
+  await page.waitForTimeout(3000);
+  expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe("before-typing");
+  await expect(doc).toContainText(sentence);
 
   expect(errors, `console errors: ${errors.join(" | ")}`).toHaveLength(0);
 });

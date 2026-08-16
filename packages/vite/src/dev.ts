@@ -157,16 +157,12 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
 
         // Mounted first so a `PUT /__pagina/edit/files/...` never reaches the page middleware,
         // and so Vite's own static/transform middlewares never see the contract's routes.
-        // Created before the watcher is wired up so the handler below can consult it.
-        let wasSelfWrite: (file: string) => boolean = () => false;
         if (o.edit === true) {
-          const edit = viteEditMiddleware(folder, {
+          s.middlewares.use(viteEditMiddleware(folder, {
             base: EDIT_API_BASE,
             siteBase: base,
             watcher: s.watcher as unknown as EditWatcher,
-          });
-          wasSelfWrite = edit.wasSelfWrite;
-          s.middlewares.use(edit);
+          }));
         }
 
         s.watcher.add(folder);
@@ -177,19 +173,21 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
             // A scene module may be the theme module too, so drop the memoised themes with it.
             themes = undefined;
             figCache.clear();
-            // Sent even for the editor's own writes: saving a scene from the figure builder is
-            // exactly when the figure should be refreshed, and a hot-swap costs nobody their work.
+            // A hot-swap costs nobody their work, so it goes out for every change including the
+            // editor's own — saving a scene from the figure builder is exactly when the figure
+            // should be refreshed.
             s.ws.send({ type: "custom", event: "kineglyph:update", data: { url: `${base.replace(/\/$/, "")}/${rel}` } });
             return;
           }
           article = undefined;
           themes = undefined;
           figCache.clear();
-          // A `full-reload` is right for a reader's page and wrong for `/__edit/`: the editor is a
-          // client of this same socket, so reloading it for its own `PUT` or upload discards
-          // whatever the author has typed since. The caches above are dropped either way, so the
-          // next request — from anyone — still renders the new content.
-          if (wasSelfWrite(file)) return;
+          // Broadcast to every client, always. A `full-reload` is right for a reader's tab and
+          // wrong for exactly one client — `/__edit/`, whose own save caused this — and the
+          // server cannot tell the sockets apart. That decision is made where the identity is:
+          // the editor page drops a reload that lands inside its own write window
+          // (`SELF_WRITE_GUARD` in `edit-page.ts`). Suppressing it here would silence every other
+          // tab too.
           s.ws.send({ type: "full-reload" });
         });
 

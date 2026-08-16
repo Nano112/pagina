@@ -16,6 +16,7 @@ import {
 } from "@pagina/core";
 import type { ArticleBackend, BackendChange, FileEntry, UploadResult } from "./types.js";
 import { ConflictError } from "./types.js";
+import { noteSelfWrite } from "./self-write.js";
 
 export type FileStatus = "saved" | "saving" | "dirty" | "error" | "conflict";
 
@@ -316,6 +317,7 @@ export class ArticleStore {
   /** Creates a file on the backend and in the mirror. */
   async createFile(path: string, text = ""): Promise<FileState> {
     const { version } = await this.#backend.write(path, text);
+    noteSelfWrite(path);
     const r = this.#adopt(path, text, version);
     this.#entries.set(path, { path, version });
     this.#emit("files", undefined);
@@ -325,6 +327,7 @@ export class ArticleStore {
   /** Uploads a blob (default target `media/<name>`) and records it in the mirror. */
   async uploadFile(file: Blob | File, path?: string): Promise<UploadResult> {
     const result = path === undefined ? await this.#backend.upload(file) : await this.#backend.upload(file, path);
+    noteSelfWrite(result.path);
     const r = this.#rec(result.path);
     r.version = result.version; r.dirty = false; r.status = "saved";
     this.#entries.set(result.path, { path: result.path, version: result.version });
@@ -334,12 +337,15 @@ export class ArticleStore {
 
   async deleteFile(path: string): Promise<void> {
     await this.#backend.delete(path);
+    noteSelfWrite(path);
     this.#forget(path);
     this.#emit("files", undefined);
   }
 
   async renameFile(from: string, to: string): Promise<void> {
     const { version } = await this.#backend.rename(from, to);
+    noteSelfWrite(from);
+    noteSelfWrite(to);
     const old = this.#recs.get(from);
     this.#forget(from);
     const r = this.#rec(to);
@@ -525,6 +531,7 @@ export class ArticleStore {
       this.#setStatus(r, "saving");
       try {
         const { version } = await this.#backend.write(r.path, text, r.version === "" ? {} : { version: r.version });
+        noteSelfWrite(r.path);
         r.version = version;
         r.attempt = 0;
         r.error = undefined;

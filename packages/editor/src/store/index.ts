@@ -9,6 +9,7 @@ export {
   type ArticleStoreOptions, type FileConflict, type FileState, type FileStatus,
   type StoreEvent, type StoreEventMap, type StoreStatus,
 } from "./article-store.js";
+export { noteSelfWrite, type SelfWriteHook } from "./self-write.js";
 export { MemoryBackend, type MemoryBackendOptions } from "./memory-backend.js";
 export { HttpBackend, type HttpBackendOptions } from "./http-backend.js";
 export {

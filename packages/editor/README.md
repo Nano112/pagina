@@ -153,6 +153,13 @@ The article folder is **trusted content**, and so is everyone who can reach the 
 - **No undo across files**, no page rename from the sidebar (only create and delete), no search.
 - **Publish renders figures on the host's runtime**, so a host page without an import map for
   `kineglyph` publishes pages whose figures hydrate client-side instead of carrying SVG.
+- **A dev host page must not reload the editor over the editor's own writes.** `@pagina/editor`
+  announces every successful backend mutation through `window.__paginaSelfWrite(path, ts)` if the
+  host installed it (`noteSelfWrite`, exported from `./store`); `pagina dev --edit` installs a
+  matching guard that drops an HMR `full-reload` landing within 2 s of one. A host with its own
+  live-reload has to do the same, or an upload will be discarded before the 400 ms serialize
+  debounce has written it. The window is time-based, so a genuine external change to the same file
+  inside those 2 s is missed by the editor's tab (and by no one else's).
 - **The Playwright lane is a smoke test, not coverage.** Two specs — type into a page and see the
   file on disk change, and see the figures hydrate — over a real `pagina dev --edit`. Everything
   else is unit and integration tests plus verification in Chrome by hand.

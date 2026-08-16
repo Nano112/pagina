@@ -453,15 +453,12 @@ describe("pagina dev --edit", () => {
   }, 30_000);
 
   /**
-   * The editor is a client of the same HMR socket as the site, so a `full-reload` sent for its own
-   * write lands on `/__edit/` too and throws away everything typed since the last save — which is
-   * how an upload used to lose its just-inserted image node (task B4b, concern 1).
-   *
-   * The external write is asserted *first*, so the second half cannot pass merely because the
-   * watcher is asleep: it measures the latency the folder's watcher actually has, and then waits a
-   * multiple of it for a reload that must never come.
+   * The server broadcasts to *every* client and never decides for them. Suppressing the reload
+   * here — the shape this started out as — would silence a reader with the site open in another
+   * tab, who has no idea the editor exists. Only the editor's own page filters the frame, and
+   * that half is tested in `edit-page.test.ts`.
    */
-  it("suppresses the site full-reload for its own writes, not for an outside one", async () => {
+  it("broadcasts a full-reload for its own writes as well as for outside ones", async () => {
     const sent: { type: string }[] = [];
     const original = server.ws.send.bind(server.ws) as (...args: unknown[]) => void;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -471,14 +468,15 @@ describe("pagina dev --edit", () => {
     };
     const reloads = (): number => sent.filter((m) => m.type === "full-reload").length;
     const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+    const waitForReload = async (): Promise<boolean> => {
+      const deadline = Date.now() + 10_000;
+      while (reloads() === 0 && Date.now() < deadline) await sleep(25);
+      return reloads() > 0;
+    };
 
     try {
-      const started = Date.now();
-      await writeFile(join(folder, "guide/from-outside.md"), `# Outside ${String(started)}\n`);
-      const deadline = started + 10_000;
-      while (reloads() === 0 && Date.now() < deadline) await sleep(25);
-      expect(reloads()).toBeGreaterThan(0);
-      const latency = Date.now() - started;
+      await writeFile(join(folder, "guide/from-outside.md"), `# Outside ${String(Date.now())}\n`);
+      expect(await waitForReload()).toBe(true);
 
       sent.length = 0;
       const read = await fetch(`${api}/files/guide/tabs.md?responseType=text`);
@@ -489,10 +487,7 @@ describe("pagina dev --edit", () => {
         body: `# Tabs ${String(Date.now())}\n\nEdited through the contract.\n`,
       });
       expect(put.status).toBe(200);
-      // Comfortably longer than the watcher just proved it needs, and still inside the two-second
-      // window in which a write counts as the editor's own.
-      await sleep(Math.min(1500, Math.max(600, latency * 4)));
-      expect(sent.filter((m) => m.type === "full-reload")).toHaveLength(0);
+      expect(await waitForReload()).toBe(true);
     } finally {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (server.ws as any).send = original;
