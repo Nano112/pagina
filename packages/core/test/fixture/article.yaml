@@ -1,0 +1,13 @@
+slug: fixture
+title: Fixture Docs
+form: docs
+status: published
+tags: [test]
+snippets:
+  roots: [".", "../outside"]
+nav:
+  - { title: Home, page: index.md }
+  - section: Guide
+    children:
+      - { title: Tabs and snippets, page: guide/tabs.md }
+      - { title: Figures, page: guide/figures.md }

@@ -1,0 +1,22 @@
+{
+  "name": "pagina",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/core", "packages/shell-static", "packages/vite", "packages/cli"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.10.13",
+    "eslint": "^10.8.1",
+    "jsdom": "^29.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  }
+}
