@@ -3,6 +3,7 @@ import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
+import Code from "@tiptap/extension-code";
 import Highlight from "@tiptap/extension-highlight";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Color, TextStyle } from "@tiptap/extension-text-style";
@@ -87,6 +88,16 @@ const ImageAttrs = Image.extend({
   },
 });
 
+/**
+ * A code span that other marks may wrap. TipTap's Code declares `excludes: "_"`, which drops every
+ * other mark from the same text — so ``[`build/data`](guide.md)``, a shape Nucleation's index uses
+ * ten times in one table, silently loses its link on parse. Markdown nests both `` **`a`** `` and
+ * ``[`a`](b)`` happily, so there is nothing here to exclude. It is registered last in
+ * `editorExtensions()` because mark rank follows schema order, and `prosemirror-markdown` treats
+ * the last mark in a set as the innermost one — which is exactly what a code span must be.
+ */
+const InlineCode = Code.extend({ excludes: "" });
+
 /** `[text](href){ .pg-button }` and `[text](href "title")` — same reason as `ImageAttrs`. */
 const LinkAttrs = Link.extend({
   addAttributes() {
@@ -109,7 +120,7 @@ const LinkAttrs = Link.extend({
  */
 export function editorExtensions(): Extensions {
   return [
-    StarterKit.configure({ link: false, codeBlock: { languageClassPrefix: "language-" } }),
+    StarterKit.configure({ link: false, code: false, codeBlock: { languageClassPrefix: "language-" } }),
     HeadingId,
     CellAlign,
     ListTight,
@@ -132,6 +143,8 @@ export function editorExtensions(): Extensions {
     FigureImage,
     ModelViewer,
     HtmlBlock,
+    // Last: mark rank follows this order, and a code span has to be the innermost mark.
+    InlineCode,
   ];
 }
 
