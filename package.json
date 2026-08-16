@@ -2,7 +2,7 @@
   "name": "pagina",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/core", "packages/shell-static", "packages/vite", "packages/cli"],
+  "workspaces": ["packages/core", "packages/vite", "packages/shell-static", "packages/cli"],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
