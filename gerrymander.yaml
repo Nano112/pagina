@@ -8,4 +8,9 @@ services:
     # (`host.docker.internal`), which loopback-only binding (the CLI's default) can't see.
     # `--edit`: serves the WYSIWYG at `/__edit/` and makes the folder writable over HTTP. This is
     # a local dev zone on a trusted machine; do not copy this line to anything reachable.
-    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT} --host 0.0.0.0 --edit
+    # `.pagina-scratch/`: a gitignored copy of the fixture, seeded on first run. `--edit` means
+    # whatever is served here can be *rewritten* from a browser, and the fixture is tracked content
+    # that a dozen tests assert against — typing a sentence into it would dirty the repo and change
+    # what those tests read. `PAGINA_CONTENT=<path> gerry dev` still serves that path directly and
+    # skips the seeding entirely.
+    dev: '[ -n "${PAGINA_CONTENT:-}" ] || [ -d .pagina-scratch ] || cp -R packages/core/test/fixture .pagina-scratch; node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-.pagina-scratch} --port {PORT} --host 0.0.0.0 --edit'
