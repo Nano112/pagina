@@ -2,7 +2,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { parseArticleConfig, renderArticle, type Diagnostic, type RenderedArticle } from "@pagina/core";
+import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type RenderedArticle } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
@@ -61,7 +61,10 @@ export async function bundleClient(
         emptyOutDir: false,
         cssCodeSplit: false,
         lib: { entry: { pagina: clientEntry, kineglyph: tmpEntry }, formats: ["es"], fileName: (_f, name) => `${name}.js` },
-        rollupOptions: { external: [], output: { assetFileNames: "pagina.[ext]" } },
+        // `kineglyph` stays a bare import in the client bundle: the page's import map points
+        // it at `_pagina/kineglyph.js`, so the runtime is loaded once and shared with the
+        // scene modules. Everything else is bundled in.
+        rollupOptions: { external: ["kineglyph"], output: { assetFileNames: "pagina.[ext]" } },
       },
       // The kineglyph entry lives in `outDir`, outside any node_modules tree, so the bare
       // specifier has to be aliased rather than resolved from the importer's directory.
@@ -82,15 +85,17 @@ export async function bundleClient(
  */
 export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; diagnostics: Diagnostic[] }> {
   const base = o.base ?? "/";
+  const strict = o.strict ?? true;
   const fs = new NodeContentFs(o.folder);
-  const article = await renderArticle({ fs, strict: o.strict ?? true, base, ...(o.md === undefined ? {} : { md: o.md }) });
+  const article = await renderArticle({ fs, strict, base, ...(o.md === undefined ? {} : { md: o.md }) });
   await mkdir(o.outDir, { recursive: true });
   const files: string[] = [];
 
   const config = parseArticleConfig(await fs.read("article.yaml"));
   const themes = await loadKineglyphThemes(o.folder, config);
-  const figures = await prerenderFigures(article, o.folder, themes, config.kineglyph?.width, base);
-  for (const [id, results] of figures) {
+  const prerendered = await prerenderFigures(article, o.folder, themes, config.kineglyph?.width, base);
+  const diagnostics: Diagnostic[] = [...article.diagnostics, ...prerendered.diagnostics];
+  for (const [id, results] of prerendered.figures) {
     const meta = article.manifest.figures[id];
     if (meta === undefined) continue;
     for (const r of results) {
@@ -99,6 +104,8 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
       files.push(rel);
     }
   }
+  // Every figure was attempted first, so this reports all of them, not just the first.
+  if (strict && prerendered.diagnostics.some((d) => d.severity === "error")) throw new PaginaBuildError(diagnostics);
   for (const asset of article.manifest.assets) {
     await mkdir(dirname(join(o.outDir, asset)), { recursive: true });
     await cp(resolve(o.folder, asset), join(o.outDir, asset));
@@ -112,5 +119,5 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
   }
   await write(o.outDir, "_pagina/manifest.json", JSON.stringify(article.manifest, null, 2));
   files.push("_pagina/manifest.json");
-  return { files, diagnostics: [...article.diagnostics] };
+  return { files, diagnostics };
 }

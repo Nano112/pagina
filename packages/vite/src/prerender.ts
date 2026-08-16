@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defaultTheme, type ThemeTokens } from "@kineglyph/core";
 import { prerender } from "@kineglyph/export";
-import type { ArticleConfig, RenderedArticle } from "@pagina/core";
+import type { ArticleConfig, Diagnostic, RenderedArticle } from "@pagina/core";
 
 export interface KineglyphThemes { readonly light: ThemeTokens; readonly dark: ThemeTokens }
 
@@ -26,9 +26,19 @@ function toFolderRelative(url: string, base: string): string {
   return (url.startsWith(base) ? url.slice(base.length) : url).replace(/^\/+/, "");
 }
 
+export interface PrerenderedFigures {
+  /** Figure id → one SVG per theme. Only figures that rendered successfully appear. */
+  readonly figures: Map<string, { theme: string; svg: string }[]>;
+  readonly diagnostics: Diagnostic[];
+}
+
 /**
  * Pre-renders every inline and module figure of an article to one SVG per theme.
- * Static figures are skipped. Keyed by figure id.
+ * Static figures are skipped.
+ *
+ * A figure that fails to render (bad scene module, missing file, layout error) does not
+ * abort the pass: it is reported as a `figure-prerender` diagnostic and the remaining
+ * figures are still attempted, so one build reports every broken figure at once.
  */
 export async function prerenderFigures(
   article: RenderedArticle,
@@ -36,25 +46,35 @@ export async function prerenderFigures(
   themes: KineglyphThemes,
   width = 960,
   base = "/",
-): Promise<Map<string, { theme: string; svg: string }[]>> {
-  const out = new Map<string, { theme: string; svg: string }[]>();
+): Promise<PrerenderedFigures> {
+  const figures = new Map<string, { theme: string; svg: string }[]>();
+  const diagnostics: Diagnostic[] = [];
   const themeList = [{ name: "light", tokens: themes.light }, { name: "dark", tokens: themes.dark }];
   for (const page of Object.values(article.pages)) {
     for (const fig of page.figures) {
       if (fig.kind === "static") continue;
-      let source: string;
-      let baseUrl: string;
-      if (fig.kind === "inline") {
-        source = fig.source ?? "";
-        baseUrl = pathToFileURL(resolve(folder, page.path)).href;
-      } else {
-        const abs = resolve(folder, toFolderRelative(fig.scene ?? "", base));
-        source = await readFile(abs, "utf8");
-        baseUrl = pathToFileURL(abs).href;
+      try {
+        let source: string;
+        let baseUrl: string;
+        if (fig.kind === "inline") {
+          source = fig.source ?? "";
+          baseUrl = pathToFileURL(resolve(folder, page.path)).href;
+        } else {
+          const abs = resolve(folder, toFolderRelative(fig.scene ?? "", base));
+          source = await readFile(abs, "utf8");
+          baseUrl = pathToFileURL(abs).href;
+        }
+        const results = await prerender(source, { themes: themeList, width, baseUrl, idPrefix: fig.id });
+        figures.set(fig.id, results.map((r) => ({ theme: r.theme, svg: r.svg })));
+      } catch (error) {
+        diagnostics.push({
+          severity: "error",
+          code: "figure-prerender",
+          message: `${fig.id} (${page.path}): ${error instanceof Error ? error.message : String(error)}`,
+          page: page.path,
+        });
       }
-      const results = await prerender(source, { themes: themeList, width, baseUrl, idPrefix: fig.id });
-      out.set(fig.id, results.map((r) => ({ theme: r.theme, svg: r.svg })));
     }
   }
-  return out;
+  return { figures, diagnostics };
 }

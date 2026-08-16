@@ -39,6 +39,14 @@ describe("renderArticle", () => {
     expect(r.diagnostics).toEqual([]);
   });
 
+  it("builds staticBase with exactly one slash after base, for a root and a non-root base", async () => {
+    const root = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    expect(root.manifest.figures["inline-demo"]!.staticBase).toBe("/_pagina/figures/guide-figures/inline-demo");
+    const sub = await renderArticle({ fs: nodeFs(fixture), strict: true, base: "/Nucleation/" });
+    expect(sub.manifest.figures["inline-demo"]!.staticBase).toBe("/Nucleation/_pagina/figures/guide-figures/inline-demo");
+    expect(sub.pages["/guide/figures/"]!.html).toContain(`srcset="/Nucleation/_pagina/figures/guide-figures/kg-guide-figures-1.dark.svg"`);
+  });
+
   it("fails strictly on a nav entry without a file, a dead link, and a bad anchor", async () => {
     const base = nodeFs(fixture);
     const fs: ContentFs = { ...base,

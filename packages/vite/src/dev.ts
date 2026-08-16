@@ -18,6 +18,16 @@ export interface DevServerOptions {
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
 
 /**
+ * Kineglyph is consumed from a linked checkout, so its packages are TypeScript sources
+ * outside `node_modules`. Vite's dep optimizer must not try to pre-bundle any of them —
+ * excluding only some leaves the rest half-optimised and duplicated at runtime.
+ */
+const KINEGLYPH_PACKAGES = [
+  "@kineglyph/core", "@kineglyph/svg", "@kineglyph/anime", "@kineglyph/plot",
+  "@kineglyph/scenes", "@kineglyph/web", "@kineglyph/web/bundle", "@kineglyph/export",
+];
+
+/**
  * A Vite dev server for an article folder. The caller owns the lifecycle
  * (`await server.listen()` / `await server.close()`).
  *
@@ -43,7 +53,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       watch: { ignored: ["**/node_modules/**"] },
     },
     resolve: { conditions: ["development"], alias: { kineglyph: kgWebEntry } },
-    optimizeDeps: { exclude: ["@kineglyph/plot", "@kineglyph/svg"] },
+    optimizeDeps: { exclude: [...KINEGLYPH_PACKAGES] },
     plugins: [{
       name: "pagina-dev",
       configureServer(s) {
@@ -59,7 +69,11 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
             return { themes: await loadKineglyphThemes(folder, cfg), ...(cfg.kineglyph?.width === undefined ? {} : { width: cfg.kineglyph.width }) };
           })());
 
-        /** Pre-renders exactly one figure (both themes) and caches it. */
+        /**
+         * Pre-renders exactly one figure (both themes) and caches it. A figure that fails
+         * to render is logged and reported as "not there": the request 404s, the static
+         * `<img>` simply does not load, and the client runtime still hydrates the figure.
+         */
         const renderFigure = async (id: string): Promise<{ theme: string; svg: string }[] | undefined> => {
           const cached = figCache.get(id);
           if (cached !== undefined) return cached;
@@ -70,7 +84,9 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
           if (page === undefined || fig === undefined || fig.kind === "static") return undefined;
           const t = await getThemes();
           const one: RenderedArticle = { ...a, pages: { [page.href]: { ...page, figures: [fig] } } };
-          const results = (await prerenderFigures(one, folder, t.themes, t.width, base)).get(id);
+          const { figures, diagnostics } = await prerenderFigures(one, folder, t.themes, t.width, base);
+          for (const d of diagnostics) s.config.logger.error(`[pagina] ${d.code}: ${d.message}`);
+          const results = figures.get(id);
           if (results !== undefined) figCache.set(id, results);
           return results;
         };
@@ -80,6 +96,8 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
           if (!file.startsWith(folder)) return;
           const rel = relative(folder, file).split("\\").join("/");
           if (rel.endsWith(".mjs") || rel.endsWith(".js")) {
+            // A scene module may be the theme module too, so drop the memoised themes with it.
+            themes = undefined;
             figCache.clear();
             s.ws.send({ type: "custom", event: "kineglyph:update", data: { url: `${base.replace(/\/$/, "")}/${rel}` } });
             return;
@@ -100,7 +118,11 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 const m = FIGURE_URL.exec(path);
                 if (m === null) return next();
                 const svg = (await renderFigure(m[1]!))?.find((r) => r.theme === m[2])?.svg;
-                if (svg === undefined) return next();
+                if (svg === undefined) {
+                  res.statusCode = 404;
+                  res.end();
+                  return;
+                }
                 res.setHeader("content-type", "image/svg+xml");
                 res.end(svg);
                 return;
@@ -109,7 +131,9 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
               if (!(req.headers.accept ?? "").includes("text/html")) return next();
               const a = await getArticle();
               const rest = path.startsWith(base) ? `/${path.slice(base.length)}` : path;
-              const href = rest.endsWith("/") ? rest : `${rest}/`;
+              // `/guide/figures/index.html` addresses the same page as `/guide/figures/`.
+              const href = rest.endsWith("/index.html") ? rest.slice(0, -"index.html".length)
+                : rest.endsWith("/") ? rest : `${rest}/`;
               if (a.pages[href] === undefined) return next();
               const pages = await o.shell.render(a, {
                 base,

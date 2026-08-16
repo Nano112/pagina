@@ -3,7 +3,12 @@
   "compilerOptions": {
     "noEmit": true,
     // `@pagina/core` is typechecked from source so this package does not need core built first.
-    "paths": { "@pagina/core": ["../core/src/index.ts"] }
+    "paths": {
+      "@pagina/core": ["../core/src/index.ts"],
+      // The bare `kineglyph` specifier a client entry imports is provided by the page's
+      // import map at runtime; for typechecking it is `@kineglyph/web/bundle`.
+      "kineglyph": ["../../node_modules/@kineglyph/web/src/bundle.ts"]
+    }
   },
   "include": ["src", "test"]
 }
