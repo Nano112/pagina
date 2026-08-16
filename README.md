@@ -152,9 +152,15 @@ pagina build <folder> [--out dist] [--base /] [--no-strict]
   reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package
   implements: `files`, `upload`, `rename`, `publish`, `events`). It is off by default and
   inherits the loopback-only bind, because anyone who can reach the port can rewrite the folder.
-  `publish` writes `<folder>/.pagina/rendered/` — the only path the middleware refuses to let a
-  plain write touch. In dev the editor is served from `@pagina/editor`'s TypeScript source
-  through Vite's `/@fs`; a packaged consumer points the same page at `dist/editor.js`/`.css`.
+  In dev the editor is served from `@pagina/editor`'s TypeScript source through Vite's `/@fs`; a
+  packaged consumer points the same page at `dist/editor.js`/`.css`.
+- What the edit API will *not* do, whatever it is asked: escape the folder (paths are checked
+  lexically **and** by realpath, so a symlink inside the folder pointing out of it is neither
+  readable nor writable, and symlinks are left out of the listing); write, rename, upload to or
+  delete anything with a dot-prefixed path segment (`.pagina/`, `.git/`, `.env` — `publish` is the
+  only writer allowed into `.pagina/`); or buffer an oversized body (5 MB text/JSON, 50 MB upload,
+  then `413`). Writes go to a temp file and are `rename`d into place, so an interrupted save can
+  never leave a half-written page.
 
 ### With gerrymander (optional)
 

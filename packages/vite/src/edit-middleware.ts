@@ -17,10 +17,10 @@
  * Versions are the sha1 of the file's bytes, so two servers handing out the same version for the
  * same content is a feature (a no-op write is not a conflict) and mtime jitter is not.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
-import { mkdir, readFile, readdir, rename as renameFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, realpath, rename as renameFile, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 /** A connect-style middleware, which is what `vite.middlewares.use` takes. */
@@ -46,6 +46,11 @@ export interface EditMiddlewareOptions {
 
 /** Everything the editor writes that is not content lives here, and is never editable content. */
 const PRIVATE_DIR = ".pagina";
+
+/** Request body caps. A `.md` page is kilobytes; the ceilings only stop a runaway or a prank. */
+const LIMIT_TEXT = 5 * 1024 * 1024;
+const LIMIT_JSON = 5 * 1024 * 1024;
+const LIMIT_UPLOAD = 50 * 1024 * 1024;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -75,7 +80,8 @@ class HttpError extends Error {
  * Segments are decoded individually (matching `HttpBackend`'s `encodePath`) and then checked
  * *after* decoding, so `..%2Fx` — which survives URL normalisation as a single segment — cannot
  * smuggle a traversal through. A decoded segment may never be `.`, `..`, empty, or contain a
- * separator or NUL.
+ * separator or NUL. This is a *lexical* check only; symlinks are caught by the realpath
+ * containment check in {@link viteEditMiddleware}.
  */
 function toRelPath(raw: string, opts: { decode: boolean }): string {
   const segments: string[] = [];
@@ -94,6 +100,28 @@ function toRelPath(raw: string, opts: { decode: boolean }): string {
   const rel = segments.join("/");
   if (isAbsolute(rel)) throw new HttpError(400, `illegal path: ${raw}`);
   return rel;
+}
+
+/** Dotfiles are not article content — not `.pagina/`, not `.git/`, not `.env`. */
+function dotSegment(rel: string): string | undefined {
+  return rel.split("/").find((seg) => seg.startsWith("."));
+}
+
+/**
+ * The realpath of the deepest existing ancestor of `path`, with the not-yet-existing tail joined
+ * back on. Resolving the *ancestor* rather than the path itself is what makes this usable for
+ * writes: `media/new.png` does not exist yet, but `media/` may well be a symlink out of the folder.
+ */
+async function realAncestor(path: string): Promise<string> {
+  const tail: string[] = [];
+  let current = path;
+  for (;;) {
+    try { return join(await realpath(current), ...tail); } catch { /* keep walking up */ }
+    const parent = dirname(current);
+    if (parent === current) return path; // nothing on the chain exists; lexical answer is the best one
+    tail.unshift(basename(current));
+    current = parent;
+  }
 }
 
 /** Filenames the editor invents (from an upload) are reduced to a safe, predictable shape. */
@@ -134,9 +162,20 @@ function parseMultipart(body: Buffer, boundary: string): MultipartPart[] {
   return parts;
 }
 
-async function readBody(req: IncomingMessage): Promise<Buffer> {
+/** Buffers the request body, refusing anything over `limit` (both by header and while reading). */
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+  const declared = Number(req.headers["content-length"] ?? NaN);
+  if (Number.isFinite(declared) && declared > limit) {
+    throw new HttpError(413, `request body of ${declared} bytes exceeds the ${limit}-byte limit`);
+  }
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > limit) throw new HttpError(413, `request body exceeds the ${limit}-byte limit`);
+    chunks.push(buf);
+  }
   return Buffer.concat(chunks);
 }
 
@@ -151,16 +190,32 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 /**
  * `viteEditMiddleware(folder)` — the HTTP contract above, served over `folder` with Node's fs.
  *
- * Path safety is enforced in one place ({@link toRelPath} plus a final containment check), and
- * writes into `.pagina/` are refused: that directory is the editor's own output (published
- * renders), not content, and letting a `PUT` reach it would let the editor forge a publish.
+ * Three rules guard every path, in one place:
+ *
+ * 1. **Lexical**: {@link toRelPath} rejects `..`, absolute paths and separator smuggling.
+ * 2. **Real**: the target's deepest existing ancestor is `realpath`'d and must sit inside the
+ *    folder's own realpath — so a symlink *inside* the folder pointing out of it is not a way
+ *    to read or write the rest of the disk.
+ * 3. **Content**: no write, rename, upload or delete may touch a dotfile segment. That covers
+ *    `.pagina/` (the editor's own publish output — a writable one would let the editor forge a
+ *    publish), `.git/`, `.env`, and anything else the listing already refuses to show. Reads of
+ *    dotfiles 404 for the same reason: if the client cannot discover it, it cannot address it.
+ *
+ * Writes are atomic: content goes to a sibling `.tmp` file and is `rename`d over the target, so a
+ * crashed or truncated write can never leave a half-written page behind.
  */
 export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions = {}): EditMiddleware {
   const root = resolve(folder);
   const base = (opts.base ?? "/__pagina/edit").replace(/\/+$/, "");
   const siteBase = (opts.siteBase ?? "/").replace(/\/+$/, "");
 
-  /** The absolute path of a folder-relative path, refusing anything that escapes the folder. */
+  // The folder itself is often reached through a symlink (`/tmp` → `/private/tmp` on macOS), so
+  // containment has to compare real path against real path or every request would look like an
+  // escape. Resolved once, lazily, because the constructor is synchronous.
+  let realRootOnce: Promise<string> | undefined;
+  const realRoot = (): Promise<string> => (realRootOnce ??= realpath(root).catch(() => root));
+
+  /** Lexically-safe absolute path (rule 1). */
   const abs = (rel: string): string => {
     const path = resolve(root, rel);
     const back = relative(root, path);
@@ -168,14 +223,54 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     return path;
   };
 
-  const assertWritable = (rel: string): void => {
-    if (rel === PRIVATE_DIR || rel.startsWith(`${PRIVATE_DIR}/`)) {
-      throw new HttpError(403, `${PRIVATE_DIR}/ is written by publish, not by hand`);
+  /** Lexically safe *and* really inside the folder (rules 1 + 2). */
+  const inside = async (rel: string): Promise<string> => {
+    const path = abs(rel);
+    const back = relative(await realRoot(), await realAncestor(path));
+    if (back === "" || back.startsWith("..") || isAbsolute(back)) {
+      throw new HttpError(403, `path escapes the article folder: ${rel}`);
     }
+    return path;
   };
 
-  const readBytes = async (rel: string): Promise<Buffer | undefined> => {
-    try { return await readFile(abs(rel)); } catch { return undefined; }
+  /** Rule 3, for anything that mutates. */
+  const assertWritable = (rel: string): void => {
+    const dot = dotSegment(rel);
+    if (dot === undefined) return;
+    throw new HttpError(403, dot === PRIVATE_DIR
+      ? `${PRIVATE_DIR}/ is written by publish, not by hand`
+      : `dotfiles are not article content: ${rel}`);
+  };
+
+  /** Rule 3, for reads: a dotfile is never listed, so it is never addressable either. */
+  const assertReadable = (rel: string): void => {
+    if (dotSegment(rel) !== undefined) throw new HttpError(404, `no such file: ${rel}`);
+  };
+
+  /** Write-then-rename, so a reader never observes a partial file and an error leaves no debris. */
+  const atomicWrite = async (path: string, data: Uint8Array | string): Promise<string> => {
+    await mkdir(dirname(path), { recursive: true });
+    const temp = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+    try {
+      await writeFile(temp, data, { flag: "wx" });
+      await renameFile(temp, path); // atomic on POSIX; replaces the target in one step
+    } catch (error) {
+      await rm(temp, { force: true });
+      throw error;
+    }
+    return sha1(data);
+  };
+
+  const writeContent = async (rel: string, data: Uint8Array | string): Promise<string> => {
+    assertWritable(rel);
+    return atomicWrite(await inside(rel), data);
+  };
+
+  /** Bytes of a content file, or `undefined` when it is absent. Escapes and dotfiles still throw. */
+  const readContent = async (rel: string): Promise<Buffer | undefined> => {
+    assertReadable(rel);
+    const path = await inside(rel);
+    try { return await readFile(path); } catch { return undefined; }
   };
 
   const listFiles = async (): Promise<{ path: string; size: number; version: string; mtime: string }[]> => {
@@ -187,6 +282,9 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         // Dotfiles (`.pagina/`, `.git/`, …) and `node_modules` are not article content.
         if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
         const path = join(dir, entry.name);
+        // Dirents are lstat-shaped, so a symlink is neither `isFile` nor `isDirectory`: symlinks
+        // are skipped outright rather than followed, which is the same answer the containment
+        // check gives for a read of one, and avoids cycles into the bargain.
         if (entry.isDirectory()) { await walk(path); continue; }
         if (!entry.isFile()) continue;
         const [bytes, info] = await Promise.all([readFile(path), stat(path)]);
@@ -202,13 +300,6 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   };
 
-  const writeThrough = async (rel: string, data: Uint8Array | string): Promise<string> => {
-    const path = abs(rel);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, data);
-    return sha1(data);
-  };
-
   // ---- SSE ----------------------------------------------------------------------------------
   const clients = new Set<ServerResponse>();
   let ownWatcher: FSWatcher | undefined;
@@ -217,7 +308,7 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
   const broadcast = async (rel: string, kind: "changed" | "deleted"): Promise<void> => {
     if (clients.size === 0) return;
     if (rel.split("/").some((s) => s.startsWith(".") || s === "node_modules")) return;
-    const bytes = kind === "changed" ? await readBytes(rel) : undefined;
+    const bytes = kind === "changed" ? await readContent(rel).catch(() => undefined) : undefined;
     const frame = `data: ${JSON.stringify({
       type: bytes === undefined && kind === "changed" ? "deleted" : kind,
       path: rel,
@@ -266,7 +357,7 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       const rel = toRelPath(rest.slice("/files/".length), { decode: true });
 
       if (method === "GET" || method === "HEAD") {
-        const bytes = await readBytes(rel);
+        const bytes = await readContent(rel);
         if (bytes === undefined) throw new HttpError(404, `no such file: ${rel}`);
         const wantsText = url.searchParams.get("responseType") === "text"
           || (url.searchParams.get("responseType") !== "binary"
@@ -283,19 +374,24 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
 
       if (method === "PUT") {
         assertWritable(rel);
-        const text = (await readBody(req)).toString("utf8");
-        const current = await readBytes(rel);
+        const path = await inside(rel);
+        const text = (await readBody(req, LIMIT_TEXT)).toString("utf8");
+        let current: Buffer | undefined;
+        try { current = await readFile(path); } catch { current = undefined; }
         const ifMatch = req.headers["if-match"];
         const expected = typeof ifMatch === "string" ? unquoteETag(ifMatch) : "";
-        if (expected !== "" && expected !== "*") {
+        if (expected !== "") {
           const theirs = current === undefined ? "" : current.toString("utf8");
           const version = current === undefined ? "" : sha1(current);
-          if (version !== expected) {
+          // `*` is HTTP's "any current representation", i.e. the file must exist. A conflict (not
+          // a 412) because that is the shape `HttpBackend` turns into the editor's conflict UI.
+          const stale = expected === "*" ? current === undefined : version !== expected;
+          if (stale) {
             sendJson(res, 409, { theirs, version, message: `${rel} changed on the server` });
             return;
           }
         }
-        const version = await writeThrough(rel, text);
+        const version = await atomicWrite(path, text);
         res.setHeader("etag", `"${version}"`);
         sendJson(res, 200, { version });
         return;
@@ -303,7 +399,7 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
 
       if (method === "DELETE") {
         assertWritable(rel);
-        const path = abs(rel);
+        const path = await inside(rel);
         try { await stat(path); } catch { throw new HttpError(404, `no such file: ${rel}`); }
         await rm(path, { recursive: true, force: true });
         res.statusCode = 204;
@@ -315,18 +411,18 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     }
 
     if (rest === "/rename" && method === "POST") {
-      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}") as { from?: unknown; to?: unknown };
+      const body = JSON.parse((await readBody(req, LIMIT_JSON)).toString("utf8") || "{}") as { from?: unknown; to?: unknown };
       if (typeof body.from !== "string" || typeof body.to !== "string") throw new HttpError(400, "rename needs { from, to }");
       const from = toRelPath(body.from, { decode: false });
       const to = toRelPath(body.to, { decode: false });
       assertWritable(from);
       assertWritable(to);
-      const source = abs(from);
-      const target = abs(to);
+      const source = await inside(from);
+      const target = await inside(to);
       try { await stat(source); } catch { throw new HttpError(404, `no such file: ${from}`); }
       await mkdir(dirname(target), { recursive: true });
       await renameFile(source, target);
-      sendJson(res, 200, { version: sha1((await readBytes(to)) ?? Buffer.alloc(0)) });
+      sendJson(res, 200, { version: sha1((await readContent(to)) ?? Buffer.alloc(0)) });
       return;
     }
 
@@ -334,42 +430,44 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       const type = req.headers["content-type"] ?? "";
       const boundary = /boundary=(?:"([^"]+)"|([^\s;]+))/i.exec(type);
       if (boundary === null) throw new HttpError(400, "upload expects multipart/form-data");
-      const parts = parseMultipart(await readBody(req), boundary[1] ?? boundary[2] ?? "");
+      const parts = parseMultipart(await readBody(req, LIMIT_UPLOAD), boundary[1] ?? boundary[2] ?? "");
       const file = parts.find((p) => p.name === "file");
       if (file === undefined) throw new HttpError(400, "upload expects a `file` part");
       const given = parts.find((p) => p.name === "path")?.data.toString("utf8").trim();
       const rel = given === undefined || given === ""
         ? `media/${sanitiseName(file.filename ?? "upload.bin")}`
         : toRelPath(given, { decode: false });
-      assertWritable(rel);
-      const version = await writeThrough(rel, file.data);
+      const version = await writeContent(rel, file.data);
       sendJson(res, 200, { path: rel, url: `${siteBase}/${rel}`, version });
       return;
     }
 
     if (rest === "/publish" && method === "POST") {
-      const payload = JSON.parse((await readBody(req)).toString("utf8") || "{}") as {
+      const payload = JSON.parse((await readBody(req, LIMIT_JSON)).toString("utf8") || "{}") as {
         manifest?: unknown;
         pages?: Record<string, string>;
         figures?: Record<string, Record<string, string>>;
       };
-      const out = join(root, PRIVATE_DIR, "rendered");
+      // The only writer allowed into `.pagina/`, and still containment-checked: a symlinked
+      // `.pagina` would otherwise be a way to scatter files across the disk.
+      const privateDir = await inside(PRIVATE_DIR);
+      const out = join(privateDir, "rendered");
       await mkdir(join(out, "pages"), { recursive: true });
       await mkdir(join(out, "figures"), { recursive: true });
-      await writeFile(join(out, "manifest.json"), JSON.stringify(payload.manifest ?? {}, null, 2));
+      await atomicWrite(join(out, "manifest.json"), JSON.stringify(payload.manifest ?? {}, null, 2));
       for (const [href, html] of Object.entries(payload.pages ?? {})) {
         // `/guide/tabs/` → `guide-tabs.html`, `/` → `index.html`: one flat, collision-free file
         // per page, which is all the Blade/`.pagina` consumer needs to look one up by href.
         const slug = href.replace(/^\/+|\/+$/g, "").replace(/\//g, "-") || "index";
-        await writeFile(join(out, "pages", `${sanitiseName(slug)}.html`), String(html));
+        await atomicWrite(join(out, "pages", `${sanitiseName(slug)}.html`), String(html));
       }
       for (const [id, themes] of Object.entries(payload.figures ?? {})) {
         for (const [theme, svg] of Object.entries(themes)) {
-          await writeFile(join(out, "figures", `${sanitiseName(id)}.${sanitiseName(theme)}.svg`), String(svg));
+          await atomicWrite(join(out, "figures", `${sanitiseName(id)}.${sanitiseName(theme)}.svg`), String(svg));
         }
       }
       const publishedAt = new Date().toISOString();
-      await writeFile(join(root, PRIVATE_DIR, "published.json"), JSON.stringify({ publishedAt }, null, 2));
+      await atomicWrite(join(privateDir, "published.json"), JSON.stringify({ publishedAt }, null, 2));
       sendJson(res, 200, { publishedAt });
       return;
     }
@@ -396,6 +494,9 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname !== base && !url.pathname.startsWith(`${base}/`)) { next(); return; }
     void handle(req, res, url).catch((error: unknown) => {
+      // Answering before the body is drained resets the connection, and the client sees a
+      // transport error instead of the 413 that explains it. Discard the rest, then reply.
+      if (!req.readableEnded) req.resume();
       if (res.headersSent) { res.end(); return; }
       const status = error instanceof HttpError ? error.status : 500;
       sendJson(res, status, { message: error instanceof Error ? error.message : String(error) });

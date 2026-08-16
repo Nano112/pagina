@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,6 +57,7 @@ const unquote = (raw: string | null): string => (raw ?? "").replace(/^W\//, "").
 describe("pagina dev --edit", () => {
   let server: ViteDevServer;
   let folder: string;
+  let outside: string;
   let origin: string;
   let api: string;
 
@@ -64,6 +65,13 @@ describe("pagina dev --edit", () => {
     // A temp copy: every test in here writes to the folder, and the fixture is shared.
     folder = await mkdtemp(join(tmpdir(), "pagina-edit-"));
     await cp(fixture, folder, { recursive: true });
+
+    // A separate tree the folder must never be able to reach, plus the two symlinks that would
+    // reach it if containment were lexical only.
+    outside = await mkdtemp(join(tmpdir(), "pagina-outside-"));
+    await writeFile(join(outside, "secret.txt"), "top secret\n");
+    await symlink(join(outside, "secret.txt"), join(folder, "escape.txt"));
+    await symlink(outside, join(folder, "escape-dir"));
     server = await createDevServer({ folder, shell: stubShell, port: 0, host: "127.0.0.1", edit: true });
     await server.listen();
     const addr = server.httpServer!.address() as AddressInfo;
@@ -74,6 +82,7 @@ describe("pagina dev --edit", () => {
   afterAll(async () => {
     await server?.close();
     if (folder !== undefined) await rm(folder, { recursive: true, force: true });
+    if (outside !== undefined) await rm(outside, { recursive: true, force: true });
   });
 
   it("lists the folder, skipping dotfiles and node_modules", async () => {
@@ -202,6 +211,116 @@ describe("pagina dev --edit", () => {
 
     const dotPagina = await fetch(`${api}/files/.pagina/published.json`, { method: "PUT", body: "{}" });
     expect(dotPagina.status).toBeGreaterThanOrEqual(400);
+  }, 30_000);
+
+  it("refuses a symlink that leaves the folder, for reads and for writes", async () => {
+    // Positive control: the symlinks really do resolve, so the refusals below are a decision the
+    // middleware makes and not an accident of a dangling link.
+    expect(await readFile(join(folder, "escape.txt"), "utf8")).toBe("top secret\n");
+    expect(await readFile(join(folder, "escape-dir/secret.txt"), "utf8")).toBe("top secret\n");
+
+    // Lexically `escape.txt` is a perfectly ordinary child of the folder; only its realpath is not.
+    for (const path of ["escape.txt", "escape-dir/secret.txt"]) {
+      const read = await fetch(`${api}/files/${path}?responseType=text`);
+      expect([403, 404]).toContain(read.status);
+      expect(await read.text()).not.toContain("top secret");
+
+      const write = await fetch(`${api}/files/${path}`, { method: "PUT", body: "owned\n" });
+      expect([403, 404]).toContain(write.status);
+
+      const remove = await fetch(`${api}/files/${path}`, { method: "DELETE" });
+      expect([403, 404]).toContain(remove.status);
+    }
+    expect(await readFile(join(outside, "secret.txt"), "utf8")).toBe("top secret\n");
+
+    // A symlinked directory is not a back door for creating files outside, either.
+    const created = await fetch(`${api}/files/escape-dir/planted.md`, { method: "PUT", body: "planted\n" });
+    expect([403, 404]).toContain(created.status);
+    expect(existsSync(join(outside, "planted.md"))).toBe(false);
+
+    const upload = new FormData();
+    upload.append("file", new Blob([new Uint8Array([7])]), "u.bin");
+    upload.append("path", "escape-dir/u.bin");
+    expect([403, 404]).toContain((await fetch(`${api}/upload`, { method: "POST", body: upload })).status);
+    expect(existsSync(join(outside, "u.bin"))).toBe(false);
+
+    for (const body of [{ from: "escape.txt", to: "moved.md" }, { from: "index.md", to: "escape-dir/index.md" }]) {
+      const res = await fetch(`${api}/rename`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect([403, 404]).toContain(res.status);
+    }
+    expect(existsSync(join(outside, "index.md"))).toBe(false);
+    expect(await readdir(outside)).toEqual(["secret.txt"]);
+  }, 30_000);
+
+  it("omits symlinks from the listing", async () => {
+    const { files } = (await (await fetch(`${api}/files`)).json()) as { files: { path: string }[] };
+    expect(files.some((f) => f.path === "escape.txt" || f.path.startsWith("escape-dir/"))).toBe(false);
+  }, 30_000);
+
+  it("refuses to write, rename, upload to or delete any dotfile", async () => {
+    expect((await fetch(`${api}/files/.git/config`, { method: "PUT", body: "[core]\n" })).status).toBe(403);
+    expect(existsSync(join(folder, ".git/config"))).toBe(false);
+
+    const rename = await fetch(`${api}/rename`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "index.md", to: ".env" }),
+    });
+    expect(rename.status).toBe(403);
+    expect(existsSync(join(folder, ".env"))).toBe(false);
+
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array([1])]), "x.bin");
+    form.append("path", ".hidden/x.bin");
+    expect((await fetch(`${api}/upload`, { method: "POST", body: form })).status).toBe(403);
+    expect(existsSync(join(folder, ".hidden"))).toBe(false);
+
+    // `.pagina/` is refused before existence is even considered, so publish's output is safe
+    // whether or not it has run yet.
+    expect((await fetch(`${api}/files/.pagina/published.json`, { method: "DELETE" })).status).toBe(403);
+
+    // Reads answer 404: a dotfile never appears in the listing, so it is not addressable either.
+    expect((await fetch(`${api}/files/.pagina/published.json`)).status).toBe(404);
+  }, 30_000);
+
+  it("treats `If-Match: *` as must-exist", async () => {
+    const ok = await fetch(`${api}/files/index.md`, {
+      method: "PUT", headers: { "If-Match": "*" }, body: "# Fixture\n\nstill here\n",
+    });
+    expect(ok.status).toBe(200);
+
+    const missing = await fetch(`${api}/files/never/created.md`, {
+      method: "PUT", headers: { "If-Match": "*" }, body: "# Nope\n",
+    });
+    expect(missing.status).toBe(409);
+    expect(await missing.json()).toMatchObject({ theirs: "", version: "" });
+    expect(existsSync(join(folder, "never/created.md"))).toBe(false);
+  }, 30_000);
+
+  it("caps request bodies with a 413 instead of buffering them", async () => {
+    const huge = "x".repeat(6 * 1024 * 1024);
+    const res = await fetch(`${api}/files/big.md`, { method: "PUT", body: huge });
+    expect(res.status).toBe(413);
+    expect((await res.json() as { message: string }).message).toContain("limit");
+    expect(existsSync(join(folder, "big.md"))).toBe(false);
+
+    const json = await fetch(`${api}/rename`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "index.md", to: "x.md", pad: huge }),
+    });
+    expect(json.status).toBe(413);
+  }, 60_000);
+
+  it("writes atomically, leaving no temp files behind", async () => {
+    await fetch(`${api}/files/atomic.md`, { method: "PUT", body: "# Atomic\n" });
+    const { files } = (await (await fetch(`${api}/files`)).json()) as { files: { path: string }[] };
+    expect(files.some((f) => f.path.endsWith(".tmp"))).toBe(false);
+    expect(await readFile(join(folder, "atomic.md"), "utf8")).toBe("# Atomic\n");
+
+    // A refused write must not leave debris either.
+    await fetch(`${api}/files/escape-dir/nope.md`, { method: "PUT", body: "x" });
+    expect((await readdir(join(folder))).filter((n) => n.endsWith(".tmp"))).toEqual([]);
   }, 30_000);
 
   it("publishes rendered output into .pagina/", async () => {
