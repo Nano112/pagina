@@ -155,6 +155,9 @@ export class ArticleStore {
   get article(): ArticleConfig | undefined { return this.#article; }
   get nav(): readonly NavEntry[] { return this.#article?.nav ?? []; }
 
+  /** The site base every rendered href and figure URL is prefixed with. */
+  get base(): string { return this.#base; }
+
   /** The nav flattened to an ordered page list — what a sidebar and the renderer both want. */
   navPages(): readonly NavPage[] { return flattenNav(this.nav); }
   navPaths(): ReadonlySet<string> { return new Set(this.navPages().map((p) => p.page)); }
@@ -370,9 +373,17 @@ export class ArticleStore {
     return await renderArticle({ fs: this.contentFs(), strict: false, base: this.#base });
   }
 
-  /** Renders everything and ships it, along with the figure SVGs the caller rendered in the browser. */
-  async publish(figures: Readonly<Record<string, Readonly<Record<string, string>>>> = {}): Promise<{ publishedAt: string }> {
-    const rendered = await this.renderAll();
+  /**
+   * Renders everything and ships it, along with the figure SVGs the caller rendered in the browser.
+   *
+   * `rendered` lets a caller that already has the article — `publishArticle`, which needs it to
+   * know *which* figures to render — hand it back instead of paying for a second full render.
+   */
+  async publish(
+    figures: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
+    rendered_?: RenderedArticle,
+  ): Promise<{ publishedAt: string }> {
+    const rendered = rendered_ ?? await this.renderAll();
     const pages = Object.fromEntries(Object.entries(rendered.pages).map(([href, page]) => [href, page.html]));
     return await this.#backend.publish({ manifest: rendered.manifest, pages, figures });
   }

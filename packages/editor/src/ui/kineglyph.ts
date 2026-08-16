@@ -131,10 +131,19 @@ export function specProblems(spec: unknown): readonly SpecProblem[] {
  * bundler dev overlay) that has no map of its own.
  */
 export async function evaluateSceneModule(source: string): Promise<unknown> {
+  return (await evaluateModule(source)).default;
+}
+
+/**
+ * The same evaluation, but handing back the whole module namespace.
+ *
+ * A *theme* module is the reason: `article.yaml`'s `kineglyph.theme` may export `{ light, dark }`
+ * as named exports, as a default object, or both, and publish has to look at all of them.
+ */
+export async function evaluateModule(source: string): Promise<Record<string, unknown>> {
   const url = URL.createObjectURL(new Blob([rewriteKineglyphImports(source)], { type: "text/javascript" }));
   try {
-    const module = (await import(/* @vite-ignore */ url)) as { default?: unknown };
-    return module.default;
+    return (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
   } finally {
     URL.revokeObjectURL(url);
   }

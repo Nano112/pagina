@@ -13,10 +13,15 @@
 import { createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./ui/App.js";
+import { publishArticle } from "./ui/publish.js";
 import { ArticleStore, HttpBackend, type ArticleBackend } from "./store/index.js";
 
 export * from "./model/index.js";
 export * from "./store/index.js";
+export {
+  publishArticle, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH,
+  type FigureThemes, type FigureSvgs,
+} from "./ui/publish.js";
 
 /** Options `mountEditor` takes; the custom element derives them from its attributes. */
 export interface EditorOptions {
@@ -46,7 +51,10 @@ export interface EditorHandle {
   destroy(): void;
   /** Opens another page in the editor pane. */
   open(path: string): void;
-  /** Renders the whole article and ships it through the backend's publish endpoint. */
+  /**
+   * Renders the whole article — pages *and* every figure, to light+dark SVG in the browser — and
+   * ships it through the backend's publish endpoint.
+   */
   publish(): Promise<{ publishedAt: string }>;
 }
 
@@ -124,9 +132,9 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
       else open(path);
     },
     publish(): Promise<{ publishedAt: string }> {
-      // Figure SVGs are rendered in the browser and land here in B4b/B5; until then the published
-      // pages carry their figure markup and hydrate client-side, as they do in dev.
-      return store.publish({});
+      // Renders every module/inline figure to light+dark SVG on the host page's Kineglyph runtime
+      // before shipping, so a published page shows its diagrams without running any JavaScript.
+      return publishArticle(store);
     },
   };
 }
