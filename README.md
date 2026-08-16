@@ -174,15 +174,58 @@ PAGINA_CONTENT=path/to/docs gerry dev            # or any article folder
 gerry down
 ```
 
+## Editor
+
+`@pagina/editor` is an in-browser WYSIWYG for the same folder: three panes (pages and files,
+the document, the live preview), markdown in and markdown out, every edit applied locally first
+and persisted in the background with `If-Match` so a concurrent write becomes a visible conflict
+rather than a silent overwrite. It builds Kineglyph figures from a form, embeds `<model-viewer>`
+models, uploads by drag or paste, and publishes pages *and* figures — the latter pre-rendered to
+light + dark SVG in the browser — through one endpoint.
+
+It is backend-agnostic: the UI talks only to `ArticleStore`, the store only to an
+`ArticleBackend`. `pagina dev --edit` is one server behind that contract; a Laravel package is
+meant to be another. Three ways to embed it:
+
+```tsx
+// 1. React
+import { PaginaEditor, ArticleStore, HttpBackend } from "@pagina/editor";
+<PaginaEditor store={new ArticleStore(new HttpBackend({ baseUrl: "/__pagina/edit" }))} page="index.md" />
+```
+
+```js
+// 2. Imperative
+import { mountEditor } from "@pagina/editor";
+const editor = mountEditor(el, { backendUrl: "/__pagina/edit", page: "index.md" });
+await editor.publish();
+```
+
+```html
+<!-- 3. Custom element (what `pagina dev --edit` serves, and what Blade/Livewire wants) -->
+<script type="module">import { defineElement } from "/assets/editor.js"; defineElement();</script>
+<pagina-editor backend-url="/__pagina/edit" page="index.md" base="/"></pagina-editor>
+```
+
+`dist/editor.js` (ESM) and `dist/editor.iife.js` (global `Pagina`) bundle React and share one
+`dist/editor.css`. `kineglyph` stays **external** — a figure in the preview must hydrate on the
+same runtime instance the site's pages use, so the host page's import map decides it.
+
+See [`packages/editor/README.md`](packages/editor/README.md) for the attributes, the HTTP
+contract, the trust model, and what is not done yet; the contract itself is specified in
+[`docs/design/2026-08-17-editor-connectivity-laravel.md`](docs/design/2026-08-17-editor-connectivity-laravel.md).
+
 ## Architecture
 
 ```
 packages/core          @pagina/core          pure renderer: article.yaml, markdown pipeline,
                                              figures, links, strict renderArticle → { manifest, pages, diagnostics }
 packages/vite          @pagina/vite          Node side: NodeContentFs, figure pre-render via
-                                             @kineglyph/export, buildStatic, createDevServer (Vite + HMR)
+                                             @kineglyph/export, buildStatic, createDevServer (Vite + HMR),
+                                             and the edit contract behind `--edit`
 packages/shell-static  @pagina/shell-static  the default site: HTML template, CSS, client runtime
                                              (theme toggle, tabs, code copy, Kineglyph mount), Shiki
+packages/editor        @pagina/editor        the WYSIWYG: document model, optimistic store +
+                                             backends, three-pane UI, figure builder, publish
 packages/cli           @pagina/cli           `pagina dev|build`
 ```
 

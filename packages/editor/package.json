@@ -18,13 +18,19 @@
       "development": "./src/store/index.ts",
       "import": "./dist/store/index.js"
     },
-    "./bundle": "./dist/editor.js",
+    "./bundle": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/editor.js"
+    },
+    "./editor.iife.js": "./dist/editor.iife.js",
     "./editor.css": "./dist/editor.css",
-    "./theme.css": "./src/ui/theme.css"
+    "./theme.css": "./src/ui/theme.css",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && vite build",
