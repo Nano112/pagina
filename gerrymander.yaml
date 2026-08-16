@@ -6,4 +6,6 @@ services:
     port_pool: dev
     # `--host 0.0.0.0`: gerry's proxy reaches the host over a bridge network
     # (`host.docker.internal`), which loopback-only binding (the CLI's default) can't see.
-    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT} --host 0.0.0.0
+    # `--edit`: serves the WYSIWYG at `/__edit/` and makes the folder writable over HTTP. This is
+    # a local dev zone on a trusted machine; do not copy this line to anything reachable.
+    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT} --host 0.0.0.0 --edit
