@@ -1,1 +1,14 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "rootDir": "src", "outDir": "dist" }, "include": ["src"] }
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    // `src/browser.ts` is the browser bundle's entry and imports `./ui/theme.css`; only Vite can
+    // resolve that, so it is left out of the `tsc` emit (which produces the ESM/type surface a
+    // bundler consumer uses). `vite build` compiles it separately into `dist/editor.*`.
+    "declaration": true
+  },
+  "include": ["src"],
+  "exclude": ["src/browser.ts"]
+}

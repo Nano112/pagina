@@ -1,1 +1,15 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "rootDir": ".", "noEmit": true }, "include": ["src", "test"] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    // The bare `kineglyph` specifier the preview imports is provided at runtime by the page's
+    // import map (and by `@pagina/vite`'s dev alias); it stays external in the bundle. For
+    // typechecking it resolves to `@kineglyph/web`'s bundle source, exactly as `@pagina/vite` does.
+    "paths": {
+      "kineglyph": ["../../node_modules/@kineglyph/web/src/bundle.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

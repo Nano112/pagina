@@ -3,51 +3,163 @@
  *
  * The headless document model (schema + markdown parser/serializer) lives behind the `./model`
  * subpath and the optimistic store behind `./store`, so either can be used without pulling in any
- * UI. This entry is what a host page loads: it is the *distribution* surface — `PaginaEditor`,
- * `mountEditor` and `defineElement` — and `pagina dev --edit` serves a page that imports exactly
- * these three names.
+ * UI. This entry is what a host page loads: the *distribution* surface, in the three shapes the
+ * design calls for — `PaginaEditor` (React), `mountEditor` (imperative), and `defineElement`
+ * (a custom element, which is what makes Blade/Livewire and `pagina dev --edit` trivial).
  *
- * The bodies below are a placeholder: the real editor UI lands in `src/ui` (task B4a) and replaces
- * their internals without changing the names, so the dev-server host page keeps working across
- * that change.
+ * `dist/editor.js` bundles React; `kineglyph` stays external and is resolved by the host page's
+ * import map, so a figure in the preview runs on the same runtime instance the site uses.
  */
+import { createElement, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { App } from "./ui/App.js";
+import { ArticleStore, HttpBackend, type ArticleBackend } from "./store/index.js";
+
 export * from "./model/index.js";
+export * from "./store/index.js";
 
 /** Options `mountEditor` takes; the custom element derives them from its attributes. */
 export interface EditorOptions {
+  /** An already-built backend. Wins over `backendUrl`; how tests and embedders inject their own. */
+  readonly backend?: ArticleBackend;
   /** Where the article HTTP contract is mounted, e.g. `/__pagina/edit`. */
   readonly backendUrl?: string;
+  /** Sent on every backend request — CSRF tokens, `Authorization`, … */
+  readonly headers?: Readonly<Record<string, string>>;
   /** Folder-relative markdown path to open, e.g. `guide/tabs.md`. */
   readonly page?: string;
   /** The site's base path. */
   readonly base?: string;
+  /** Forces the colour scheme instead of following the host document's `data-theme`. */
+  readonly theme?: "light" | "dark";
 }
 
 /** What a mounted editor hands back to its host. */
 export interface EditorHandle {
+  /** The store the UI is bound to — the supported way to script a mounted editor. */
+  readonly store: ArticleStore;
   destroy(): void;
+  /** Opens another page in the editor pane. */
+  open(path: string): void;
+  /** Renders the whole article and ships it through the backend's publish endpoint. */
+  publish(): Promise<{ publishedAt: string }>;
+}
+
+export interface PaginaEditorProps {
+  readonly store: ArticleStore;
+  /** The page to open first. Defaults to `index.md`. */
+  readonly page?: string;
+  readonly theme?: "light" | "dark";
+  /** Receives an `open(path)` callback once the app is mounted. */
+  readonly onReady?: (open: (path: string) => void) => void;
+}
+
+/** The editor as a React component, for hosts that already have a React tree. */
+export function PaginaEditor({ store, page = "index.md", theme, onReady }: PaginaEditorProps): ReactNode {
+  if (theme !== undefined && typeof document !== "undefined") document.documentElement.dataset["theme"] = theme;
+  return createElement(App, { store, page, onReady });
+}
+
+const DEFAULT_BACKEND_URL = "/__pagina/edit";
+
+function backendFor(options: EditorOptions): ArticleBackend {
+  if (options.backend !== undefined) return options.backend;
+  return new HttpBackend({
+    baseUrl: options.backendUrl ?? DEFAULT_BACKEND_URL,
+    ...(options.headers === undefined ? {} : { headers: options.headers }),
+  });
 }
 
 /**
- * Mounts the editor into `el`. Placeholder: renders a loading notice so a host page can be
- * verified end to end before the UI exists.
+ * Mounts the editor into `el` and returns a handle.
+ *
+ * The store is created here rather than by the caller so the common case is one call, and it is
+ * exposed on the handle so the uncommon case — scripting the editor, or sharing the store with a
+ * surrounding app — does not need a second entry point.
  */
 export function mountEditor(el: HTMLElement, options: EditorOptions = {}): EditorHandle {
-  el.textContent = "editor loading…";
-  el.setAttribute("data-pagina-editor-page", options.page ?? "index.md");
-  return { destroy: () => { el.textContent = ""; } };
+  const store = new ArticleStore(backendFor(options), {
+    ...(options.base === undefined ? {} : { base: options.base }),
+  });
+  if (options.theme !== undefined) document.documentElement.dataset["theme"] = options.theme;
+
+  // `open` is only usable once React has mounted; until then it queues the last path asked for.
+  let open: ((path: string) => void) | undefined;
+  let queued: string | undefined;
+  const onReady = (fn: (path: string) => void): void => {
+    open = fn;
+    if (queued !== undefined) {
+      fn(queued);
+      queued = undefined;
+    }
+  };
+
+  const root: Root = createRoot(el);
+  root.render(createElement(App, { store, page: options.page ?? "index.md", onReady }));
+
+  return {
+    store,
+    destroy(): void {
+      // React refuses to unmount synchronously from inside a lifecycle callback, and
+      // `disconnectedCallback` is exactly that; deferring one microtask keeps both happy.
+      queueMicrotask(() => root.unmount());
+      store.destroy();
+    },
+    open(path: string): void {
+      if (open === undefined) queued = path;
+      else open(path);
+    },
+    publish(): Promise<{ publishedAt: string }> {
+      // Figure SVGs are rendered in the browser and land here in B4b/B5; until then the published
+      // pages carry their figure markup and hydrate client-side, as they do in dev.
+      return store.publish({});
+    },
+  };
 }
 
-/** The `<pagina-editor>` custom element. Attributes: `backend-url`, `page`, `base`. */
-export class PaginaEditor extends HTMLElement {
+/**
+ * `<pagina-editor>`: the editor as a custom element.
+ *
+ * Attributes: `backend-url`, `page`, `base`, `theme`, and `headers` (a JSON object). The mounted
+ * store is exposed as `.store` and publishing as `.publish()`, so a Blade or Livewire page can
+ * drive the editor without importing anything.
+ */
+export class PaginaEditorElement extends HTMLElement {
   #handle: EditorHandle | undefined;
 
+  /** The mounted store, or `undefined` before `connectedCallback`. */
+  get store(): ArticleStore | undefined {
+    return this.#handle?.store;
+  }
+
+  open(path: string): void {
+    this.#handle?.open(path);
+  }
+
+  async publish(): Promise<{ publishedAt: string }> {
+    if (this.#handle === undefined) throw new Error("pagina: <pagina-editor> is not mounted");
+    return await this.#handle.publish();
+  }
+
   connectedCallback(): void {
+    if (this.#handle !== undefined) return;
     const attr = (name: string): string | undefined => this.getAttribute(name) ?? undefined;
+    const theme = attr("theme");
+    let headers: Record<string, string> | undefined;
+    const raw = attr("headers");
+    if (raw !== undefined) {
+      try {
+        headers = JSON.parse(raw) as Record<string, string>;
+      } catch {
+        console.warn("pagina: <pagina-editor headers> is not valid JSON; ignoring it");
+      }
+    }
     this.#handle = mountEditor(this, {
       ...(attr("backend-url") === undefined ? {} : { backendUrl: attr("backend-url")! }),
       ...(attr("page") === undefined ? {} : { page: attr("page")! }),
       ...(attr("base") === undefined ? {} : { base: attr("base")! }),
+      ...(theme === "light" || theme === "dark" ? { theme } : {}),
+      ...(headers === undefined ? {} : { headers }),
     });
   }
 
@@ -61,5 +173,5 @@ export class PaginaEditor extends HTMLElement {
 export function defineElement(tag = "pagina-editor"): void {
   if (typeof customElements === "undefined") return;
   if (customElements.get(tag) !== undefined) return;
-  customElements.define(tag, PaginaEditor);
+  customElements.define(tag, PaginaEditorElement);
 }
