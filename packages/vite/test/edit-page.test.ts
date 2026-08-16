@@ -97,14 +97,22 @@ describe("the edit page's self-write guard", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("is carried by the rendered page, ahead of every module script", () => {
+  /**
+   * The guard has to be a **classic** script, and that — not its position — is the whole
+   * requirement: classic scripts execute during parsing, deferred module scripts afterwards, so a
+   * classic script anywhere in `<head>` beats every module on the page. That matters because
+   * `transformIndexHtml` injects `<script type="module" src="/@vite/client">` at the *start* of
+   * head, ahead of this one, and the guard must still win. A module here would lose, because
+   * Vite's client opens its socket the moment it is evaluated.
+   */
+  it("is carried by the rendered page as a classic script, not a module", () => {
     const html = renderEditPage({
       backendUrl: "/__pagina/edit", page: "index.md", base: "/",
       kineglyphRuntimeUrl: "/kg", editorEntryUrl: "/e", siteCssUrl: "/c",
     });
-    expect(html).toContain("__paginaSelfWrite");
-    // A classic script, not a module: a module would run after Vite's client had already connected.
+    expect(html).toContain(`<script>${SELF_WRITE_GUARD}</script>`);
     expect(html).not.toContain(`<script type="module">${SELF_WRITE_GUARD}`);
-    expect(html.indexOf("__paginaSelfWrite")).toBeLessThan(html.indexOf(`<script type="module"`));
+    // In `<head>`, so it is parsed before the body's editor entry either way.
+    expect(html.indexOf("__paginaSelfWrite")).toBeLessThan(html.indexOf("</head>"));
   });
 });
