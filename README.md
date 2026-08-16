@@ -9,8 +9,27 @@ template, theme, highlighted markdown, `@pagina/shell-static`), `packages/vite` 
 
 ## Dev loop
 
-Kineglyph is consumed from a linked checkout (`~/Documents/code/kineglyph`); `npm install` drops
-the symlinks, so relink after every install:
+### Fresh clone
+
+Kineglyph is not published; it is consumed from a linked checkout. Clone it as a sibling of this
+repo, build it, and register each of its packages as a global link:
+
+```sh
+git clone <kineglyph remote> ~/Documents/code/kineglyph
+cd ~/Documents/code/kineglyph && npm run bootstrap
+for p in packages/*; do (cd "$p" && npm link); done   # core, svg, anime, plot, scenes, web, export
+```
+
+Then, in this repo:
+
+```sh
+npm install && npm run link:kineglyph
+ls node_modules/@kineglyph        # 7 symlinks
+```
+
+### Everyday
+
+`npm install` drops the symlinks, so relink after every install:
 
 ```sh
 npm install
@@ -76,5 +95,25 @@ export default defineScene({ schemaVersion: 2, id: "my-figure", title: "…", ro
 <figure class="kg" data-static="../media/static.svg"><img src="../media/static.svg" alt="…"></figure> <!-- static -->
 ```
 
-All three pre-render to light/dark SVGs at build time; module and inline figures then hydrate
-client-side (`figure.kg[data-kineglyph-mounted="true"]`), static figures stay a plain `<img>`.
+Module and inline figures pre-render to light/dark SVGs at build time and then hydrate
+client-side (`figure.kg[data-kineglyph-mounted="true"]`). A static figure is *not* pre-rendered —
+the author supplies the image and it stays a plain `<img>`.
+
+An author-supplied `id` must match `[A-Za-z0-9_.-]+` (it becomes a URL path segment and a
+manifest key); anything else is replaced by the generated id with a `figure-id-invalid` warning.
+Two pages claiming the same figure id is a `figure-id-collision` error.
+
+## Trust model
+
+Markdown pages and scene modules are **trusted content**. The markdown pipeline runs with
+`html: true` (raw HTML passes through unsanitised), scene modules are executed both at build time
+(to pre-render SVGs) and in the browser, and `snippets.roots` may point outside the article
+folder. Pagina is a renderer for authors with commit access to the folder it is given — not a
+sandbox for untrusted, user-submitted documents.
+
+## Deviations from the design spec
+
+- The figure provider is Kineglyph-only for now; the spec's pluggable-provider seam is not built.
+- The manifest records a figure's pre-renders as `staticBase` (append `.<theme>.svg`) rather than
+  the spec's `static: Record<theme, path>` map.
+- Pagefind search and the Playwright smoke test are not yet added.
