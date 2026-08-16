@@ -19,6 +19,7 @@ describe("expandSnippets", () => {
   const fs = memFs({
     "snippets/a.py": "# --8<-- [start:x]\n    print(1)\n    print(2)\n# --8<-- [end:x]\nprint(3)\n",
     "outside/b.rs": "fn main() {}\n",
+    "crlf.py": "line1\r\nline2\r\n",
   });
   it("includes a named section, dedented then re-indented to the directive", async () => {
     const r = await expandSnippets(`    \`\`\`python\n    --8<-- "snippets/a.py:x"\n    \`\`\``, { fs, roots: ["."], pagePath: "index.md" });
@@ -33,6 +34,10 @@ describe("expandSnippets", () => {
     const r = await expandSnippets(`--8<-- "nope.py"\n--8<-- "snippets/a.py:zzz"`, { fs, roots: ["."], pagePath: "p.md" });
     expect(r.diagnostics.map((d) => d.code)).toEqual(["snippet-missing", "snippet-missing"]);
     expect(r.text).toContain("<!-- snippet missing");
+  });
+  it("normalizes CRLF line endings so re-indented lines carry no stray \\r", async () => {
+    const r = await expandSnippets(`  --8<-- "crlf.py"`, { fs, roots: ["."], pagePath: "index.md" });
+    expect(r.text).toBe("  line1\n  line2");
   });
 });
 

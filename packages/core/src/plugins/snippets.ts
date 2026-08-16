@@ -41,7 +41,7 @@ export async function expandSnippets(markdown: string, ctx: SnippetContext): Pro
     for (const root of ctx.roots) {
       const candidate = joinPosix(root, path);
       if (!(await ctx.fs.exists(candidate))) continue;
-      const file = await ctx.fs.read(candidate);
+      const file = (await ctx.fs.read(candidate)).replace(/\r\n?/g, "\n");
       content = section === undefined ? file.replace(/\n$/, "") : extractSection(file, section);
       if (content === undefined) break; // file found, section missing → report
       break;
