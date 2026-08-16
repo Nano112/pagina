@@ -1,0 +1,48 @@
+{
+  "name": "@pagina/editor",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "development": "./src/model/index.ts",
+      "import": "./dist/model/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pagina/core": "*",
+    "@tiptap/core": "^3.7.2",
+    "@tiptap/extension-color": "^3.7.2",
+    "@tiptap/extension-highlight": "^3.7.2",
+    "@tiptap/extension-image": "^3.7.2",
+    "@tiptap/extension-link": "^3.7.2",
+    "@tiptap/extension-table": "^3.7.2",
+    "@tiptap/extension-text-style": "^3.7.2",
+    "@tiptap/pm": "^3.7.2",
+    "@tiptap/starter-kit": "^3.7.2",
+    "markdown-it": "^14.1.0",
+    "prosemirror-markdown": "^1.13.2"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/editor"
+  },
+  "homepage": "https://github.com/Nano112/pagina#readme"
+}
