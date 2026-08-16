@@ -48,6 +48,12 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
     logLevel: "info",
     appType: "custom",
     server: {
+      // Listen on all interfaces, not just loopback: local reverse proxies (e.g. gerrymander's
+      // docker-hosted proxy reaching the host via `host.docker.internal`) can only see ports
+      // bound beyond 127.0.0.1. Disable Vite's Host-header allowlist too, since the request
+      // arrives proxied under a `*.test` dev hostname rather than `localhost`.
+      host: true,
+      allowedHosts: true,
       ...(o.port === undefined ? {} : { port: o.port }),
       fs: { allow: [folder, kineglyphRoot(), resolve(o.shell.clientEntry, "..")] },
       watch: { ignored: ["**/node_modules/**"] },
@@ -56,6 +62,16 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
     optimizeDeps: { exclude: [...KINEGLYPH_PACKAGES] },
     plugins: [{
       name: "pagina-dev",
+      // Scene modules are hot-swapped entirely through the `kineglyph:update` custom event
+      // dispatched from the `watcher.on("all")` handler below. Without this hook, Vite's own
+      // default HMR propagation for the same file change finds no `import.meta.hot.accept()`
+      // boundary in the dynamic-import chain and falls back to a full page reload — which
+      // would both duplicate the update and defeat the point of hot-swapping.
+      handleHotUpdate(ctx) {
+        if (!ctx.file.startsWith(folder)) return;
+        const rel = relative(folder, ctx.file).split("\\").join("/");
+        if (rel.endsWith(".mjs") || rel.endsWith(".js")) return [];
+      },
       configureServer(s) {
         const contentFs = new NodeContentFs(folder);
         let article: Promise<RenderedArticle> | undefined;

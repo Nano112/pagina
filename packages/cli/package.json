@@ -1,0 +1,36 @@
+{
+  "name": "@pagina/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "pagina": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pagina/core": "*",
+    "@pagina/vite": "*",
+    "@pagina/shell-static": "*"
+  },
+  "peerDependencies": {
+    "@kineglyph/core": "*",
+    "@kineglyph/export": "*",
+    "@kineglyph/web": "*"
+  },
+  "peerDependenciesMeta": {
+    "@kineglyph/core": {
+      "optional": true
+    },
+    "@kineglyph/export": {
+      "optional": true
+    },
+    "@kineglyph/web": {
+      "optional": true
+    }
+  }
+}

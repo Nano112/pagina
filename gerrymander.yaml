@@ -1,0 +1,11 @@
+project: pagina
+zone: pagina.test
+services:
+  frontend:
+    hostnames: [pagina.test, "*.pagina.test"]
+    port_pool: dev
+    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT}
+  # api:
+  #   hostnames: [api.pagina.test]
+  #   port_pool: dev
+  #   dev: uv run uvicorn main:app --port {PORT} --reload

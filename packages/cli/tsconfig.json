@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // `@pagina/core`, `@pagina/vite`, `@pagina/shell-static` are typechecked from source so
+    // this package does not need them built first.
+    "paths": {
+      "@pagina/core": ["../core/src/index.ts"],
+      "@pagina/vite": ["../vite/src/index.ts"],
+      "@pagina/shell-static": ["../shell-static/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}
