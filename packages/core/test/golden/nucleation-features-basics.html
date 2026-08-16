@@ -1,0 +1,407 @@
+<h1 id="basics">Basics</h1>
+<p>A <code>Schematic</code> is an editable Minecraft build. It holds blocks, block entities,
+entities, metadata, and one or more regions. Start with an empty schematic or
+load one from bytes or a file. Coordinates and block-state strings stay the
+same when the output format changes.</p>
+<p>The Python, JavaScript, and Rust tabs below are cut directly from executable
+examples in the repository. The <a href="#verified-examples">verification command</a> runs
+all three versions and checks their block counts, bounds, states, simulation
+result, and file round trips.</p>
+<p>Rust tabs show the body of a <code>main</code> function that returns
+<code>Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;</code>, matching the executable source.</p>
+<h2 id="build-a-beacon">Build a beacon</h2>
+<p>This first build places a 3 by 3 gold base around the origin, adds the beacon at
+<code>(0, 1, 0)</code>, and writes a Sponge schematic. The result has 10 non-air blocks and
+tight dimensions of <code>3 × 2 × 3</code>.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-1-0" id="tabbtn-1-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-1-1" id="tabbtn-1-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-1-2" id="tabbtn-1-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-1-0" aria-labelledby="tabbtn-1-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+beacon = Schematic.create(&quot;beacon&quot;)
+for x in range(-1, 2):
+    for z in range(-1, 2):
+        beacon.set_block(x, 0, z, &quot;minecraft:gold_block&quot;)
+beacon.set_block(0, 1, 0, &quot;minecraft:beacon&quot;)
+beacon.save_to_file(&quot;beacon.schem&quot;)
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-1-1" aria-labelledby="tabbtn-1-1" hidden>
+<pre><code class="language-javascript">import { readFileSync, writeFileSync } from &quot;node:fs&quot;;
+import { Schematic } from &quot;nucleation&quot;;
+
+function bytesFromBase64(value) {
+  return Uint8Array.from(Buffer.from(value, &quot;base64&quot;));
+}
+
+const beacon = Schematic.create(&quot;beacon&quot;);
+for (let x = -1; x &lt;= 1; x += 1) {
+  for (let z = -1; z &lt;= 1; z += 1) {
+    beacon.setBlock(x, 0, z, &quot;minecraft:gold_block&quot;);
+  }
+}
+beacon.setBlock(0, 1, 0, &quot;minecraft:beacon&quot;);
+
+const beaconBytes = bytesFromBase64(beacon.toSchematicB64());
+writeFileSync(&quot;beacon.schem&quot;, beaconBytes);
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-1-2" aria-labelledby="tabbtn-1-2" hidden>
+<pre><code class="language-rust">use nucleation::UniversalSchematic;
+use std::fs;
+
+let mut beacon = UniversalSchematic::new(&quot;beacon&quot;.into());
+for x in -1..=1 {
+    for z in -1..=1 {
+        beacon.set_block_from_string(x, 0, z, &quot;minecraft:gold_block&quot;)?;
+    }
+}
+beacon.set_block_from_string(0, 1, 0, &quot;minecraft:beacon&quot;)?;
+fs::write(&quot;beacon.schem&quot;, beacon.to_schematic()?)?;
+</code></pre>
+</section>
+</div>
+<p>The JavaScript package is WASM, so it returns encoded bytes instead of writing
+to a filesystem. The example decodes those bytes in Node. In a browser, pass
+the resulting <code>Uint8Array</code> to a download, upload, or storage API.</p>
+<figure>
+<img src="../media/readme/basics/beacon.gif" alt="A three-by-three gold-block beacon assembling at the origin of a five-by-five Cartesian grid" width="480">
+<figcaption>Nine gold blocks arrive in loop order, followed by the beacon.</figcaption>
+</figure>
+<p><a href="../downloads/readme/basics/beacon.schem">Download the generated beacon</a></p>
+<h2 id="build-something-with-states">Build something with states</h2>
+<p>The crafting nook uses loops for the floor and walls, then places blocks whose
+state matters: upright stripped logs, a south-facing chest, and wall torches
+attached in two directions.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-2-0" id="tabbtn-2-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-2-1" id="tabbtn-2-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-2-2" id="tabbtn-2-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-2-0" aria-labelledby="tabbtn-2-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+nook = Schematic.create(&quot;crafting_nook&quot;)
+for x in range(5):
+    for z in range(5):
+        nook.set_block(x, 0, z, &quot;minecraft:spruce_planks&quot;)
+
+def wall_block(i, y, end_posts):
+    if i == 2 and y == 2:
+        return &quot;minecraft:light_blue_stained_glass&quot;
+    if i in end_posts:
+        return &quot;minecraft:stripped_spruce_log[axis=y]&quot;
+    return &quot;minecraft:oak_planks&quot;
+
+for y in (1, 2, 3):
+    for x in range(5):
+        nook.set_block(x, y, 0, wall_block(x, y, (0, 4)))
+    for z in range(1, 5):
+        nook.set_block(0, y, z, wall_block(z, y, (4,)))
+
+nook.set_block(1, 1, 1, &quot;minecraft:crafting_table&quot;)
+nook.set_block(3, 1, 1, &quot;minecraft:chest[facing=south]&quot;)
+nook.set_block(4, 2, 1, &quot;minecraft:wall_torch[facing=south]&quot;)
+nook.set_block(1, 2, 4, &quot;minecraft:wall_torch[facing=east]&quot;)
+nook.save_to_file(&quot;crafting-nook.schem&quot;)
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-2-1" aria-labelledby="tabbtn-2-1" hidden>
+<pre><code class="language-javascript">const nook = Schematic.create(&quot;crafting_nook&quot;);
+for (let x = 0; x &lt; 5; x += 1) {
+  for (let z = 0; z &lt; 5; z += 1) {
+    nook.setBlock(x, 0, z, &quot;minecraft:spruce_planks&quot;);
+  }
+}
+
+function wallBlock(i, y, endPosts) {
+  if (i === 2 &amp;&amp; y === 2) return &quot;minecraft:light_blue_stained_glass&quot;;
+  if (endPosts.includes(i)) return &quot;minecraft:stripped_spruce_log[axis=y]&quot;;
+  return &quot;minecraft:oak_planks&quot;;
+}
+
+for (const y of [1, 2, 3]) {
+  for (let x = 0; x &lt; 5; x += 1) {
+    nook.setBlock(x, y, 0, wallBlock(x, y, [0, 4]));
+  }
+  for (let z = 1; z &lt; 5; z += 1) {
+    nook.setBlock(0, y, z, wallBlock(z, y, [4]));
+  }
+}
+
+nook.setBlock(1, 1, 1, &quot;minecraft:crafting_table&quot;);
+nook.setBlock(3, 1, 1, &quot;minecraft:chest[facing=south]&quot;);
+nook.setBlock(4, 2, 1, &quot;minecraft:wall_torch[facing=south]&quot;);
+nook.setBlock(1, 2, 4, &quot;minecraft:wall_torch[facing=east]&quot;);
+writeFileSync(
+  &quot;crafting-nook.schem&quot;,
+  bytesFromBase64(nook.toSchematicB64()),
+);
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-2-2" aria-labelledby="tabbtn-2-2" hidden>
+<pre><code class="language-rust">let mut nook = UniversalSchematic::new(&quot;crafting_nook&quot;.into());
+for x in 0..5 {
+    for z in 0..5 {
+        nook.set_block_from_string(x, 0, z, &quot;minecraft:spruce_planks&quot;)?;
+    }
+}
+
+let wall_block = |i: i32, y: i32, end_posts: &amp;[i32]| {
+    if i == 2 &amp;&amp; y == 2 {
+        &quot;minecraft:light_blue_stained_glass&quot;
+    } else if end_posts.contains(&amp;i) {
+        &quot;minecraft:stripped_spruce_log[axis=y]&quot;
+    } else {
+        &quot;minecraft:oak_planks&quot;
+    }
+};
+
+for y in [1, 2, 3] {
+    for x in 0..5 {
+        nook.set_block_from_string(x, y, 0, wall_block(x, y, &amp;[0, 4]))?;
+    }
+    for z in 1..5 {
+        nook.set_block_from_string(0, y, z, wall_block(z, y, &amp;[4]))?;
+    }
+}
+
+nook.set_block_from_string(1, 1, 1, &quot;minecraft:crafting_table&quot;)?;
+nook.set_block_from_string(3, 1, 1, &quot;minecraft:chest[facing=south]&quot;)?;
+nook.set_block_from_string(4, 2, 1, &quot;minecraft:wall_torch[facing=south]&quot;)?;
+nook.set_block_from_string(1, 2, 4, &quot;minecraft:wall_torch[facing=east]&quot;)?;
+fs::write(&quot;crafting-nook.schem&quot;, nook.to_schematic()?)?;
+</code></pre>
+</section>
+</div>
+<figure>
+<img src="../media/readme/basics/animation.gif" alt="A compact crafting nook assembling with two centered windows, a crafting table, chest, and two wall torches" width="480">
+<figcaption>The floor, walls, furniture, and torches are separate construction groups.</figcaption>
+</figure>
+<p><a href="../downloads/readme/basics/crafting-nook.schem">Download the generated crafting nook</a></p>
+<h2 id="coordinates-and-bounds">Coordinates and bounds</h2>
+<p>Coordinates are signed integers in Minecraft order: <code>X</code>, <code>Y</code>, <code>Z</code>. Positive Y
+is up. Placing outside the current region grows it to include the new position,
+including negative coordinates.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-3-0" id="tabbtn-3-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-3-1" id="tabbtn-3-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-3-2" id="tabbtn-3-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-3-0" aria-labelledby="tabbtn-3-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+build = Schematic.create(&quot;signed_coordinates&quot;)
+build.set_block(-8, 64, 12, &quot;minecraft:stone&quot;)
+build.set_block(24, 80, -3, &quot;minecraft:glass&quot;)
+
+minimum = build.tight_bounds_min()
+maximum = build.tight_bounds_max()
+size = build.tight_dimensions()
+print((minimum.x, minimum.y, minimum.z))  # (-8, 64, -3)
+print((maximum.x, maximum.y, maximum.z))  # (24, 80, 12)
+print((size.x, size.y, size.z))           # (33, 17, 16)
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-3-1" aria-labelledby="tabbtn-3-1" hidden>
+<pre><code class="language-javascript">const build = Schematic.create(&quot;signed_coordinates&quot;);
+build.setBlock(-8, 64, 12, &quot;minecraft:stone&quot;);
+build.setBlock(24, 80, -3, &quot;minecraft:glass&quot;);
+
+const minimum = build.tightBoundsMin();
+const maximum = build.tightBoundsMax();
+const size = build.tightDimensions();
+console.log([minimum.x, minimum.y, minimum.z]); // [-8, 64, -3]
+console.log([maximum.x, maximum.y, maximum.z]); // [24, 80, 12]
+console.log([size.x, size.y, size.z]);          // [33, 17, 16]
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-3-2" aria-labelledby="tabbtn-3-2" hidden>
+<pre><code class="language-rust">let mut build = UniversalSchematic::new(&quot;signed_coordinates&quot;.into());
+build.set_block_from_string(-8, 64, 12, &quot;minecraft:stone&quot;)?;
+build.set_block_from_string(24, 80, -3, &quot;minecraft:glass&quot;)?;
+
+let bounds = build.get_tight_bounds().expect(&quot;the build has blocks&quot;);
+println!(&quot;{:?}&quot;, bounds.min); // (-8, 64, -3)
+println!(&quot;{:?}&quot;, bounds.max); // (24, 80, 12)
+println!(&quot;{:?}&quot;, build.get_tight_dimensions()); // (33, 17, 16)
+
+</code></pre>
+</section>
+</div>
+<p>The minimum and maximum are inclusive, which is why X spans 33 blocks from
+<code>-8</code> through <code>24</code>. Tight bounds describe placed, non-air content. Allocated
+dimensions describe internal region storage and can be larger, especially when
+a build crosses the origin. Use tight bounds when you mean the visible build.</p>
+<figure>
+<img src="../media/readme/basics/coordinates.gif" alt="Signed coordinate axes assembling from a gold origin across a square grid" width="480">
+<figcaption>Gold marks the origin. Red and blue mark ±X, orange and purple mark ±Z, and green marks +Y.</figcaption>
+</figure>
+<h2 id="read-replace-and-remove-blocks">Read, replace, and remove blocks</h2>
+<p>A block-state string is a namespaced block name followed by optional properties:</p>
+<pre><code class="language-text">minecraft:stone
+minecraft:oak_log[axis=x]
+minecraft:oak_stairs[facing=east,half=bottom,shape=straight]
+minecraft:water[level=0]
+</code></pre>
+<p>Properties are part of the state, so orientation and variants survive format
+round trips. Setting a coordinate again replaces its previous state. Setting
+<code>minecraft:air</code> removes the block.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-4-0" id="tabbtn-4-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-4-1" id="tabbtn-4-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-4-2" id="tabbtn-4-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-4-0" aria-labelledby="tabbtn-4-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+build = Schematic.create(&quot;inspect&quot;)
+build.set_block(1, 1, 1, &quot;minecraft:oak_log[axis=x]&quot;)
+state = build.get_block(1, 1, 1)
+print(state.name())                         # minecraft:oak_log
+print(build.get_block_string(1, 1, 1))      # minecraft:oak_log[axis=x]
+
+build.set_block(1, 1, 1, &quot;minecraft:air&quot;)  # remove it
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-4-1" aria-labelledby="tabbtn-4-1" hidden>
+<pre><code class="language-javascript">const inspect = Schematic.create(&quot;inspect&quot;);
+inspect.setBlock(1, 1, 1, &quot;minecraft:oak_log[axis=x]&quot;);
+console.log(inspect.getBlockName(1, 1, 1));   // minecraft:oak_log
+console.log(inspect.getBlockString(1, 1, 1)); // minecraft:oak_log[axis=x]
+
+inspect.setBlock(1, 1, 1, &quot;minecraft:air&quot;);  // remove it
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-4-2" aria-labelledby="tabbtn-4-2" hidden>
+<pre><code class="language-rust">let mut inspect = UniversalSchematic::new(&quot;inspect&quot;.into());
+inspect.set_block_from_string(1, 1, 1, &quot;minecraft:oak_log[axis=x]&quot;)?;
+let state = inspect.get_block(1, 1, 1).expect(&quot;the block exists&quot;);
+println!(&quot;{}&quot;, state.get_name()); // minecraft:oak_log
+println!(&quot;{state}&quot;); // minecraft:oak_log[axis=x]
+
+inspect.set_block_from_string(1, 1, 1, &quot;minecraft:air&quot;)?; // remove it
+
+</code></pre>
+</section>
+</div>
+<p>Python and JavaScript raise <code>NotFound</code> when a lookup is outside every region.
+Rust's core <code>get_block</code> returns <code>None</code>. Use <code>BlockState</code> directly when you need
+to construct or inspect properties one at a time.</p>
+<h2 id="content-shorthands">Content shorthands</h2>
+<p>Common container and jukebox contents have compact shorthands. They create the
+required NBT as the block is placed.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-5-0" id="tabbtn-5-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-5-1" id="tabbtn-5-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-5-2" id="tabbtn-5-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-5-0" aria-labelledby="tabbtn-5-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+contents = Schematic.create(&quot;contents&quot;)
+contents.set_block(0, 0, 0, &quot;minecraft:barrel{signal=13,item=diamond}&quot;)
+contents.set_block(1, 0, 0, &quot;minecraft:chest{items=[diamond*64,emerald*12]}&quot;)
+contents.set_block(2, 0, 0, &quot;minecraft:jukebox{record=pigstep}&quot;)
+contents.set_block(3, 0, 0, &quot;minecraft:jukebox{signal=13}&quot;)
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-5-1" aria-labelledby="tabbtn-5-1" hidden>
+<pre><code class="language-javascript">const contents = Schematic.create(&quot;contents&quot;);
+contents.setBlock(0, 0, 0, &quot;minecraft:barrel{signal=13,item=diamond}&quot;);
+contents.setBlock(1, 0, 0, &quot;minecraft:chest{items=[diamond*64,emerald*12]}&quot;);
+contents.setBlock(2, 0, 0, &quot;minecraft:jukebox{record=pigstep}&quot;);
+contents.setBlock(3, 0, 0, &quot;minecraft:jukebox{signal=13}&quot;);
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-5-2" aria-labelledby="tabbtn-5-2" hidden>
+<pre><code class="language-rust">let mut contents = UniversalSchematic::new(&quot;contents&quot;.into());
+contents.set_block_from_string(0, 0, 0, &quot;minecraft:barrel{signal=13,item=diamond}&quot;)?;
+contents.set_block_from_string(1, 0, 0, &quot;minecraft:chest{items=[diamond*64,emerald*12]}&quot;)?;
+contents.set_block_from_string(2, 0, 0, &quot;minecraft:jukebox{record=pigstep}&quot;)?;
+contents.set_block_from_string(3, 0, 0, &quot;minecraft:jukebox{signal=13}&quot;)?;
+</code></pre>
+</section>
+</div>
+<p><code>signal=0..15</code> fills a container for the requested comparator strength. Add
+<code>item=</code> to choose the filler. In <code>items=[...]</code>, entries occupy consecutive
+slots, <code>*count</code> defaults to one, and bare item names receive the <code>minecraft:</code>
+namespace. A jukebox accepts either <code>record=</code> or <code>signal=</code>. See <a href="block-entities-nbt.md">Blocks,
+entities, and NBT</a> when you need explicit NBT.</p>
+<h2 id="place-through-the-tick-engine">Place through the tick engine</h2>
+<p>The <code>{simulate=true}</code> tag runs the placement through the tick engine. The engine
+derives neighbour connections, runs the block's placement behaviour, and writes
+the resulting state back. Here the wire arrives connected and powered instead
+of keeping a generic default state.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-6-0" id="tabbtn-6-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-6-1" id="tabbtn-6-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-6-2" id="tabbtn-6-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-6-0" aria-labelledby="tabbtn-6-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+circuit = Schematic.create(&quot;placed_by_engine&quot;)
+circuit.set_block(4, 0, 0, &quot;minecraft:redstone_block&quot;)
+circuit.set_block(5, 0, 0, &quot;minecraft:redstone_wire{simulate=true}&quot;)
+print(circuit.get_block_string(5, 0, 0))
+# minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-6-1" aria-labelledby="tabbtn-6-1" hidden>
+<pre><code class="language-javascript">const circuit = Schematic.create(&quot;placed_by_engine&quot;);
+circuit.setBlock(4, 0, 0, &quot;minecraft:redstone_block&quot;);
+circuit.setBlock(5, 0, 0, &quot;minecraft:redstone_wire{simulate=true}&quot;);
+console.log(circuit.getBlockString(5, 0, 0));
+// minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-6-2" aria-labelledby="tabbtn-6-2" hidden>
+<pre><code class="language-rust">let mut circuit = UniversalSchematic::new(&quot;placed_by_engine&quot;.into());
+circuit.set_block_from_string(4, 0, 0, &quot;minecraft:redstone_block&quot;)?;
+circuit.set_block_from_string(5, 0, 0, &quot;minecraft:redstone_wire{simulate=true}&quot;)?;
+println!(&quot;{}&quot;, circuit.get_block(5, 0, 0).expect(&quot;the wire exists&quot;));
+// minecraft:redstone_wire[east=side,north=none,power=15,south=none,west=side]
+</code></pre>
+</section>
+</div>
+<p>The tag must be the only item inside the braces. Published Python and
+JavaScript packages include the tick engine. Rust builds need the <code>bridge</code> and
+<code>mc-tick</code> features. See <a href="tick-simulation.md#placing-through-the-engine">placing through the engine</a>
+for component-scoped and full-world placement.</p>
+<h2 id="open-edit-and-save">Open, edit, and save</h2>
+<p>Python chooses a writer from the output extension. JavaScript reads and writes
+bytes through the host environment. Rust's <code>UniversalSchematic</code> exposes format
+modules and byte encoders directly.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-7-0" id="tabbtn-7-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-7-1" id="tabbtn-7-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-7-2" id="tabbtn-7-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-7-0" aria-labelledby="tabbtn-7-0">
+<pre><code class="language-python">from nucleation import Schematic
+
+copy = Schematic.load_from_file(&quot;beacon.schem&quot;)
+copy.set_block(0, 2, 0, &quot;minecraft:glass&quot;)
+copy.save_to_file(&quot;beacon-edited.litematic&quot;)
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-7-1" aria-labelledby="tabbtn-7-1" hidden>
+<pre><code class="language-javascript">const copy = Schematic.fromData(readFileSync(&quot;beacon.schem&quot;));
+copy.setBlock(0, 2, 0, &quot;minecraft:glass&quot;);
+const editedBytes = bytesFromBase64(copy.toLitematicB64());
+writeFileSync(&quot;beacon-edited.litematic&quot;, editedBytes);
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-7-2" aria-labelledby="tabbtn-7-2" hidden>
+<pre><code class="language-rust">let bytes = fs::read(&quot;beacon.schem&quot;)?;
+let mut copy = UniversalSchematic::from_schematic(&amp;bytes)?;
+copy.set_block_from_string(0, 2, 0, &quot;minecraft:glass&quot;)?;
+fs::write(&quot;beacon-edited.schem&quot;, copy.to_schematic()?)?;
+</code></pre>
+</section>
+</div>
+<p>The JavaScript example uses the <code>readFileSync</code>, <code>writeFileSync</code>, and
+<code>bytesFromBase64</code> definitions from the first tab. See <a href="formats-and-io.md">Formats and
+I/O</a> for format detection, version selection, all byte APIs,
+and round-trip guarantees.</p>
+<h2 id="animations-are-generated-too">Animations are generated, too</h2>
+<p>The three illustrations on this page are rendered from schematics by
+<code>BuildAnimation</code>. They are not hand-authored mockups. The checked-in generators
+record construction groups, set a camera and grid, and render GIF frames with a
+Minecraft resource pack. Python and JavaScript expose the generated
+<code>BuildAnimation</code> API; Rust also exposes the underlying animation builder and
+rendering modules.</p>
+<p>Start with <a href="animation.md">Animating a build</a> for effects, grouping, camera
+tracks, GIF output, and video assembly. The page generators live beside the
+executable examples in <code>examples/readme/basics/</code>.</p>
+<h2 id="verified-examples">Verified examples</h2>
+<p>Run every source embedded above with one command from the repository root:</p>
+<pre><code class="language-bash">./tools/verify-basics-docs.sh
+</code></pre>
+<p>The verifier runs each language in a clean temporary directory. It checks exact
+bounds and block counts, confirms the block-state and simulated-wire results,
+and opens the generated schematic before writing it again. The documentation
+build then expands the marked regions from those same files into this page, so
+the displayed code and executed code cannot drift independently.</p>
+<h2 id="next">Next</h2>
+<ul>
+<li><a href="formats-and-io.md">Formats and I/O</a></li>
+<li><a href="shapes-and-brushes.md">Shapes, brushes, and masked fills</a></li>
+<li><a href="animation.md">Animating a build</a></li>
+</ul>

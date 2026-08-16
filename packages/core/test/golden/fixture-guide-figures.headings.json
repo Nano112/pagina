@@ -1,0 +1,17 @@
+[
+  {
+    "id": "figures",
+    "text": "Figures",
+    "level": 1
+  },
+  {
+    "id": "first",
+    "text": "First",
+    "level": 2
+  },
+  {
+    "id": "second",
+    "text": "Second",
+    "level": 2
+  }
+]

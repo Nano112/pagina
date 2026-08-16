@@ -1,0 +1,83 @@
+<h1 id="dialect-corners">Dialect corners</h1>
+<p>Hand-written golden input: every construct the block plugins own, including the ones the
+fixture and the Nucleation pages happen not to use (collapsible admonitions, nesting,
+escaping, two tab groups on one page).</p>
+<h2 id="tabs">Tabs</h2>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-1-0" id="tabbtn-1-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-1-1" id="tabbtn-1-1" tabindex="-1">Rust &amp; &lt;friends&gt;</button><button role="tab" aria-selected="false" aria-controls="tab-1-2" id="tabbtn-1-2" tabindex="-1">Nested</button></div>
+<section role="tabpanel" id="tab-1-0" aria-labelledby="tabbtn-1-0">
+<h3 id="heading-inside-a-tab">Heading inside a tab</h3>
+<pre><code class="language-python">print(&quot;hello&quot;)
+</code></pre>
+<ul>
+<li>a list item</li>
+<li>another</li>
+</ul>
+</section>
+<section role="tabpanel" id="tab-1-1" aria-labelledby="tabbtn-1-1" hidden>
+<p>Some <strong>bold</strong> prose, a <a href="other.md">link</a> and <code>code</code>.</p>
+<blockquote>
+<p>A blockquote inside a tab.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section role="tabpanel" id="tab-1-2" aria-labelledby="tabbtn-1-2" hidden>
+<aside class="pg-admonition pg-admonition--note"><p class="pg-admonition__title">Admonition inside a tab</p>
+<p>With a body, and a nested fence:</p>
+<pre><code class="language-">raw
+</code></pre>
+</aside>
+</section>
+</div>
+<p>Prose between the two groups.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-2-0" id="tabbtn-2-0" tabindex="0">Second group, first tab</button><button role="tab" aria-selected="false" aria-controls="tab-2-1" id="tabbtn-2-1" tabindex="-1">Second group, second tab</button></div>
+<section role="tabpanel" id="tab-2-0" aria-labelledby="tabbtn-2-0">
+<p>Body one.</p>
+</section>
+<section role="tabpanel" id="tab-2-1" aria-labelledby="tabbtn-2-1" hidden>
+<p>Body two.</p>
+</section>
+</div>
+<h2 id="admonitions">Admonitions</h2>
+<aside class="pg-admonition pg-admonition--note"><p class="pg-admonition__title">Note</p>
+<p>Default title from the kind.</p>
+</aside>
+<aside class="pg-admonition pg-admonition--warning"><p class="pg-admonition__title">Careful &amp; &lt;sharp&gt;</p>
+<p>A body with a paragraph,</p>
+<p>and a second paragraph.</p>
+</aside>
+<details class="pg-admonition pg-admonition--tip"><summary>Collapsible with a title</summary>
+<p>Hidden until opened.</p>
+</details>
+<p>???</p>
+<pre><code>Not an admonition — the marker needs a kind.
+</code></pre>
+<details class="pg-admonition pg-admonition--danger"><summary>Danger</summary>
+<p>Collapsible, default title.</p>
+</details>
+<aside class="pg-admonition pg-admonition--info"><p class="pg-admonition__title">With a heading</p>
+<h4 id="heading-inside-an-admonition">Heading inside an admonition</h4>
+<p>Text after the heading.</p>
+</aside>
+<h2 id="after-the-blocks">After the blocks</h2>
+<figure>
+<img src="media/x.gif" alt="A" width="480">
+<figcaption>Caption with <em>emphasis</em>.</figcaption>
+</figure>
+<div markdown="1">
+<p><strong>Block markdown</strong> inside raw HTML.</p>
+</div>
+<figure class="kg" data-scene="scenes/demo.mjs"></figure>
+<p class="trailing">A final paragraph.</p>

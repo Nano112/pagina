@@ -1,0 +1,27 @@
+[
+  {
+    "id": "minecraft-treated-as-programmable-matter",
+    "text": "Minecraft, treated as programmable matter.",
+    "level": 1
+  },
+  {
+    "id": "install",
+    "text": "Install",
+    "level": 2
+  },
+  {
+    "id": "first-file",
+    "text": "First file",
+    "level": 2
+  },
+  {
+    "id": "index",
+    "text": "Index",
+    "level": 2
+  },
+  {
+    "id": "known-boundaries",
+    "text": "Known boundaries",
+    "level": 2
+  }
+]

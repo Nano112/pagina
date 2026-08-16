@@ -1,0 +1,32 @@
+[
+  {
+    "id": "dialect-corners",
+    "text": "Dialect corners",
+    "level": 1
+  },
+  {
+    "id": "tabs",
+    "text": "Tabs",
+    "level": 2
+  },
+  {
+    "id": "heading-inside-a-tab",
+    "text": "Heading inside a tab",
+    "level": 3
+  },
+  {
+    "id": "admonitions",
+    "text": "Admonitions",
+    "level": 2
+  },
+  {
+    "id": "heading-inside-an-admonition",
+    "text": "Heading inside an admonition",
+    "level": 4
+  },
+  {
+    "id": "after-the-blocks",
+    "text": "After the blocks",
+    "level": 2
+  }
+]

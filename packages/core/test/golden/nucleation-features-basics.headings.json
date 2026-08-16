@@ -1,0 +1,57 @@
+[
+  {
+    "id": "basics",
+    "text": "Basics",
+    "level": 1
+  },
+  {
+    "id": "build-a-beacon",
+    "text": "Build a beacon",
+    "level": 2
+  },
+  {
+    "id": "build-something-with-states",
+    "text": "Build something with states",
+    "level": 2
+  },
+  {
+    "id": "coordinates-and-bounds",
+    "text": "Coordinates and bounds",
+    "level": 2
+  },
+  {
+    "id": "read-replace-and-remove-blocks",
+    "text": "Read, replace, and remove blocks",
+    "level": 2
+  },
+  {
+    "id": "content-shorthands",
+    "text": "Content shorthands",
+    "level": 2
+  },
+  {
+    "id": "place-through-the-tick-engine",
+    "text": "Place through the tick engine",
+    "level": 2
+  },
+  {
+    "id": "open-edit-and-save",
+    "text": "Open, edit, and save",
+    "level": 2
+  },
+  {
+    "id": "animations-are-generated-too",
+    "text": "Animations are generated, too",
+    "level": 2
+  },
+  {
+    "id": "verified-examples",
+    "text": "Verified examples",
+    "level": 2
+  },
+  {
+    "id": "next",
+    "text": "Next",
+    "level": 2
+  }
+]

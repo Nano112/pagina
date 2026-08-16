@@ -1,0 +1,106 @@
+<h1 id="minecraft-treated-as-programmable-matter">Minecraft, treated as programmable matter.</h1>
+<p>Nucleation reads, writes, builds, simulates, meshes, and renders Minecraft
+schematics. Rust is the implementation. Six generated bindings expose the same
+model to Python, JavaScript, Kotlin, PHP, C, and C++.</p>
+<p><a href="features/basics.md" class="pg-button pg-button--primary">Start with a schematic</a>
+<a href="features/formats-and-io.md" class="pg-button">Read the format guarantees</a></p>
+<figure class="kg" data-scene="scenes/formats-and-io.mjs" data-controls="false" data-readout="false"></figure>
+<figure>
+  <img src="media/hero.gif" alt="A scorched animated 3 by 7 torus knot generated and rendered by Nucleation">
+  <figcaption>Each frame is a separate schematic. The braid advances while a periodic field cuts scorched plates over a molten core.</figcaption>
+</figure>
+<h2 id="install">Install</h2>
+<p>Choose the package for the process that owns the schematic.</p>
+<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist"><button role="tab" aria-selected="true" aria-controls="tab-1-0" id="tabbtn-1-0" tabindex="0">Python</button><button role="tab" aria-selected="false" aria-controls="tab-1-1" id="tabbtn-1-1" tabindex="-1">JavaScript</button><button role="tab" aria-selected="false" aria-controls="tab-1-2" id="tabbtn-1-2" tabindex="-1">Rust</button></div>
+<section role="tabpanel" id="tab-1-0" aria-labelledby="tabbtn-1-0">
+<pre><code class="language-console">pip install nucleation
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-1-1" aria-labelledby="tabbtn-1-1" hidden>
+<pre><code class="language-console">npm install nucleation
+</code></pre>
+</section>
+<section role="tabpanel" id="tab-1-2" aria-labelledby="tabbtn-1-2" hidden>
+<pre><code class="language-console">cargo add nucleation
+</code></pre>
+</section>
+</div>
+<p>Kotlin/JVM, PHP, C, and C++ are published as release archives. Their generated
+surface follows the same bridge definitions and the naming rules of each
+language.</p>
+<aside class="pg-admonition pg-admonition--quote"><p class="pg-admonition__title"></p>
+<p>One address space survives the trip from file parser to tick engine and renderer.</p>
+</aside>
+<h2 id="first-file">First file</h2>
+<p>This Python example creates an empty schematic, places three blocks, and writes
+Sponge <code>.schem</code>. Coordinates grow the default region when they fall outside its
+current extent.</p>
+<pre><code class="language-python">from nucleation import Schematic
+
+build = Schematic.create(&quot;signal-lamp&quot;)
+build.set_block(0, 0, 0, &quot;minecraft:lever[facing=east]&quot;)
+build.set_block(1, 0, 0, &quot;minecraft:redstone_wire&quot;)
+build.set_block(2, 0, 0, &quot;minecraft:redstone_lamp&quot;)
+build.save_to_file(&quot;signal-lamp.schem&quot;)
+</code></pre>
+<p><a href="features/basics.md">Continue with block states and inspection</a></p>
+<h2 id="index">Index</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="features/data-driven-generation.md"><code>build/data</code></a></td>
+<td>Turn images, arrays, and external datasets into positions, block states, and block entities.</td>
+</tr>
+<tr>
+<td><a href="features/formats-and-io.md"><code>io/formats</code></a></td>
+<td>Litematica, Sponge, MCEdit import, Bedrock, NUSN, Anvil regions, and world containers.</td>
+</tr>
+<tr>
+<td><a href="features/shapes-and-brushes.md"><code>build/geometry</code></a></td>
+<td>Shapes, brushes, masked fills, palettes, fields, terrain, geodata, and mesh voxelization.</td>
+</tr>
+<tr>
+<td><a href="features/regions-and-transforms.md"><code>build/regions</code></a></td>
+<td>Named regions, rigid transforms, deterministic stamping, and composition.</td>
+</tr>
+<tr>
+<td><a href="features/tick-simulation.md"><code>sim/tick</code></a></td>
+<td>Block ticks, update order, fluids, pistons, entities, checkpoints, and snapshots.</td>
+</tr>
+<tr>
+<td><a href="features/redstone-simulation.md"><code>sim/redstone</code></a></td>
+<td>Compiled redstone execution, typed inputs and outputs, and Insign annotations.</td>
+</tr>
+<tr>
+<td><a href="features/meshing-and-rendering.md"><code>output/mesh</code></a></td>
+<td>NUCM, GLB, glTF, USDZ, headless stills, and deterministic animation frames.</td>
+</tr>
+<tr>
+<td><a href="features/world-segmentation.md"><code>world/segment</code></a></td>
+<td>Bounded world streams, substrate subtraction, clustering, stitching, and provenance.</td>
+</tr>
+<tr>
+<td><a href="features/bindings-and-languages.md"><code>api/bindings</code></a></td>
+<td>One generated API across Rust, Python, JavaScript, Kotlin, PHP, C, and C++.</td>
+</tr>
+<tr>
+<td><a href="gallery.md"><code>output/gallery</code></a></td>
+<td>Rendered builds with source: knots, terrain, fractals, maps, text, and voxelized models.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="known-boundaries">Known boundaries</h2>
+<ul>
+<li>Legacy MCEdit <code>.schematic</code> is import-only.</li>
+<li>JavaScript runs in WASM. It has no local filesystem, so Node callers pass
+bytes and browser callers use bytes or a store callback.</li>
+<li>Format conversion preserves supported cell data. Unrecognised extensions and
+version-specific metadata need an explicit transformation policy.</li>
+<li>The headless renderer is native. Browser display uses the exported mesh data.</li>
+</ul>
