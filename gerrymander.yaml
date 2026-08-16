@@ -4,8 +4,6 @@ services:
   frontend:
     hostnames: [pagina.test, "*.pagina.test"]
     port_pool: dev
-    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT}
-  # api:
-  #   hostnames: [api.pagina.test]
-  #   port_pool: dev
-  #   dev: uv run uvicorn main:app --port {PORT} --reload
+    # `--host 0.0.0.0`: gerry's proxy reaches the host over a bridge network
+    # (`host.docker.internal`), which loopback-only binding (the CLI's default) can't see.
+    dev: node packages/cli/dist/cli.js dev ${PAGINA_CONTENT:-packages/core/test/fixture} --port {PORT} --host 0.0.0.0

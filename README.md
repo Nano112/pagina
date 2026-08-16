@@ -15,8 +15,14 @@ the symlinks, so relink after every install:
 ```sh
 npm install
 npm run link:kineglyph   # re-links @kineglyph/{core,svg,anime,plot,scenes,web,export}
-npm run build             # builds core, shell-static, vite, cli
+npm run build             # builds core, vite, shell-static, cli (dependency order)
+npm install                # re-creates node_modules/.bin/pagina now that packages/cli/dist exists
+npm run link:kineglyph   # npm install drops the kineglyph symlinks again — re-link once more
 ```
+
+Every plain `npm install` drops the kineglyph symlinks (and, the first time, hasn't created
+`node_modules/.bin/pagina` yet because `packages/cli`'s `bin` target doesn't exist until after a
+build) — re-run `npm run link:kineglyph` after any `npm install`.
 
 This machine runs [gerry](https://nano112.github.io/gerrymander) for local hostnames/ports.
 `gerrymander.yaml` wires the `frontend` service's `dev:` command to the CLI; `gerry dev` grants a
@@ -28,15 +34,24 @@ PAGINA_CONTENT=path/to/folder gerry dev     # or point it at another folder
 gerry down                                  # release the hostname/port when done
 ```
 
-Without gerry, run the CLI directly (port precedence: `--port` flag > `PORT` env var > `4321`):
+Without gerry, run the CLI directly — either via the workspace bin link (`npx pagina`, once
+`node_modules/.bin/pagina` exists per the install sequence above) or by path — port precedence:
+`--port` flag > `PORT` env var > `4321`, ignoring blank/non-numeric values:
 
 ```sh
-node packages/cli/dist/cli.js dev <folder> [--port 4321] [--base /]
+npx pagina dev <folder> [--port 4321] [--base /] [--host <addr>]
+npx pagina build <folder> [--out dist] [--base /] [--no-strict]
+
+# equivalently:
+node packages/cli/dist/cli.js dev <folder> [--port 4321] [--base /] [--host <addr>]
 node packages/cli/dist/cli.js build <folder> [--out dist] [--base /] [--no-strict]
 ```
 
-`build` exits `1` and prints the `PaginaBuildError` diagnostics on a strict failure. `dev` hot-swaps
-figures over HMR and full-reloads on everything else.
+`dev` binds loopback only (`127.0.0.1`) and allows only `.test`/`localhost`/`127.0.0.1` Host
+headers by default; pass `--host` (or set `HOST`) to bind wider — `gerrymander.yaml`'s `dev:`
+command does this (`--host 0.0.0.0`) so gerry's proxy can reach it. `build` exits `1` and prints
+the `PaginaBuildError` diagnostics on a strict failure. `dev` hot-swaps figures over HMR and
+full-reloads on everything else.
 
 ## Folder contract
 

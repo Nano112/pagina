@@ -13,6 +13,14 @@ export interface DevServerOptions {
   readonly port?: number;
   readonly base?: string;
   readonly md?: MarkdownIt;
+  /** Interface to bind. Defaults to loopback only (`"127.0.0.1"`); pass `true` to bind
+   *  all interfaces (e.g. so a reverse proxy reaching the host over a bridge network, such as
+   *  gerrymander's, can see the port). */
+  readonly host?: string | boolean;
+  /** Host-header allowlist for Vite's DNS-rebinding protection. Defaults to `[".test",
+   *  "localhost", "127.0.0.1"]`, which covers gerrymander-style `*.test` dev proxies without
+   *  disabling the check entirely; pass `true` only if you understand the tradeoff. */
+  readonly allowedHosts?: readonly string[] | true;
 }
 
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
@@ -48,12 +56,13 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
     logLevel: "info",
     appType: "custom",
     server: {
-      // Listen on all interfaces, not just loopback: local reverse proxies (e.g. gerrymander's
-      // docker-hosted proxy reaching the host via `host.docker.internal`) can only see ports
-      // bound beyond 127.0.0.1. Disable Vite's Host-header allowlist too, since the request
-      // arrives proxied under a `*.test` dev hostname rather than `localhost`.
-      host: true,
-      allowedHosts: true,
+      // Loopback-only and a narrow Host-header allowlist by default: DNS-rebinding protection
+      // stays on for every consumer of this library. A caller fronting the server with a
+      // reverse proxy that reaches the host over a bridge network (e.g. gerrymander's, via
+      // `host.docker.internal`) opts into a wider bind/allowlist explicitly via `host`/
+      // `allowedHosts` rather than getting it by default.
+      host: o.host ?? "127.0.0.1",
+      allowedHosts: o.allowedHosts === true ? true : [...(o.allowedHosts ?? [".test", "localhost", "127.0.0.1"])],
       ...(o.port === undefined ? {} : { port: o.port }),
       fs: { allow: [folder, kineglyphRoot(), resolve(o.shell.clientEntry, "..")] },
       watch: { ignored: ["**/node_modules/**"] },
