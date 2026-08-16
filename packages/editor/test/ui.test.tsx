@@ -13,11 +13,36 @@ import { act } from "react";
 import { mountEditor } from "../src/index.js";
 import { MemoryBackend } from "../src/store/memory-backend.js";
 import { parseMarkdown } from "../src/model/parser.js";
+import { settle } from "./settle.js";
 import type { Editor } from "@tiptap/core";
 
 // The preview hydrates Kineglyph figures through the host page's runtime, which a jsdom test has
 // no import map for — and mounting real figures is not what any of this is testing.
-vi.mock("kineglyph", () => ({ mountAll: async () => [], defaultTheme: {} }));
+vi.mock("kineglyph", () => ({
+  mountAll: async () => [],
+  mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
+  defaultTheme: {},
+}));
+
+/**
+ * A switch the serializer test flips.
+ *
+ * A throwing serializer cannot be arranged from the document side — every document the parser
+ * produces serialises — so the failure is injected instead. `vi.hoisted` is required: the factory
+ * below is lifted above the imports, and a plain `const` would not exist yet when it runs.
+ */
+const serializer = vi.hoisted(() => ({ fail: false }));
+
+vi.mock("../src/model/serializer.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/model/serializer.js")>("../src/model/serializer.js");
+  return {
+    ...actual,
+    serializeMarkdown: (...args: Parameters<typeof actual.serializeMarkdown>): string => {
+      if (serializer.fail) throw new Error("a node has no serializer");
+      return actual.serializeMarkdown(...args);
+    },
+  };
+});
 
 const ARTICLE = `slug: fixture
 title: Fixture Docs
@@ -71,16 +96,6 @@ const GEOMETRY = {
 Object.defineProperties(Text.prototype, GEOMETRY);
 Object.defineProperties(Range.prototype, GEOMETRY);
 
-/**
- * Advances past every debounce in the app and lets the promise chains behind them settle.
- * Bounded rather than `runAllTimers` because the status bar keeps a `setInterval` running.
- */
-async function settle(): Promise<void> {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(2_000);
-  });
-}
-
 /** The TipTap instance the pane built, reached the way a host page would: through the DOM. */
 function editorOf(): Editor {
   const element = host.querySelector<HTMLElement & { editor?: Editor }>(".ProseMirror");
@@ -96,6 +111,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  serializer.fail = false;
   handle.destroy();
   await act(async () => {});
   host.remove();
@@ -151,6 +167,43 @@ describe("mountEditor", () => {
     expect(panels.map((p) => p.hidden)).toEqual([true, false]);
   });
 
+  it("gives the tab strip the keyboard behaviour its roles promise", async () => {
+    await mount("guide/tabs.md");
+    const tabs = host.querySelector(".pge-tabs");
+    const strip = [...(tabs?.querySelectorAll<HTMLElement>(".pge-tabs__tab") ?? [])];
+    const panels = [...(tabs?.querySelectorAll(".pge-tab") ?? [])] as HTMLElement[];
+
+    // Each tab names the panel it controls, and each panel names the tab that labels it.
+    expect(strip.map((t) => t.getAttribute("aria-controls"))).toEqual(panels.map((p) => p.id));
+    expect(panels.map((p) => p.getAttribute("role"))).toEqual(["tabpanel", "tabpanel"]);
+    expect(panels.map((p) => p.getAttribute("aria-labelledby"))).toEqual(strip.map((t) => t.id));
+
+    // Roving tabindex: the strip is one tab stop, not one per tab.
+    expect(strip.map((t) => t.tabIndex)).toEqual([0, -1]);
+
+    const press = async (key: string): Promise<void> => {
+      await act(async () => {
+        document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      });
+    };
+
+    strip[0]?.focus();
+    await press("ArrowRight");
+    expect(strip.map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    expect(panels.map((p) => p.hidden)).toEqual([true, false]);
+    expect(document.activeElement).toBe(strip[1]);
+    expect(strip.map((t) => t.tabIndex)).toEqual([-1, 0]);
+
+    // …and it wraps, which is what makes it a strip rather than a list.
+    await press("ArrowRight");
+    expect(strip.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
+
+    await press("End");
+    expect(strip.map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    await press("Home");
+    expect(strip.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
+  });
+
   it("inserts an admonition from the toolbar, and it serializes as one", async () => {
     await mount();
     const select = [...host.querySelectorAll("select")].find(
@@ -164,6 +217,34 @@ describe("mountEditor", () => {
     await settle();
 
     expect(handle.store.files.get("index.md")?.text ?? "").toContain("!!! note");
+  });
+
+  it("says so when it cannot serialize the page, and keeps the edit", async () => {
+    await mount();
+    serializer.fail = true;
+    await act(async () => {
+      editorOf().commands.insertContentAt(editorOf().state.doc.content.size, "<p>First</p>");
+    });
+    await settle();
+
+    // The store never heard about the edit, so it still reads "Saved" — which is exactly why the
+    // failure has to be said out loud somewhere the author is looking.
+    expect(host.querySelector(".pge-status")?.textContent).toContain("Couldn't serialize this page");
+    expect(host.querySelector(".pge-status")?.textContent).toContain("a node has no serializer");
+    expect(handle.store.files.get("index.md")?.text ?? "").not.toContain("First");
+
+    // Typing still works, and the moment the serializer recovers the pending edit lands — including
+    // the text typed while it was broken.
+    serializer.fail = false;
+    await act(async () => {
+      editorOf().commands.insertContentAt(editorOf().state.doc.content.size, "<p>Second</p>");
+    });
+    await settle();
+
+    const text = handle.store.files.get("index.md")?.text ?? "";
+    expect(text).toContain("First");
+    expect(text).toContain("Second");
+    expect(host.querySelector(".pge-status")?.textContent).not.toContain("Couldn't serialize");
   });
 
   it("surfaces a conflict banner when the file moves underneath an unsaved edit", async () => {

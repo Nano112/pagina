@@ -737,3 +737,455 @@ pagina-editor {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ B4b: rich nodes and tools */
+
+/* Icon buttons carry an SVG now, not a glyph: the icon has to sit on the text baseline's centre. */
+.pge-tool svg,
+.pge-icon svg,
+.pge-btn svg {
+  display: block;
+  flex: none;
+}
+
+.pge-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* --- popovers (toolbar colour pickers) --- */
+
+.pge-popwrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.pge-pop {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 30;
+  padding: var(--pge-1);
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  background: var(--pge-bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+/* --- colour picker --- */
+
+.pge-color {
+  display: grid;
+  gap: var(--pge-1);
+  inline-size: 200px;
+}
+
+.pge-color__swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.pge-color__swatch {
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  border: 1px solid var(--pge-line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pge-color__swatch[aria-pressed="true"] {
+  outline: 2px solid var(--pge-accent);
+  outline-offset: 1px;
+}
+
+.pge-color__swatch--none {
+  background:
+    linear-gradient(to top right, transparent 46%, var(--pge-danger) 46%, var(--pge-danger) 54%, transparent 54%),
+    var(--pge-bg);
+}
+
+.pge-color__custom {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pge-input--hex {
+  flex: 1;
+  font-family: var(--pge-mono);
+}
+
+.pge-color__native {
+  inline-size: 28px;
+  block-size: 28px;
+  padding: 0;
+  border: 1px solid var(--pge-line);
+  border-radius: 4px;
+  background: none;
+}
+
+/* --- slash menu --- */
+
+.pge-slash {
+  position: fixed;
+  z-index: 40;
+  max-block-size: 320px;
+  min-inline-size: 200px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  background: var(--pge-bg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 20%);
+}
+
+.pge-slash__group {
+  margin: 6px 6px 2px;
+  color: var(--pge-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pge-slash__item {
+  display: block;
+  inline-size: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pge-slash__item[aria-selected="true"] {
+  background: var(--pge-accent);
+  color: var(--pge-accent-fg);
+}
+
+/* --- figure and model node views --- */
+
+.pge-card__spacer {
+  flex: 1;
+}
+
+.pge-card__error {
+  margin: var(--pge-1) 0 0;
+  color: var(--pge-danger);
+  font-family: var(--pge-mono);
+  font-size: 12px;
+}
+
+.pge-figure__stage {
+  min-block-size: 80px;
+  padding: var(--pge-1) 0;
+}
+
+.pge-figure__static {
+  display: block;
+  max-inline-size: 100%;
+}
+
+.pge-figure__source {
+  display: grid;
+  gap: var(--pge-1);
+  margin-block-start: var(--pge-1);
+}
+
+.pge-figure__actions,
+.pge-newpage__actions {
+  display: flex;
+  gap: var(--pge-1);
+  justify-content: flex-end;
+}
+
+.pge-model__stage {
+  margin-block: var(--pge-1);
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  overflow: hidden;
+}
+
+/* --- new page form --- */
+
+.pge-newpage {
+  display: grid;
+  gap: 6px;
+  margin: 0 var(--pge-1) var(--pge-1);
+  padding: var(--pge-1);
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  background: var(--pge-raised);
+}
+
+/* --- status bar --- */
+
+.pge-status__notice {
+  color: var(--pge-muted);
+}
+
+/* --- the figure builder --- */
+
+.pge-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--pge-2);
+  background: rgb(0 0 0 / 45%);
+}
+
+.pge-modal__panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  inline-size: min(1100px, 100%);
+  block-size: min(760px, 100%);
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  background: var(--pge-bg);
+  color: var(--pge-fg);
+  font-family: var(--pge-font);
+  font-size: 14px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 35%);
+}
+
+.pge-modal__head,
+.pge-modal__foot {
+  display: flex;
+  gap: var(--pge-1);
+  align-items: center;
+  padding: var(--pge-1) var(--pge-2);
+  border-block-end: 1px solid var(--pge-line);
+}
+
+.pge-modal__foot {
+  border-block: 1px solid var(--pge-line);
+  border-block-end: 0;
+}
+
+.pge-modal__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.pge-modal__path {
+  color: var(--pge-muted);
+  font-family: var(--pge-mono);
+  font-size: 12px;
+}
+
+.pge-modal__spacer {
+  flex: 1;
+}
+
+.pge-modal__error {
+  color: var(--pge-danger);
+}
+
+.pge-modal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  min-block-size: 0;
+}
+
+.pge-builder__form {
+  display: grid;
+  align-content: start;
+  gap: var(--pge-1);
+  overflow-y: auto;
+  padding: var(--pge-2);
+  border-inline-end: 1px solid var(--pge-line);
+}
+
+.pge-builder__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--pge-1);
+}
+
+.pge-builder__legend {
+  margin: var(--pge-1) 0 0;
+  color: var(--pge-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pge-builder__preview {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-block-size: 0;
+  overflow: auto;
+  padding: var(--pge-2);
+  background: var(--pge-raised);
+}
+
+.pge-builder__stage {
+  align-self: start;
+}
+
+.pge-builder__problems {
+  margin: var(--pge-1) 0 0;
+  padding-inline-start: 18px;
+  color: var(--pge-danger);
+  font-size: 12px;
+}
+
+.pge-builder__problems code {
+  font-family: var(--pge-mono);
+}
+
+.pge-field__error {
+  color: var(--pge-danger);
+  font-size: 11px;
+  font-style: normal;
+}
+
+/* --- builder: nodes and edges --- */
+
+.pge-nodes {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.pge-node {
+  display: grid;
+  gap: 4px;
+  inline-size: 100%;
+  padding: 6px;
+  border: 1px solid var(--pge-line);
+  border-radius: var(--pge-radius);
+  background: var(--pge-raised);
+}
+
+.pge-node__head {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pge-node__spacer {
+  flex: 1;
+}
+
+.pge-node__children {
+  margin-inline-start: var(--pge-1);
+  padding-inline-start: var(--pge-1);
+  border-inline-start: 2px solid var(--pge-line);
+}
+
+.pge-node__legend {
+  color: var(--pge-muted);
+  font-size: 11px;
+}
+
+.pge-input--id {
+  inline-size: 96px;
+  font-family: var(--pge-mono);
+}
+
+.pge-input--num {
+  inline-size: 72px;
+}
+
+.pge-textarea--sm {
+  font-size: 12px;
+}
+
+.pge-tones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.pge-tones__swatch {
+  inline-size: 18px;
+  block-size: 18px;
+  padding: 0;
+  border: 1px solid var(--pge-line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.pge-tones__swatch--none {
+  background:
+    linear-gradient(to top right, transparent 44%, var(--pge-muted) 44%, var(--pge-muted) 56%, transparent 56%),
+    var(--pge-bg);
+}
+
+.pge-tones__swatch[aria-pressed="true"] {
+  outline: 2px solid var(--pge-accent);
+  outline-offset: 1px;
+}
+
+.pge-edges {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.pge-edge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  inline-size: 100%;
+}
+
+.pge-edge .pge-input {
+  flex: 1;
+  min-inline-size: 80px;
+}
+
+@media (max-width: 900px) {
+  .pge-modal__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, auto);
+  }
+}
+
+/*
+ * The builder's compact rows.
+ *
+ * `.pge-field` is a label *beside* its control, which is right for a full-width text field and
+ * wrong for five controls sharing a row: the labels collide with the controls next to them. Inside
+ * a builder row (and a node's field list) the label goes above instead, and the control fills.
+ */
+.pge-builder__row .pge-field,
+.pge-card__fields .pge-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-items: start;
+}
+
+.pge-builder__row .pge-select,
+.pge-builder__row .pge-input,
+.pge-card__fields .pge-input {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/* The figure is measured against its host, so the host has to be the width it may use. */
+.pge-builder__stage,
+.pge-figure__stage {
+  inline-size: 100%;
+}
+
+/* A grid child does not shrink below its content unless told to; the figure is measured against
+ * the stage, so an unconstrained stage lets the figure decide the panel's width. */
+.pge-builder__preview {
+  min-inline-size: 0;
+}
+
+.pge-builder__stage {
+  max-inline-size: 100%;
+  overflow-x: auto;
+}

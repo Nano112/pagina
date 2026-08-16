@@ -12,7 +12,19 @@ export interface ShellCtx {
   kineglyphThemeUrl?: string;
   /** `pagina dev --edit`: add an "Edit this page" link into the editor. Never set in a build. */
   edit?: boolean;
+  /** Overrides {@link DEFAULT_MODEL_VIEWER_URL} for pages that embed a `<model-viewer>`. */
+  modelViewerUrl?: string;
 }
+
+/**
+ * Google's `<model-viewer>` element.
+ *
+ * It is pulled in per page and only when a page actually contains one: the element is several
+ * hundred kilobytes of WebGL, and a docs site with one 3-D model on one page must not pay for it on
+ * every other. Kept in step with `@pagina/editor`'s default so the editor and the published page
+ * run the same version.
+ */
+export const DEFAULT_MODEL_VIEWER_URL = "https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]!);
@@ -59,6 +71,11 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   const editLink = ctx.edit === true
     ? `<a class="pg-header__edit" href="${esc(`/__edit${href}`)}">Edit this page</a>`
     : "";
+  // Presence of the tag in *this page's* HTML is the whole condition: the element defines itself on
+  // load, so a page without one gains nothing from the script and a page with one needs no flag.
+  const modelViewer = page.html.includes("<model-viewer")
+    ? `<script type="module" src="${esc(ctx.modelViewerUrl ?? DEFAULT_MODEL_VIEWER_URL)}"></script>`
+    : "";
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
 <head>
@@ -75,6 +92,6 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav><article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>
 ${tocHtml}
 </div>
-<script type="module" src="${esc(ctx.clientUrl)}"></script>
+<script type="module" src="${esc(ctx.clientUrl)}"></script>${modelViewer}
 </body></html>`;
 }

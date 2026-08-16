@@ -5,7 +5,7 @@
  * imports `node:*`, Vite or React, so the same code runs in the dev server, in Laravel, and in tests.
  */
 export {
-  ArticleStore,
+  ARTICLE_YAML, ArticleStore,
   type ArticleStoreOptions, type FileConflict, type FileState, type FileStatus,
   type StoreEvent, type StoreEventMap, type StoreStatus,
 } from "./article-store.js";

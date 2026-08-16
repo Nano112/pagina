@@ -8,10 +8,14 @@
  * their form controls usable: without it the browser would treat an `<input>` inside the editable
  * area as editable text.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plus, X } from "lucide-react";
 import { useArticleStore } from "./useStore.js";
+
+export { FigureKgView } from "./nodes/FigureKgView.js";
+export { ModelViewerView } from "./nodes/ModelViewerView.js";
 
 /** Keystrokes inside a node view's form belong to the form, not to the editor's shortcut map. */
 const swallowKeys = (event: KeyboardEvent): void => {
@@ -41,18 +45,27 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
   const [active, setActive] = useState(0);
   const [renaming, setRenaming] = useState<number | undefined>(undefined);
   const panels = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const base = useId();
   const count = node.childCount;
   const current = Math.min(active, Math.max(count - 1, 0));
 
   const currentRef = useRef(current);
   currentRef.current = current;
 
+  const tabId = (index: number): string => `${base}-tab-${index}`;
+  const panelId = (index: number): string => `${base}-panel-${index}`;
+
   /**
-   * Hides every panel but the active one.
+   * Hides every panel but the active one, and wires the panel half of the tab pattern.
    *
    * The panels are found by selector rather than by walking children, because TipTap puts its own
    * wrappers between `NodeViewContent` and the content DOM and how many is not this component's
    * business. The `closest` filter keeps a nested tabs group's panels out of this one's reckoning.
+   *
+   * `role`/`id`/`aria-labelledby` are set here rather than in `TabView` for the same reason the
+   * visibility is: the panel's DOM belongs to ProseMirror, and the strip that points at it lives in
+   * this component — only this component knows which index a given panel is.
    */
   const apply = useCallback((): void => {
     const container = panels.current;
@@ -61,8 +74,37 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
       .filter((panel) => panel.parentElement?.closest(".pge-tabs__panels") === container)
       .forEach((panel, i) => {
         panel.hidden = i !== currentRef.current;
+        panel.id = panelId(i);
+        panel.setAttribute("role", "tabpanel");
+        panel.setAttribute("aria-labelledby", tabId(i));
       });
-  }, []);
+  }, [base]);
+
+  /**
+   * ←/→/Home/End across the strip, the way a tablist is required to behave.
+   *
+   * Selection follows focus, which is the right choice for a small set of panels whose content is
+   * already in the document: there is nothing to load, so a separate "activate" step would only be
+   * an extra keystroke. Focus is moved explicitly because the strip is a *roving tabindex* — only
+   * the selected tab is in the tab order, so Tab leaves the strip rather than walking it.
+   */
+  const onStripKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const moves: Record<string, number | undefined> = { ArrowLeft: -1, ArrowRight: 1 };
+    const delta = moves[event.key];
+    const next =
+      delta !== undefined
+        ? (current + delta + count) % count
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? count - 1
+            : undefined;
+    if (next === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setActive(next);
+    strip.current?.querySelectorAll<HTMLElement>("button.pge-tabs__tab")[next]?.focus();
+  };
 
   useEffect(apply, [apply, current, count, node]);
 
@@ -108,7 +150,7 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
 
   return (
     <NodeViewWrapper className="pge-tabs" data-pge-tabs="">
-      <div className="pge-tabs__strip" contentEditable={false} role="tablist">
+      <div className="pge-tabs__strip" contentEditable={false} role="tablist" ref={strip} onKeyDown={onStripKey}>
         {Array.from({ length: count }, (_, i) =>
           renaming === i ? (
             <input
@@ -130,8 +172,12 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
               key={i}
               type="button"
               role="tab"
+              id={tabId(i)}
               className="pge-tabs__tab"
               aria-selected={i === current}
+              aria-controls={panelId(i)}
+              // Roving tabindex: one stop for the whole strip, arrows move within it.
+              tabIndex={i === current ? 0 : -1}
               onClick={() => setActive(i)}
               onDoubleClick={() => setRenaming(i)}
               title="Double-click to rename"
@@ -142,7 +188,7 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
         )}
         <span className="pge-tabs__spacer" />
         <button type="button" className="pge-icon" onClick={addTab} title="Add tab" aria-label="Add tab">
-          +
+          <Plus size={14} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -152,7 +198,7 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
           title="Remove tab"
           aria-label="Remove tab"
         >
-          ×
+          <X size={14} aria-hidden="true" />
         </button>
       </div>
       <div className="pge-tabs__panels" ref={panels}>
@@ -264,30 +310,6 @@ export function SnippetView({ node, updateAttributes }: ReactNodeViewProps): Rea
   );
 }
 
-/** A Kineglyph figure. B4b turns this into a scene builder; for now it reports what it is. */
-export function FigureKgView({ node }: ReactNodeViewProps): ReactNode {
-  const attr = (key: string): string => (typeof node.attrs[key] === "string" ? (node.attrs[key] as string) : "");
-  return (
-    <NodeViewWrapper className="pge-card pge-figure" contentEditable={false}>
-      <div className="pge-card__head">
-        <span className="pge-card__badge">figure</span>
-        <span className="pge-card__title">{attr("id") || "(no id)"}</span>
-      </div>
-      <dl className="pge-card__facts">
-        <dt>kind</dt>
-        <dd>{attr("kind") || "static"}</dd>
-        {attr("scene") === "" ? null : (
-          <>
-            <dt>scene</dt>
-            <dd>{attr("scene")}</dd>
-          </>
-        )}
-      </dl>
-      <p className="pge-card__note">Configure in the figure builder (B4b). The preview renders it live.</p>
-    </NodeViewWrapper>
-  );
-}
-
 /** `<figure markdown="span">` around an image: source, caption, width. */
 export function FigureImageView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
   const attr = (key: string): string => (typeof node.attrs[key] === "string" ? (node.attrs[key] as string) : "");
@@ -318,26 +340,6 @@ export function FigureImageView({ node, updateAttributes }: ReactNodeViewProps):
           />
         </label>
       </div>
-    </NodeViewWrapper>
-  );
-}
-
-/** `<model-viewer src="…">`. B4b adds a live viewer; here it is a labelled source field. */
-export function ModelViewerView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
-  const src = typeof node.attrs["src"] === "string" ? node.attrs["src"] : "";
-  return (
-    <NodeViewWrapper className="pge-card pge-model" contentEditable={false} onKeyDown={swallowKeys}>
-      <div className="pge-card__head">
-        <span className="pge-card__badge">3D model</span>
-        <input
-          className="pge-input"
-          value={src}
-          placeholder="media/model.glb"
-          onChange={(e) => updateAttributes({ src: e.target.value })}
-          aria-label="Model source"
-        />
-      </div>
-      <p className="pge-card__note">Rendered by &lt;model-viewer&gt; on the published page.</p>
     </NodeViewWrapper>
   );
 }

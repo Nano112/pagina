@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderPageHtml } from "../src/template.js";
+import { DEFAULT_MODEL_VIEWER_URL, renderPageHtml } from "../src/template.js";
 import type { RenderedArticle } from "@pagina/core";
 
 const article: RenderedArticle = {
@@ -73,5 +73,35 @@ describe("renderPageHtml", () => {
     expect(html).not.toMatch(/href="[^"]*"[^"\s>]*"/);
     expect(html).toContain("A &quot;quoted&quot; &amp; &lt;b&gt;title&lt;/b&gt;");
     expect(html).toContain(`href="/g/q&quot;uote/"`);
+  });
+});
+
+describe("the <model-viewer> module", () => {
+  /** The same article with a 3-D model on one of its two pages. */
+  const withModel: RenderedArticle = {
+    ...article,
+    pages: {
+      ...article.pages,
+      "/g/page/": {
+        ...article.pages["/g/page/"]!,
+        html: `<model-viewer src="/media/robot.glb" alt="A robot"></model-viewer>`,
+      },
+    },
+  };
+
+  it("is included only on a page that actually contains one", () => {
+    // Several hundred kilobytes of WebGL: a docs site with one model on one page must not pay for
+    // it on every other page, so presence of the tag is the whole condition.
+    expect(renderPageHtml(withModel, "/g/page/", ctx)).toContain(
+      `<script type="module" src="${DEFAULT_MODEL_VIEWER_URL}"></script>`,
+    );
+    expect(renderPageHtml(withModel, "/", ctx)).not.toContain("model-viewer");
+    expect(renderPageHtml(article, "/g/page/", ctx)).not.toContain("model-viewer");
+  });
+
+  it("can be pointed at a self-hosted copy", () => {
+    const html = renderPageHtml(withModel, "/g/page/", { ...ctx, modelViewerUrl: "/vendor/model-viewer.js" });
+    expect(html).toContain(`<script type="module" src="/vendor/model-viewer.js"></script>`);
+    expect(html).not.toContain(DEFAULT_MODEL_VIEWER_URL);
   });
 });

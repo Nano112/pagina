@@ -8,7 +8,7 @@
  * pane last wrote and an incoming `change` carrying it is ignored. Anything else (a conflict
  * resolved to "theirs", another tab, a file changed on disk) *is* adopted.
  */
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { EditorContent, ReactNodeViewRenderer, useEditor, type Editor } from "@tiptap/react";
 import type { AnyExtension, Extensions } from "@tiptap/core";
 import { editorExtensions } from "../model/schema.js";
@@ -54,6 +54,14 @@ export interface PageEditor {
   readonly editor: Editor | null;
   /** Serializes now (if an edit is pending) and writes every dirty file. Bound to Cmd/Ctrl-S. */
   readonly save: () => Promise<void>;
+  /**
+   * Why the last serialize failed, if it did.
+   *
+   * A throwing serializer is the one failure the store cannot see: the text never reaches it, so it
+   * reports "Saved" over a document whose edits are going nowhere. The message goes to the status
+   * bar instead, and the pending write is kept — the next successful serialize writes it.
+   */
+  readonly serializeError: string | undefined;
 }
 
 /**
@@ -64,6 +72,9 @@ export interface PageEditor {
 export function usePageEditor(store: ArticleStore, path: string): PageEditor {
   /** Front matter is not part of the ProseMirror document; it is carried across the round trip. */
   const frontMatter = useRef<string | undefined>(undefined);
+  const [serializeError, setSerializeError] = useState<string | undefined>(undefined);
+  /** One console line per distinct failure, not one per keystroke while the document stays broken. */
+  const loggedError = useRef<string | undefined>(undefined);
   /** The last text *this pane* wrote to the store — the echo guard. */
   const lastText = useRef<string>("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -93,12 +104,29 @@ export function usePageEditor(store: ArticleStore, path: string): PageEditor {
       onUpdate: ({ editor: instance }) => {
         if (applying.current) return;
         const target = pathRef.current;
-        pending.current = () => {
+        const write = (): void => {
           const fm = frontMatter.current;
-          const text = serializeMarkdown(instance.state.doc, fm === undefined ? {} : { frontMatter: fm });
+          let text: string;
+          try {
+            text = serializeMarkdown(instance.state.doc, fm === undefined ? {} : { frontMatter: fm });
+          } catch (e) {
+            // The write is *not* dropped: it is put back, so the next debounce — or a Cmd-S once
+            // the document is repaired — retries it, and the author keeps typing meanwhile.
+            pending.current = write;
+            const message = e instanceof Error ? e.message : String(e);
+            setSerializeError(message);
+            if (loggedError.current !== message) {
+              loggedError.current = message;
+              console.error("pagina: could not serialize the page", e);
+            }
+            return;
+          }
+          setSerializeError(undefined);
+          loggedError.current = undefined;
           lastText.current = text;
           store.setText(target, text);
         };
+        pending.current = write;
         if (timer.current !== undefined) clearTimeout(timer.current);
         timer.current = setTimeout(flushPending, SERIALIZE_DEBOUNCE_MS);
       },
@@ -156,14 +184,46 @@ export function usePageEditor(store: ArticleStore, path: string): PageEditor {
     await store.flush();
   }, [store, flushPending]);
 
-  return { editor, save };
+  return { editor, save, serializeError };
+}
+
+export interface EditorPaneProps {
+  readonly editor: Editor | null;
+  /**
+   * Files dropped on or pasted into the pane. Handled here rather than through TipTap's own
+   * `handleDrop`/`handlePaste` because an upload is asynchronous and a ProseMirror handler must
+   * decide synchronously whether it consumed the event; taking the files first and inserting when
+   * the upload resolves is the honest shape.
+   */
+  readonly onFiles?: ((files: readonly File[]) => void) | undefined;
+  /** The slash menu, which has to be positioned against this pane. */
+  readonly children?: ReactNode;
 }
 
 /** The editable surface. Kept dumb: everything stateful is in {@link usePageEditor}. */
-export function EditorPane({ editor }: { readonly editor: Editor | null }): ReactNode {
+export function EditorPane({ editor, onFiles, children }: EditorPaneProps): ReactNode {
+  const take = (files: FileList | null | undefined): boolean => {
+    const list = files === null || files === undefined ? [] : [...files];
+    if (list.length === 0 || onFiles === undefined) return false;
+    onFiles(list);
+    return true;
+  };
+
   return (
-    <div className="pge-pane pge-pane--editor">
+    <div
+      className="pge-pane pge-pane--editor"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (take(e.dataTransfer.files)) e.preventDefault();
+      }}
+      onPaste={(e) => {
+        if (take(e.clipboardData.files)) e.preventDefault();
+      }}
+    >
       <EditorContent editor={editor} className="pge-editor" />
+      {children}
     </div>
   );
 }

@@ -32,6 +32,11 @@ export interface EditorOptions {
   readonly base?: string;
   /** Forces the colour scheme instead of following the host document's `data-theme`. */
   readonly theme?: "light" | "dark";
+  /**
+   * Where `<model-viewer>` is loaded from. Defaults to Google's CDN; a site that self-hosts the
+   * element, or pins a different version, points this at its own copy.
+   */
+  readonly modelViewerUrl?: string;
 }
 
 /** What a mounted editor hands back to its host. */
@@ -52,12 +57,14 @@ export interface PaginaEditorProps {
   readonly theme?: "light" | "dark";
   /** Receives an `open(path)` callback once the app is mounted. */
   readonly onReady?: (open: (path: string) => void) => void;
+  /** See {@link EditorOptions.modelViewerUrl}. */
+  readonly modelViewerUrl?: string;
 }
 
 /** The editor as a React component, for hosts that already have a React tree. */
-export function PaginaEditor({ store, page = "index.md", theme, onReady }: PaginaEditorProps): ReactNode {
+export function PaginaEditor({ store, page = "index.md", theme, onReady, modelViewerUrl }: PaginaEditorProps): ReactNode {
   if (theme !== undefined && typeof document !== "undefined") document.documentElement.dataset["theme"] = theme;
-  return createElement(App, { store, page, onReady });
+  return createElement(App, { store, page, onReady, modelViewerUrl });
 }
 
 const DEFAULT_BACKEND_URL = "/__pagina/edit";
@@ -95,7 +102,14 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
   };
 
   const root: Root = createRoot(el);
-  root.render(createElement(App, { store, page: options.page ?? "index.md", onReady }));
+  root.render(
+    createElement(App, {
+      store,
+      page: options.page ?? "index.md",
+      onReady,
+      ...(options.modelViewerUrl === undefined ? {} : { modelViewerUrl: options.modelViewerUrl }),
+    }),
+  );
 
   return {
     store,
@@ -120,7 +134,8 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
 /**
  * `<pagina-editor>`: the editor as a custom element.
  *
- * Attributes: `backend-url`, `page`, `base`, `theme`, and `headers` (a JSON object). The mounted
+ * Attributes: `backend-url`, `page`, `base`, `theme`, `model-viewer-url`, and `headers` (a JSON
+ * object). The mounted
  * store is exposed as `.store` and publishing as `.publish()`, so a Blade or Livewire page can
  * drive the editor without importing anything.
  */
@@ -158,6 +173,7 @@ export class PaginaEditorElement extends HTMLElement {
       ...(attr("backend-url") === undefined ? {} : { backendUrl: attr("backend-url")! }),
       ...(attr("page") === undefined ? {} : { page: attr("page")! }),
       ...(attr("base") === undefined ? {} : { base: attr("base")! }),
+      ...(attr("model-viewer-url") === undefined ? {} : { modelViewerUrl: attr("model-viewer-url")! }),
       ...(theme === "light" || theme === "dark" ? { theme } : {}),
       ...(headers === undefined ? {} : { headers }),
     });

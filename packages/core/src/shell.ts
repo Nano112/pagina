@@ -17,6 +17,9 @@ export interface ShellContext {
   /** The dev server is running with `--edit`, so a shell may offer an "Edit this page" link
    *  into `/__edit/<href>`. Absent (or false) everywhere else, including every static build. */
   readonly edit?: boolean;
+  /** Where a shell loads Google's `<model-viewer>` element from, for pages that embed one.
+   *  Absent means "the shell's own default"; a site that self-hosts the element sets it. */
+  readonly modelViewerUrl?: string;
 }
 
 /** A page shell: turns a rendered article into files (`out path` → contents). */

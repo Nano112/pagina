@@ -44,13 +44,20 @@ function ConflictBanner({ store, file }: { readonly store: ArticleStore; readonl
   );
 }
 
+/** A message from the shell rather than from the store: an upload in flight, a failed serialize. */
+export interface StatusNotice {
+  readonly kind: "info" | "error";
+  readonly text: string;
+}
+
 export interface StatusBarProps {
   readonly store: ArticleStore;
   readonly path: string;
   readonly onSave: () => void;
+  readonly notice?: StatusNotice | undefined;
 }
 
-export function StatusBar({ store, path, onSave }: StatusBarProps): ReactNode {
+export function StatusBar({ store, path, onSave, notice }: StatusBarProps): ReactNode {
   useStoreRevision(store);
   const [now, setNow] = useState(() => Date.now());
   const status = store.status;
@@ -82,6 +89,14 @@ export function StatusBar({ store, path, onSave }: StatusBarProps): ReactNode {
               Retry
             </button>
           </>
+        )}
+        {notice === undefined ? null : (
+          <span
+            className={notice.kind === "error" ? "pge-status__error" : "pge-status__notice"}
+            role={notice.kind === "error" ? "alert" : "status"}
+          >
+            {notice.text}
+          </span>
         )}
         <span className="pge-status__spacer" />
         <span className="pge-status__path">{path}</span>

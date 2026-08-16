@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import type { RenderedArticle, Shell, ShellContext } from "@pagina/core";
 import { renderPageHtml, type ShellCtx } from "./template.js";
 
-export { renderPageHtml, type ShellCtx } from "./template.js";
+export { DEFAULT_MODEL_VIEWER_URL, renderPageHtml, type ShellCtx } from "./template.js";
 export { createHighlightedMarkdown } from "./highlight.js";
 
 /** The default static-site shell: page template + default theme + client runtime. */

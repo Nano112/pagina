@@ -3,13 +3,20 @@
  *
  * The two lists answer different questions. The pages tree mirrors `article.yaml`'s `nav` — the
  * reader's table of contents, in the author's order. The file list is the folder as it actually is,
- * including snippets, media and pages that are not in the nav yet; a page created here appears
- * there immediately but has to be added to `article.yaml` by hand before it joins the tree.
+ * including snippets, media and pages that are not in the nav yet.
+ *
+ * Creating a page writes *both*: the file, and the nav entry that makes it reachable. That is the
+ * whole point — a page nobody links to is not published, and asking an author to hand-edit YAML to
+ * finish a "New page" would be a WYSIWYG editor with a gap in the middle. Deleting one takes the
+ * nav entry with it, for the same reason.
  */
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { NavEntry } from "@pagina/core";
-import type { ArticleStore } from "../store/index.js";
+import { FilePlus2, FolderPlus, Trash2, Upload } from "lucide-react";
+import { ARTICLE_YAML, type ArticleStore } from "../store/index.js";
 import { useStoreRevision } from "./useStore.js";
+import { addNavEntry, navSections, removeNavEntry } from "./nav-yaml.js";
+import { slugify } from "./paths.js";
 
 const isMarkdown = (path: string): boolean => path.endsWith(".md");
 
@@ -49,6 +56,72 @@ function PagesTree({
   );
 }
 
+/** The "New page" form: a title, where the file goes, and which nav section it joins. */
+function NewPageForm({
+  sections,
+  onCancel,
+  onCreate,
+}: {
+  readonly sections: readonly string[];
+  readonly onCancel: () => void;
+  readonly onCreate: (input: { title: string; path: string; section: string }) => void;
+}): ReactNode {
+  const [title, setTitle] = useState("");
+  const [path, setPath] = useState("");
+  const [section, setSection] = useState("");
+  // The path follows the title until the author touches it — the same bargain the figure builder
+  // strikes with the scene id, and for the same reason.
+  const [autoPath, setAutoPath] = useState(true);
+  const effectivePath = (autoPath ? `${slugify(title)}.md` : path).trim();
+  const ready = title.trim() !== "" && effectivePath !== ".md" && effectivePath !== "";
+
+  return (
+    <form
+      className="pge-newpage"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) onCreate({ title: title.trim(), path: effectivePath, section });
+      }}
+    >
+      <label className="pge-field">
+        <span>Title</span>
+        <input className="pge-input" value={title} autoFocus onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label className="pge-field">
+        <span>File</span>
+        <input
+          className="pge-input"
+          value={effectivePath}
+          spellCheck={false}
+          onChange={(e) => {
+            setAutoPath(false);
+            setPath(e.target.value);
+          }}
+        />
+      </label>
+      <label className="pge-field">
+        <span>Section</span>
+        <select className="pge-select pge-select--sm" value={section} onChange={(e) => setSection(e.target.value)}>
+          <option value="">Top level</option>
+          {sections.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="pge-newpage__actions">
+        <button type="button" className="pge-btn pge-btn--sm" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="pge-btn pge-btn--sm pge-btn--primary" disabled={!ready}>
+          Create
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export interface SidebarProps {
   readonly store: ArticleStore;
   readonly current: string;
@@ -60,8 +133,11 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
   const [showFiles, setShowFiles] = useState(false);
   const [dropping, setDropping] = useState(false);
   const [busy, setBusy] = useState<string | undefined>(undefined);
+  const [creating, setCreating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const files = store.list();
+  const articleText = store.files.get(ARTICLE_YAML)?.text ?? "";
+  const navPaths = new Set(store.navPages().map((entry) => entry.page));
 
   const guard = async (what: string, run: () => Promise<unknown>): Promise<void> => {
     setBusy(undefined);
@@ -72,13 +148,24 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
     }
   };
 
-  const newPage = (): void => {
-    const path = globalThis.prompt?.("New page path", "new-page.md");
-    if (path === null || path === undefined || path === "") return;
+  const createPage = ({ title, path, section }: { title: string; path: string; section: string }): void => {
+    setCreating(false);
     void guard("Create", async () => {
       const name = path.endsWith(".md") ? path : `${path}.md`;
-      await store.createFile(name, `# ${name.replace(/\.md$/, "").split("/").pop() ?? "Untitled"}\n\n`);
+      await store.createFile(name, `# ${title}\n\n`);
+      // After the file, so a nav entry never points at something that is not there yet.
+      store.setText(ARTICLE_YAML, addNavEntry(articleText, { title, page: name, section: section === "" ? undefined : section }));
       onOpen(name);
+    });
+  };
+
+  const deleteFile = (path: string): void => {
+    const inNav = navPaths.has(path);
+    const question = inNav ? `Delete ${path} and remove it from the nav?` : `Delete ${path}?`;
+    if (globalThis.confirm?.(question) !== true) return;
+    void guard("Delete", async () => {
+      if (inNav) store.setText(ARTICLE_YAML, removeNavEntry(articleText, path));
+      await store.deleteFile(path);
     });
   };
 
@@ -119,11 +206,11 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
       <PagesTree entries={store.nav} current={current} onOpen={onOpen} />
 
       <div className="pge-sidebar__actions">
-        <button type="button" className="pge-btn" onClick={newPage}>
-          New page
+        <button type="button" className="pge-btn" onClick={() => setCreating((v) => !v)} aria-expanded={creating}>
+          <FilePlus2 size={14} aria-hidden="true" /> New page
         </button>
         <button type="button" className="pge-btn" onClick={() => fileInput.current?.click()}>
-          Upload
+          <Upload size={14} aria-hidden="true" /> Upload
         </button>
         <input
           ref={fileInput}
@@ -136,6 +223,10 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
           }}
         />
       </div>
+
+      {creating ? (
+        <NewPageForm sections={navSections(articleText)} onCancel={() => setCreating(false)} onCreate={createPage} />
+      ) : null}
 
       <button
         type="button"
@@ -169,19 +260,16 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
                   className="pge-icon"
                   title={`Delete ${file.path}`}
                   aria-label={`Delete ${file.path}`}
-                  onClick={() => {
-                    if (globalThis.confirm?.(`Delete ${file.path}?`) === true)
-                      void guard("Delete", () => store.deleteFile(file.path));
-                  }}
+                  onClick={() => deleteFile(file.path)}
                 >
-                  ×
+                  <Trash2 size={13} aria-hidden="true" />
                 </button>
               </li>
             ))}
           </ul>
           <div className="pge-sidebar__actions">
             <button type="button" className="pge-btn" onClick={newFile}>
-              New file
+              <FolderPlus size={14} aria-hidden="true" /> New file
             </button>
           </div>
         </>

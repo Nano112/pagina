@@ -19,6 +19,9 @@ import { ConflictError } from "./types.js";
 
 export type FileStatus = "saved" | "saving" | "dirty" | "error" | "conflict";
 
+/** The article's config file. Edited like any other file, but re-parsed whenever it changes. */
+export const ARTICLE_YAML = "article.yaml";
+
 /**
  * Why a file is in `conflict`, and what a resolution has to work with.
  *
@@ -178,9 +181,11 @@ export class ArticleStore {
   /** Lists the folder and reads `article.yaml`; everything else is read on demand. */
   async load(): Promise<ArticleConfig> {
     for (const entry of await this.#backend.list()) this.#entries.set(entry.path, entry);
-    const { text, version } = await this.#backend.read("article.yaml");
-    this.#adopt("article.yaml", text, version);
+    const { text, version } = await this.#backend.read(ARTICLE_YAML);
+    // Not via `#adopt`'s forgiving re-parse: a config that does not parse at *load* is a fatal
+    // condition the caller has to see, not something to shrug at.
     this.#article = parseArticleConfig(text);
+    this.#adopt(ARTICLE_YAML, text, version);
     this.#emit("files", undefined);
     return this.#article;
   }
@@ -219,6 +224,7 @@ export class ArticleStore {
     r.dirty = true;
     r.error = undefined;
     r.attempt = 0;
+    if (path === ARTICLE_YAML) this.#reparseArticle(text);
     this.#setStatus(r, "dirty");
     this.#emit("change", path);
     this.#schedule(r);
@@ -434,7 +440,25 @@ export class ArticleStore {
   #adopt(path: string, text: string, version: string): Record_ {
     const r = this.#rec(path);
     r.text = text; r.version = version; r.dirty = false; r.error = undefined; r.status = "saved";
+    if (path === ARTICLE_YAML) this.#reparseArticle(text);
     return r;
+  }
+
+  /**
+   * Re-reads the article config after `article.yaml` changed.
+   *
+   * The config drives the nav tree, the page list and every render, so an edit that did not reach
+   * it would leave the UI describing a file that no longer exists. A *failed* parse is not one of
+   * those moments: half-typed YAML is the normal state of a file being edited, and the last config
+   * that did parse is a better answer than none at all — the editor's own YAML writes go through
+   * `nav-yaml.ts` and are always well-formed.
+   */
+  #reparseArticle(text: string): void {
+    try {
+      this.#article = parseArticleConfig(text);
+    } catch {
+      // Keep the previous config; the render pass will surface the real error where it belongs.
+    }
   }
 
   #forget(path: string): void {

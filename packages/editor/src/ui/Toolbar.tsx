@@ -4,12 +4,29 @@
  * Every control is a thin wrapper over a TipTap command chain, and every one reports whether it is
  * currently *available* (`editor.can()`) and whether it is *active* — a disabled button that would
  * throw is worse than no button, and a toggle that does not show its state is a guess.
+ *
+ * The block inserts are not defined here: they come from `inserts.ts`, the same list the slash menu
+ * offers, so the two can never drift apart. What is defined here is which of them are worth a
+ * permanent button.
  */
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useEditorState, type Editor } from "@tiptap/react";
+import {
+  Baseline, Bold, Code, Highlighter, Image, Italic, Link2, List, ListOrdered, Minus, Quote, Redo2,
+  Scissors, Shapes, Sparkles, Strikethrough, Table, Undo2, Box,
+} from "lucide-react";
 import type { ArticleStore } from "../store/index.js";
+import { ColorButton } from "./ColorPicker.js";
+import { useFigureBuilder, usePagePath } from "./context.js";
+import { INSERTS, type InsertContext } from "./inserts.js";
 
 const ADMONITION_KINDS = ["note", "tip", "info", "warning", "danger", "example", "quote"] as const;
+
+/** `⌘` on a Mac, `Ctrl` everywhere else — a tooltip that names the wrong key is worse than none. */
+const MOD =
+  typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent) ? "⌘" : "Ctrl+";
+
+const hint = (title: string, keys?: string): string => (keys === undefined ? title : `${title} (${keys})`);
 
 interface ButtonProps {
   readonly onClick: () => void;
@@ -38,9 +55,13 @@ function ToolButton({ onClick, title, children, active = false, disabled = false
   );
 }
 
+const ICON = { size: 16, "aria-hidden": true } as const;
+
 export interface ToolbarProps {
   readonly editor: Editor | null;
   readonly store: ArticleStore;
+  /** Opens the host's file chooser; the upload itself is the app's job, not the toolbar's. */
+  readonly onPickFile: () => void;
 }
 
 /**
@@ -57,6 +78,8 @@ interface ToolbarState {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly linkHref: string;
+  readonly color: string;
+  readonly highlight: string;
 }
 
 const EMPTY_STATE: ToolbarState = {
@@ -66,18 +89,30 @@ const EMPTY_STATE: ToolbarState = {
   canUndo: false,
   canRedo: false,
   linkHref: "",
+  color: "",
+  highlight: "",
 };
 
 const MARKS = ["bold", "italic", "strike", "code", "link", "highlight", "bulletList", "orderedList", "blockquote"] as const;
 
-export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
-  const fileInput = useRef<HTMLInputElement>(null);
+/** Runs the shared insert with the id `id`. Throws only if the list and the toolbar disagree. */
+function runInsert(id: string, ctx: InsertContext): void {
+  const action = INSERTS.find((candidate) => candidate.id === id);
+  if (action === undefined) throw new Error(`pagina: no insert named "${id}"`);
+  action.run(ctx);
+}
+
+export function Toolbar({ editor, store, onPickFile }: ToolbarProps): ReactNode {
+  const pagePath = usePagePath();
+  const openBuilder = useFigureBuilder();
   const state = useEditorState<ToolbarState>({
     editor,
     selector: ({ editor: e }): ToolbarState => {
       if (e === null) return EMPTY_STATE;
       const level = ([1, 2, 3, 4] as const).find((l) => e.isActive("heading", { level: l }));
       const href: unknown = e.getAttributes("link")["href"];
+      const color: unknown = e.getAttributes("textStyle")["color"];
+      const highlight: unknown = e.getAttributes("highlight")["color"];
       return {
         block: e.isActive("codeBlock") ? "codeBlock" : level === undefined ? "paragraph" : `h${level}`,
         marks: Object.fromEntries(MARKS.map((m) => [m, e.isActive(m)])),
@@ -85,6 +120,8 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
         linkHref: typeof href === "string" ? href : "",
+        color: typeof color === "string" ? color : "",
+        highlight: typeof highlight === "string" ? highlight : "",
       };
     },
   }) ?? EMPTY_STATE;
@@ -93,36 +130,18 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
 
   const chain = () => editor.chain().focus();
   const on = (name: string): boolean => state.marks[name] === true;
+  const ctx: InsertContext = {
+    editor,
+    store,
+    pagePath,
+    ...(openBuilder === undefined ? {} : { openBuilder }),
+    pickFile: onPickFile,
+  };
 
   const setBlock = (value: string): void => {
     if (value === "paragraph") chain().setParagraph().run();
     else if (value === "codeBlock") chain().toggleCodeBlock().run();
     else chain().setHeading({ level: Number(value.slice(1)) as 1 | 2 | 3 | 4 }).run();
-  };
-
-  const insertAdmonition = (kind: string): void => {
-    chain()
-      .insertContent({
-        type: "admonition",
-        attrs: { kind, title: "", collapsible: false },
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Write the note here." }] }],
-      })
-      .run();
-  };
-
-  const insertTabs = (): void => {
-    const tab = (label: string, text: string) => ({
-      type: "tab",
-      attrs: { label },
-      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-    });
-    chain().insertContent({ type: "tabs", content: [tab("Tab 1", "First tab."), tab("Tab 2", "Second tab.")] }).run();
-  };
-
-  const insertSnippet = (): void => {
-    const ref = globalThis.prompt?.("Snippet reference (path[:section])", "snippets/example.py");
-    if (ref === null || ref === undefined || ref === "") return;
-    chain().insertContent({ type: "snippet", attrs: { ref } }).run();
   };
 
   const insertLink = (): void => {
@@ -132,17 +151,6 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
     else chain().setLink({ href }).run();
   };
 
-  const upload = async (file: File): Promise<void> => {
-    const result = await store.uploadFile(file);
-    if (/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(result.path)) {
-      chain().insertContent({ type: "image", attrs: { src: result.path, alt: file.name } }).run();
-    } else if (/\.glb$/i.test(result.path)) {
-      chain().insertContent({ type: "modelViewer", attrs: { src: result.path, alt: file.name } }).run();
-    } else {
-      chain().insertContent(`[${file.name}](${result.path})`).run();
-    }
-  };
-
   return (
     <div className="pge-toolbar" role="toolbar" aria-label="Formatting">
       <select
@@ -150,6 +158,7 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
         value={state.block}
         onChange={(e) => setBlock(e.target.value)}
         aria-label="Block type"
+        title="Block type"
       >
         <option value="paragraph">Paragraph</option>
         <option value="h1">Heading 1</option>
@@ -161,53 +170,58 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
 
       <span className="pge-toolbar__sep" />
 
-      <ToolButton title="Bold" active={on("bold")} onClick={() => chain().toggleBold().run()}>
-        <b>B</b>
+      <ToolButton title={hint("Bold", `${MOD}B`)} active={on("bold")} onClick={() => chain().toggleBold().run()}>
+        <Bold {...ICON} />
       </ToolButton>
-      <ToolButton title="Italic" active={on("italic")} onClick={() => chain().toggleItalic().run()}>
-        <i>I</i>
+      <ToolButton title={hint("Italic", `${MOD}I`)} active={on("italic")} onClick={() => chain().toggleItalic().run()}>
+        <Italic {...ICON} />
       </ToolButton>
-      <ToolButton title="Strike" active={on("strike")} onClick={() => chain().toggleStrike().run()}>
-        <s>S</s>
+      <ToolButton title={hint("Strikethrough", `${MOD}⇧S`)} active={on("strike")} onClick={() => chain().toggleStrike().run()}>
+        <Strikethrough {...ICON} />
       </ToolButton>
-      <ToolButton title="Code" active={on("code")} onClick={() => chain().toggleCode().run()}>
-        <code>{"</>"}</code>
+      <ToolButton title={hint("Inline code", `${MOD}E`)} active={on("code")} onClick={() => chain().toggleCode().run()}>
+        <Code {...ICON} />
       </ToolButton>
-      <ToolButton title="Link" active={on("link")} onClick={insertLink}>
-        ↗
+      <ToolButton title={hint("Link", `${MOD}K`)} active={on("link")} onClick={insertLink}>
+        <Link2 {...ICON} />
       </ToolButton>
-      <label className="pge-tool pge-tool--color" title="Text colour">
-        <span aria-hidden="true">A</span>
-        <input
-          type="color"
-          aria-label="Text colour"
-          onChange={(e) => chain().setColor(e.target.value).run()}
-        />
-      </label>
-      <ToolButton title="Highlight" active={on("highlight")} onClick={() => chain().toggleHighlight().run()}>
-        ▨
-      </ToolButton>
+      <ColorButton
+        title="Text colour"
+        label="Text colour"
+        active={state.color !== ""}
+        value={state.color === "" ? undefined : state.color}
+        onPick={(hex) => chain().setColor(hex).run()}
+        onClear={() => chain().unsetColor().run()}
+      >
+        <Baseline {...ICON} />
+      </ColorButton>
+      <ColorButton
+        title="Highlight"
+        label="Highlight"
+        active={on("highlight")}
+        value={state.highlight === "" ? undefined : state.highlight}
+        onPick={(hex) => chain().setHighlight({ color: hex }).run()}
+        onClear={() => chain().unsetHighlight().run()}
+      >
+        <Highlighter {...ICON} />
+      </ColorButton>
 
       <span className="pge-toolbar__sep" />
 
-      <ToolButton title="Bullet list" active={on("bulletList")} onClick={() => chain().toggleBulletList().run()}>
-        •
+      <ToolButton title={hint("Bullet list", `${MOD}⇧8`)} active={on("bulletList")} onClick={() => chain().toggleBulletList().run()}>
+        <List {...ICON} />
       </ToolButton>
-      <ToolButton title="Numbered list" active={on("orderedList")} onClick={() => chain().toggleOrderedList().run()}>
-        1.
+      <ToolButton title={hint("Numbered list", `${MOD}⇧7`)} active={on("orderedList")} onClick={() => chain().toggleOrderedList().run()}>
+        <ListOrdered {...ICON} />
       </ToolButton>
-      <ToolButton title="Quote" active={on("blockquote")} onClick={() => chain().toggleBlockquote().run()}>
-        ❝
+      <ToolButton title={hint("Quote", `${MOD}⇧B`)} active={on("blockquote")} onClick={() => chain().toggleBlockquote().run()}>
+        <Quote {...ICON} />
       </ToolButton>
-      <ToolButton title="Horizontal rule" onClick={() => chain().setHorizontalRule().run()}>
-        —
+      <ToolButton title="Divider" onClick={() => runInsert("hr", ctx)}>
+        <Minus {...ICON} />
       </ToolButton>
-      <ToolButton
-        title="Table"
-        disabled={!state.canTable}
-        onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-      >
-        ▦
+      <ToolButton title="Table (3×3)" disabled={!state.canTable} onClick={() => runInsert("table", ctx)}>
+        <Table {...ICON} />
       </ToolButton>
 
       <span className="pge-toolbar__sep" />
@@ -215,8 +229,9 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
       <select
         className="pge-select"
         value=""
+        title="Insert an admonition"
         onChange={(e) => {
-          if (e.target.value !== "") insertAdmonition(e.target.value);
+          if (e.target.value !== "") runInsert(`admonition-${e.target.value}`, ctx);
           e.target.value = "";
         }}
         aria-label="Insert admonition"
@@ -228,49 +243,29 @@ export function Toolbar({ editor, store }: ToolbarProps): ReactNode {
           </option>
         ))}
       </select>
-      <ToolButton title="Tabs" onClick={insertTabs}>
-        ⧉
+      <ToolButton title="Tabs" onClick={() => runInsert("tabs", ctx)}>
+        <Shapes {...ICON} />
       </ToolButton>
-      <ToolButton title="Snippet" onClick={insertSnippet}>
-        ✂
+      <ToolButton title="Snippet include" onClick={() => runInsert("snippet", ctx)}>
+        <Scissors {...ICON} />
       </ToolButton>
-      <ToolButton
-        title="Kineglyph figure"
-        onClick={() =>
-          chain()
-            .insertContent({ type: "figureKg", attrs: { kind: "static", id: `figure-${Date.now().toString(36)}` } })
-            .run()
-        }
-      >
-        ◈
+      <ToolButton title="Kineglyph figure" onClick={() => runInsert("figure", ctx)}>
+        <Sparkles {...ICON} />
       </ToolButton>
-      <ToolButton
-        title="3D model"
-        onClick={() => chain().insertContent({ type: "modelViewer", attrs: { src: "media/model.glb", alt: "" } }).run()}
-      >
-        ⬢
+      <ToolButton title="3D model" onClick={() => runInsert("model", ctx)}>
+        <Box {...ICON} />
       </ToolButton>
-      <ToolButton title="Upload image or file" onClick={() => fileInput.current?.click()}>
-        ⇧
+      <ToolButton title="Upload an image or file" onClick={() => runInsert("upload", ctx)}>
+        <Image {...ICON} />
       </ToolButton>
-      <input
-        ref={fileInput}
-        type="file"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (file !== undefined) void upload(file);
-        }}
-      />
 
       <span className="pge-toolbar__spacer" />
 
-      <ToolButton title="Undo" disabled={!state.canUndo} onClick={() => chain().undo().run()}>
-        ↺
+      <ToolButton title={hint("Undo", `${MOD}Z`)} disabled={!state.canUndo} onClick={() => chain().undo().run()}>
+        <Undo2 {...ICON} />
       </ToolButton>
-      <ToolButton title="Redo" disabled={!state.canRedo} onClick={() => chain().redo().run()}>
-        ↻
+      <ToolButton title={hint("Redo", `${MOD}⇧Z`)} disabled={!state.canRedo} onClick={() => chain().redo().run()}>
+        <Redo2 {...ICON} />
       </ToolButton>
     </div>
   );
