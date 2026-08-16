@@ -256,7 +256,9 @@ documents.
 npm test               # vitest, all packages (core, vite incl. dev-server + real Vite build, shell-static)
 npm run typecheck
 npm run lint
-npm run build          # core → vite → shell-static → cli (dependency order)
+npm run build          # core → vite → shell-static → editor → cli (dependency order)
+npm run test:e2e       # Playwright: a real browser against `pagina dev --edit` (needs `npm run build`
+                       # and `npx playwright install chromium`); not part of `npm test`
 ```
 
 The fixture article at `packages/core/test/fixture/` exercises every syntax above and all three
@@ -266,7 +268,7 @@ figure forms; it is what the integration tests build.
 
 - The figure provider is Kineglyph-only; the pluggable-provider seam is not built yet.
 - Figures are recorded as `staticBase` rather than a `static: Record<theme, path>` map.
-- Pagefind search and a Playwright smoke test are not yet added.
+- Pagefind search is not yet added.
 
 ## License
 

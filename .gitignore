@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .pagina/
+e2e/.tmp/
+test-results/
+playwright-report/

@@ -149,8 +149,9 @@ The article folder is **trusted content**, and so is everyone who can reach the 
 - **No undo across files**, no page rename from the sidebar (only create and delete), no search.
 - **Publish renders figures on the host's runtime**, so a host page without an import map for
   `kineglyph` publishes pages whose figures hydrate client-side instead of carrying SVG.
-- **No Playwright smoke test.** The editor is verified in Chrome by hand and by 245 unit/integration
-  tests; the end-to-end lane is not wired up.
+- **The Playwright lane is a smoke test, not coverage.** Two specs — type into a page and see the
+  file on disk change, and see the figures hydrate — over a real `pagina dev --edit`. Everything
+  else is unit and integration tests plus verification in Chrome by hand.
 
 ## Development
 
@@ -158,6 +159,7 @@ The article folder is **trusted content**, and so is everyone who can reach the 
 npm test                       # from the repo root: vitest, all packages
 npm run typecheck
 npm run build                  # tsc → dist/, then vite → dist/editor.{js,iife.js,css}
+npm run test:e2e               # Playwright against a real `pagina dev --edit` (needs the build)
 ```
 
 Entry points: `.` (everything), `./model` (schema + markdown parse/serialize, no UI),
