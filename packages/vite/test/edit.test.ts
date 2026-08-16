@@ -433,4 +433,79 @@ describe("pagina dev --edit", () => {
     await backend.delete("guide/from-client.md");
     expect(existsSync(join(folder, "guide/from-client.md"))).toBe(false);
   }, 30_000);
+
+  /**
+   * The editor is a client of the same HMR socket as the site, so a `full-reload` sent for its own
+   * write lands on `/__edit/` too and throws away everything typed since the last save — which is
+   * how an upload used to lose its just-inserted image node (task B4b, concern 1).
+   *
+   * The external write is asserted *first*, so the second half cannot pass merely because the
+   * watcher is asleep: it measures the latency the folder's watcher actually has, and then waits a
+   * multiple of it for a reload that must never come.
+   */
+  it("suppresses the site full-reload for its own writes, not for an outside one", async () => {
+    const sent: { type: string }[] = [];
+    const original = server.ws.send.bind(server.ws) as (...args: unknown[]) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (server.ws as any).send = (...args: unknown[]): void => {
+      const payload = args[0];
+      if (typeof payload === "object" && payload !== null && "type" in payload) sent.push(payload as { type: string });
+    };
+    const reloads = (): number => sent.filter((m) => m.type === "full-reload").length;
+    const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+    try {
+      const started = Date.now();
+      await writeFile(join(folder, "guide/from-outside.md"), `# Outside ${String(started)}\n`);
+      const deadline = started + 10_000;
+      while (reloads() === 0 && Date.now() < deadline) await sleep(25);
+      expect(reloads()).toBeGreaterThan(0);
+      const latency = Date.now() - started;
+
+      sent.length = 0;
+      const read = await fetch(`${api}/files/guide/tabs.md?responseType=text`);
+      const version = unquote(read.headers.get("ETag"));
+      const put = await fetch(`${api}/files/guide/tabs.md`, {
+        method: "PUT",
+        headers: { "if-match": `"${version}"`, "content-type": "text/plain" },
+        body: `# Tabs ${String(Date.now())}\n\nEdited through the contract.\n`,
+      });
+      expect(put.status).toBe(200);
+      // Comfortably longer than the watcher just proved it needs, and still inside the two-second
+      // window in which a write counts as the editor's own.
+      await sleep(Math.min(1500, Math.max(600, latency * 4)));
+      expect(sent.filter((m) => m.type === "full-reload")).toHaveLength(0);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (server.ws as any).send = original;
+      await rm(join(folder, "guide/from-outside.md"), { force: true });
+    }
+  }, 60_000);
+
+  it("still hot-swaps a scene module the editor itself saved", async () => {
+    const events: { event?: string }[] = [];
+    const original = server.ws.send.bind(server.ws) as (...args: unknown[]) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (server.ws as any).send = (...args: unknown[]): void => {
+      const payload = args[0];
+      if (typeof payload === "object" && payload !== null) events.push(payload as { event?: string });
+    };
+    try {
+      const res = await fetch(`${api}/files/scenes/from-editor.mjs`, {
+        method: "PUT",
+        headers: { "content-type": "text/plain" },
+        body: `export default { id: "from-editor-${String(Date.now())}", nodes: [] };\n`,
+      });
+      expect(res.status).toBe(200);
+      const deadline = Date.now() + 10_000;
+      while (!events.some((e) => e.event === "kineglyph:update") && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(events.some((e) => e.event === "kineglyph:update")).toBe(true);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (server.ws as any).send = original;
+      await rm(join(folder, "scenes/from-editor.mjs"), { force: true });
+    }
+  }, 60_000);
 });
