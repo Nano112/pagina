@@ -1,13 +1,18 @@
 import type { FigureRef } from "./types.js";
 
 export interface FigureRewriteOptions { readonly pageSlug: string; readonly themes: readonly string[]; readonly staticBaseUrl: (id: string) => string }
-const FIGURE = /<figure\b([^>]*\bclass="[^"]*\bkg\b[^"]*"[^>]*)>([\s\S]*?)<\/figure>/g;
+const FIGURE = /<figure\b([^>]*)>([\s\S]*?)<\/figure>/g;
 const attr = (attrs: string, name: string): string | undefined => new RegExp(`\\b${name}="([^"]*)"`).exec(attrs)?.[1];
+const isKg = (attrs: string): boolean => {
+  const cls = attr(attrs, "class");
+  return cls !== undefined && /(^|\s)kg(\s|$)/.test(cls);
+};
 
 export function extractFigures(html: string, opts: FigureRewriteOptions): { html: string; figures: FigureRef[] } {
   const figures: FigureRef[] = [];
   let n = 0;
-  const out = html.replace(FIGURE, (_whole, attrs: string, inner: string) => {
+  const out = html.replace(FIGURE, (whole, attrs: string, inner: string) => {
+    if (!isKg(attrs)) return whole;
     n++;
     const existingId = attr(attrs, "id");
     const id = existingId ?? `kg-${opts.pageSlug}-${n}`;
@@ -15,7 +20,7 @@ export function extractFigures(html: string, opts: FigureRewriteOptions): { html
     const script = /<script\b[^>]*type="text\/kineglyph"[^>]*>([\s\S]*?)<\/script>/.exec(inner);
     if (script === null && scene === undefined) {
       figures.push({ id, kind: "static", ...(attr(attrs, "data-static") === undefined ? {} : { static: attr(attrs, "data-static")! }) });
-      return _whole;
+      return whole;
     }
     const base = opts.staticBaseUrl(id);
     const [first, ...rest] = opts.themes as [string, ...string[]];

@@ -40,7 +40,14 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
   const base = (o.base ?? "/").replace(/\/$/, "");
   for (const p of Object.values(pages))
     for (const l of p.links) {
-      if (l.resolved === undefined || !l.resolved.includes("#")) continue;
+      if (l.resolved === undefined) continue;
+      if (l.resolved.startsWith("#")) {
+        const frag = l.resolved.slice(1);
+        if (!p.headings.some((h) => h.id === frag))
+          diagnostics.push({ severity: "error", code: "anchor-missing", message: `${l.raw}: no heading #${frag} in ${p.path}`, page: p.path });
+        continue;
+      }
+      if (!l.resolved.includes("#")) continue;
       const [target, frag] = l.resolved.split("#") as [string, string];
       const rel = target.startsWith(base) ? target.slice(base.length) || "/" : target;
       const tp = pages[rel];

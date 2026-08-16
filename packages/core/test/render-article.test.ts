@@ -51,4 +51,15 @@ describe("renderArticle", () => {
     const r = await renderArticle({ fs, strict: false });
     expect(r.diagnostics.map((d) => d.code).sort()).toEqual(["anchor-missing", "link-unresolved", "nav-missing-file"]);
   });
+
+  it("flags a same-page anchor to a missing heading, and not one to a real heading", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md" ? `# X\n\n[bad](#nope) [ok](#x)` : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: false });
+    const anchorDiags = r.diagnostics.filter((d) => d.code === "anchor-missing");
+    expect(anchorDiags).toHaveLength(1);
+    expect(anchorDiags[0]).toMatchObject({ page: "index.md", message: expect.stringContaining("#nope") });
+  });
 });

@@ -16,4 +16,11 @@ describe("extractFigures", () => {
     expect(r.html).toContain(`<script type="text/kineglyph">export default 1</script>`); // inline kept for the runtime
     expect(r.html).toContain(`<img src="/media/s.svg" alt="static">`);           // static untouched
   });
+
+  it("does not treat class tokens that merely contain \"kg\" as the kg marker", () => {
+    const html = `<figure class="kg-static"><img src="x.svg"></figure><figure class="not-kg"><img src="y.svg"></figure>`;
+    const r = extractFigures(html, opts);
+    expect(r.figures).toEqual([]);
+    expect(r.html).toBe(html);
+  });
 });
