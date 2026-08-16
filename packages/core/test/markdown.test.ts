@@ -75,6 +75,21 @@ describe("anchors + title", () => {
     ]);
     expect(r.html).toContain(`<h2 id="build-a-beacon-2">`);
   });
+  it("keeps an explicit {#custom-id} instead of the slug", () => {
+    const r = renderMarkdown(md, `## Custom Heading {#my-id}`);
+    expect(r.html).toContain(`<h2 id="my-id">`);
+    expect(r.headings[0]).toEqual({ id: "my-id", text: "Custom Heading", level: 2 });
+  });
+  it("keeps an explicit id out of a later slug's way", () => {
+    const r = renderMarkdown(md, `## Later {#later}\n\n## Later`);
+    expect(r.headings.map((h) => h.id)).toEqual(["later", "later-2"]);
+  });
+  it("lists headings nested in tabs and admonitions in document order", () => {
+    const r = renderMarkdown(md, `# A\n\n=== "T"\n\n    ## Inside\n\n## After`);
+    expect(r.headings.map((h) => h.id)).toEqual(["a", "inside", "after"]);
+    const r2 = renderMarkdown(md, `# A\n\n!!! note "N"\n\n    ## Inside\n\n## After`);
+    expect(r2.headings.map((h) => h.id)).toEqual(["a", "inside", "after"]);
+  });
   it("passes raw HTML through", () => {
     expect(renderMarkdown(md, `<figure class="kg" data-scene="x.mjs"></figure>`).html).toContain(`<figure class="kg"`);
   });

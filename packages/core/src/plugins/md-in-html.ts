@@ -1,4 +1,5 @@
 import type MarkdownIt from "markdown-it";
+import { renderNested, type NestedHeadings } from "./anchors.js";
 
 // MkDocs' `md_in_html` extension (a subset of python-markdown's, part of the "MkDocs subset"
 // this dialect promises): an HTML block whose opening tag carries a `markdown="1|block|span"`
@@ -41,8 +42,10 @@ export function mdInHtmlPlugin(md: MarkdownIt): void {
       const inner = token.content.slice(openTag.length, closeAt);
       const trailing = token.content.slice(closeAt + closeTag.length);
       const openWithoutMarkdown = openTag.replace(/\s*markdown="(?:1|block|span)"/, "");
-      const rendered = mode === "span" ? md.renderInline(inner, state.env) : md.render(inner, state.env);
-      token.content = `${openWithoutMarkdown}${rendered}${closeTag}${trailing}`;
+      const rendered = renderNested(md, inner, state.env, mode === "span");
+      // See `renderNested`: keep any headings from the nested render in document order.
+      token.meta = { headings: rendered.headings } satisfies NestedHeadings;
+      token.content = `${openWithoutMarkdown}${rendered.html}${closeTag}${trailing}`;
     }
   });
 }

@@ -1,5 +1,6 @@
 import type MarkdownIt from "markdown-it";
 import { readIndentedBody } from "./tabs.js";
+import { renderNested, type NestedHeadings } from "./anchors.js";
 
 const ADM_RE = /^(!!!|\?\?\?)\s+([\w-]+)(?:\s+"([^"]*)")?\s*$/;
 
@@ -12,13 +13,15 @@ export function admonitionPlugin(md: MarkdownIt): void {
     const [, marker, kind, rawTitle] = m as unknown as [string, string, string, string | undefined];
     const title = rawTitle ?? kind.charAt(0).toUpperCase() + kind.slice(1);
     const [body, next] = readIndentedBody(state, startLine + 1);
-    const inner = md.render(body, state.env);
+    const inner = renderNested(md, body, state.env);
     const cls = `pg-admonition pg-admonition--${md.utils.escapeHtml(kind)}`;
     const html =
       marker === "???"
-        ? `<details class="${cls}"><summary>${md.utils.escapeHtml(title)}</summary>\n${inner}</details>\n`
-        : `<aside class="${cls}"><p class="pg-admonition__title">${md.utils.escapeHtml(title)}</p>\n${inner}</aside>\n`;
+        ? `<details class="${cls}"><summary>${md.utils.escapeHtml(title)}</summary>\n${inner.html}</details>\n`
+        : `<aside class="${cls}"><p class="pg-admonition__title">${md.utils.escapeHtml(title)}</p>\n${inner.html}</aside>\n`;
     const token = state.push("html_block", "", 0);
+    // See `renderNested`: these belong at this point in `headings[]`, not ahead of it.
+    token.meta = { headings: inner.headings } satisfies NestedHeadings;
     token.content = html;
     token.map = [startLine, next];
     state.line = next;

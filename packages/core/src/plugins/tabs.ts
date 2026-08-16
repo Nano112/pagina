@@ -1,5 +1,7 @@
 import type MarkdownIt from "markdown-it";
 import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
+import type { Heading } from "../types.js";
+import { renderNested, type NestedHeadings } from "./anchors.js";
 
 const TAB_RE = /^=== "(.+)"\s*$/;
 
@@ -41,10 +43,18 @@ export function tabsPlugin(md: MarkdownIt): void {
     const buttons = tabs
       .map((t, i) => `<button role="tab" aria-selected="${i === 0}" aria-controls="tab-${n}-${i}" id="tabbtn-${n}-${i}" tabindex="${i === 0 ? 0 : -1}">${md.utils.escapeHtml(t.label)}</button>`)
       .join("");
+    const inner: Heading[] = [];
     const panels = tabs
-      .map((t, i) => `<section role="tabpanel" id="tab-${n}-${i}" aria-labelledby="tabbtn-${n}-${i}"${i === 0 ? "" : " hidden"}>\n${md.render(t.body, state.env)}</section>`)
+      .map((t, i) => {
+        const r = renderNested(md, t.body, state.env);
+        inner.push(...r.headings);
+        return `<section role="tabpanel" id="tab-${n}-${i}" aria-labelledby="tabbtn-${n}-${i}"${i === 0 ? "" : " hidden"}>\n${r.html}</section>`;
+      })
       .join("\n");
     const token = state.push("html_block", "", 0);
+    // Headings inside the panels belong at *this* point of the document, not ahead of every
+    // outer heading; `pg_anchors` splices them in when it walks past this token.
+    token.meta = { headings: inner } satisfies NestedHeadings;
     token.content = `<div class="pg-tabs" data-pg-tabs><div class="pg-tabs__list" role="tablist">${buttons}</div>\n${panels}\n</div>\n`;
     token.map = [startLine, line];
     state.line = line;
