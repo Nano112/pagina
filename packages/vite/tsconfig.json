@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // `@pagina/core` is typechecked from source so this package does not need core built first.
+    "paths": { "@pagina/core": ["../core/src/index.ts"] }
+  },
+  "include": ["src", "test"]
+}
