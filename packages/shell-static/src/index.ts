@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
-import type { Shell, ShellContext } from "@pagina/vite";
-import type { RenderedArticle } from "@pagina/core";
+import type { RenderedArticle, Shell, ShellContext } from "@pagina/core";
 import { renderPageHtml, type ShellCtx } from "./template.js";
 
 export { renderPageHtml, type ShellCtx } from "./template.js";

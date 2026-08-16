@@ -1,6 +1,6 @@
 import type { NavNode, RenderedArticle } from "@pagina/core";
 
-/** Context a page render pass gets. The five required fields mirror `@pagina/vite`'s
+/** Context a page render pass gets. The five required fields mirror `@pagina/core`'s
  * `ShellContext` exactly; `kineglyphThemeUrl` is computed by `staticShell` internally (see
  * `src/index.ts`) and is not part of the public `Shell.render` contract. */
 export interface ShellCtx {
@@ -14,6 +14,9 @@ export interface ShellCtx {
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]!);
+/** A string inside a raw-text `<script>` element: HTML escapes are NOT decoded there, so the
+ *  value must be JSON-escaped (not HTML-escaped) and only `</script` needs neutralising. */
+const escInScriptJson = (s: string) => JSON.stringify(s).slice(1, -1).replace(/<\/script/gi, "<\\/script");
 const withBase = (base: string, href: string) => `${base.replace(/\/$/, "")}${href}`;
 
 function navHtml(nodes: readonly NavNode[], current: string, base: string, depth = 0): string {
@@ -55,7 +58,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(page.title)} · ${esc(a.title)}</title>
 <script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
-<script type="importmap">{"imports":{"kineglyph":"${esc(ctx.kineglyphRuntimeUrl)}"}}</script>
+<script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
 <link rel="stylesheet" href="${esc(ctx.cssUrl)}">
 </head>
 <body>

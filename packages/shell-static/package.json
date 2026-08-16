@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@pagina/core": "*",
-    "@pagina/vite": "*",
     "markdown-it": "^14.1.0",
     "shiki": "^3.12.0"
   },

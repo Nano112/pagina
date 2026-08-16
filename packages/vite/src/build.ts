@@ -2,24 +2,15 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type RenderedArticle } from "@pagina/core";
+import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type Shell } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
 
-/** Context a shell gets for one render pass. All URLs are site URLs (they include `base`). */
-export interface ShellContext {
-  readonly base: string;
-  readonly kineglyphRuntimeUrl: string;
-  readonly clientUrl: string;
-  readonly cssUrl: string;
-  readonly dev: boolean;
-}
-/** A page shell: turns a rendered article into files (`out path` → contents). */
-export interface Shell {
-  readonly clientEntry: string;
-  render(article: RenderedArticle, ctx: ShellContext): Promise<Record<string, string | Uint8Array>>;
-}
+// `Shell`/`ShellContext` are defined in `@pagina/core` so a shell package can type itself
+// against the contract without depending on this builder; re-exported here for compatibility.
+export type { Shell, ShellContext } from "@pagina/core";
+
 export interface BuildOptions {
   readonly folder: string;
   readonly outDir: string;
@@ -38,7 +29,9 @@ async function write(outDir: string, rel: string, data: string | Uint8Array): Pr
 /** Site-absolute URL (which includes `base`) → path relative to `outDir`. */
 function stripBase(url: string, base: string): string {
   const b = base.replace(/\/$/, "");
-  return (b !== "" && url.startsWith(b) ? url.slice(b.length) : url).replace(/^\/+/, "");
+  // Only strip at a path-segment boundary: base `/docs` must not eat `/docsearch/...`.
+  const inBase = b !== "" && (url === b || url.startsWith(`${b}/`));
+  return (inBase ? url.slice(b.length) : url).replace(/^\/+/, "");
 }
 
 const KINEGLYPH_ENTRY = "_pagina/.kineglyph-entry.ts";

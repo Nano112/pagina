@@ -2,12 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    // `@pagina/core` and `@pagina/vite` are typechecked from source so neither needs to be
-    // built first. The bare `kineglyph` specifier the client entry imports is provided by the
-    // page's import map at runtime; for typechecking it is `@kineglyph/web/bundle`.
+    // `@pagina/core` is typechecked from source so it needs no build first. The bare
+    // `kineglyph` specifier the client entry imports is provided by the page's import map at
+    // runtime; for typechecking it is `@kineglyph/web/bundle`.
     "paths": {
       "@pagina/core": ["../core/src/index.ts"],
-      "@pagina/vite": ["../vite/src/index.ts"],
       "kineglyph": ["../../node_modules/@kineglyph/web/src/bundle.ts"]
     }
   },
