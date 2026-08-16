@@ -14,6 +14,9 @@ export interface ShellContext {
   readonly clientUrl: string;
   readonly cssUrl: string;
   readonly dev: boolean;
+  /** The dev server is running with `--edit`, so a shell may offer an "Edit this page" link
+   *  into `/__edit/<href>`. Absent (or false) everywhere else, including every static build. */
+  readonly edit?: boolean;
 }
 
 /** A page shell: turns a rendered article into files (`out path` → contents). */

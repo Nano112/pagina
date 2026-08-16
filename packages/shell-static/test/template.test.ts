@@ -52,6 +52,12 @@ describe("renderPageHtml", () => {
     expect(html).toContain(`<script type="module" src="/_pagina/pagina.js"></script>`);
   });
 
+  it("offers an Edit this page link only under `edit`, and never in a build", () => {
+    expect(renderPageHtml(article, "/g/page/", ctx)).not.toContain("Edit this page");
+    const editing = renderPageHtml(article, "/g/page/", { ...ctx, dev: true, edit: true });
+    expect(editing).toContain(`<a class="pg-header__edit" href="/__edit/g/page/">Edit this page</a>`);
+  });
+
   it("JSON-escapes the import-map URL instead of HTML-escaping it", () => {
     // `<script>` is raw text: HTML entities are not decoded there, so `&quot;` would land in
     // the JSON verbatim and break the import map. Only `</script` needs neutralising.

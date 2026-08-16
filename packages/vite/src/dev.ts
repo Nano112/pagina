@@ -1,10 +1,14 @@
+import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
 import { parseArticleConfig, renderArticle, type RenderedArticle, type Shell } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes } from "./prerender.js";
+import { viteEditMiddleware, type EditWatcher } from "./edit-middleware.js";
+import { pagePathForHref, renderEditPage } from "./edit-page.js";
 
 export interface DevServerOptions {
   readonly folder: string;
@@ -20,9 +24,33 @@ export interface DevServerOptions {
    *  "localhost", "127.0.0.1"]`, which covers gerrymander-style `*.test` dev proxies without
    *  disabling the check entirely; pass `true` only if you understand the tradeoff. */
   readonly allowedHosts?: readonly string[] | true;
+  /** Serve the editor: the HTTP contract at `/__pagina/edit` and the host page at `/__edit/`.
+   *  Off by default — it makes the folder writable over HTTP, so it is opt-in per run. */
+  readonly edit?: boolean;
 }
 
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
+
+/** Where the HTTP contract is mounted in the dev server, per the connectivity spec. */
+const EDIT_API_BASE = "/__pagina/edit";
+/** Where the editor host page lives. Base-independent: it is dev chrome, not part of the site. */
+const EDIT_PAGE_BASE = "/__edit";
+
+/**
+ * The `@pagina/editor` package directory, so the dev server can serve its source through
+ * `/@fs`. In this repo (and in any consumer that has it installed) it sits next to `@pagina/vite`
+ * either as a sibling package or as a `node_modules` entry; a built consumer would point at
+ * `dist/editor.js` instead, which is why the entry is resolved separately below.
+ */
+function resolveEditorRoot(): string | undefined {
+  const here = resolve(fileURLToPath(import.meta.url), "..");
+  const candidates = [
+    resolve(here, "../../editor"),          // packages/vite/{src,dist} → packages/editor
+    resolve(here, "../node_modules/@pagina/editor"),
+    resolve(process.cwd(), "node_modules/@pagina/editor"),
+  ];
+  return candidates.find((dir) => existsSync(resolve(dir, "package.json")));
+}
 
 /**
  * Kineglyph is consumed from a linked checkout, so its packages are TypeScript sources
@@ -47,6 +75,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
   const base = o.base ?? "/";
   const folder = resolve(o.folder);
   const kgWebEntry = resolveKineglyphBundle("development");
+  const editorRoot = o.edit === true ? resolveEditorRoot() : undefined;
 
   /** The folder-relative posix path of `file`, or `undefined` if it is outside the folder.
    *  A plain `startsWith(folder)` would also match a sibling like `<folder>-backup/x.mjs`. */
@@ -71,7 +100,10 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       host: o.host ?? "127.0.0.1",
       allowedHosts: o.allowedHosts === true ? true : [...(o.allowedHosts ?? [".test", "localhost", "127.0.0.1"])],
       ...(o.port === undefined ? {} : { port: o.port }),
-      fs: { allow: [folder, kineglyphRoot(), resolve(o.shell.clientEntry, "..")] },
+      fs: {
+        allow: [folder, kineglyphRoot(), resolve(o.shell.clientEntry, ".."),
+          ...(editorRoot === undefined ? [] : [editorRoot])],
+      },
       watch: { ignored: ["**/node_modules/**"] },
     },
     resolve: { conditions: ["development"], alias: { kineglyph: kgWebEntry } },
@@ -140,11 +172,43 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
           s.ws.send({ type: "full-reload" });
         });
 
+        // Mounted first so a `PUT /__pagina/edit/files/...` never reaches the page middleware,
+        // and so Vite's own static/transform middlewares never see the contract's routes.
+        if (o.edit === true) {
+          s.middlewares.use(viteEditMiddleware(folder, {
+            base: EDIT_API_BASE,
+            siteBase: base,
+            watcher: s.watcher as unknown as EditWatcher,
+          }));
+        }
+
         s.middlewares.use((req, res, next) => {
           void (async () => {
             try {
               if (req.method !== "GET" && req.method !== "HEAD") return next();
               const path = new URL(req.url ?? "/", "http://localhost").pathname;
+
+              if (o.edit === true && (path === EDIT_PAGE_BASE || path.startsWith(`${EDIT_PAGE_BASE}/`))) {
+                if (editorRoot === undefined) {
+                  res.statusCode = 500;
+                  res.setHeader("content-type", "text/plain; charset=utf-8");
+                  res.end("pagina: --edit needs @pagina/editor installed next to @pagina/vite");
+                  return;
+                }
+                const themeCss = resolve(editorRoot, "src/ui/theme.css");
+                const html = await s.transformIndexHtml(path, renderEditPage({
+                  backendUrl: EDIT_API_BASE,
+                  page: pagePathForHref(path.slice(EDIT_PAGE_BASE.length)),
+                  base,
+                  kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
+                  editorEntryUrl: `/@fs${resolve(editorRoot, "src/index.ts")}`,
+                  siteCssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
+                  ...(existsSync(themeCss) ? { editorCssUrl: `/@fs${themeCss}` } : {}),
+                }));
+                res.setHeader("content-type", "text/html");
+                res.end(html);
+                return;
+              }
 
               if (path.startsWith(`${base.replace(/\/$/, "")}/_pagina/figures/`)) {
                 const m = FIGURE_URL.exec(path);
@@ -170,6 +234,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
               const pages = await o.shell.render(a, {
                 base,
                 dev: true,
+                edit: o.edit === true,
                 clientUrl: `/@fs${o.shell.clientEntry}`,
                 cssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
                 kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,

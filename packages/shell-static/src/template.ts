@@ -10,6 +10,8 @@ export interface ShellCtx {
   cssUrl: string;
   kineglyphRuntimeUrl: string;
   kineglyphThemeUrl?: string;
+  /** `pagina dev --edit`: add an "Edit this page" link into the editor. Never set in a build. */
+  edit?: boolean;
 }
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
@@ -52,6 +54,11 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   const crumbs = meta.breadcrumbs
     .map((c) => (c.href ? `<a href="${esc(withBase(ctx.base, c.href))}">${esc(c.title)}</a>` : `<span>${esc(c.title)}</span>`))
     .join(`<span class="pg-crumbs__sep">/</span>`);
+  // Dev-only chrome: `/__edit/` is served by the dev server and is base-independent, because it
+  // is not part of the site the base describes.
+  const editLink = ctx.edit === true
+    ? `<a class="pg-header__edit" href="${esc(`/__edit${href}`)}">Edit this page</a>`
+    : "";
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
 <head>
@@ -62,7 +69,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <link rel="stylesheet" href="${esc(ctx.cssUrl)}">
 </head>
 <body>
-<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>
+<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav><article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>

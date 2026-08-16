@@ -5,10 +5,10 @@ import { buildStatic, createDevServer } from "@pagina/vite";
 import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { PaginaBuildError } from "@pagina/core";
 
-const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--no-strict]";
+const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict]";
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; "no-strict"?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -17,6 +17,7 @@ try {
       base: { type: "string" },
       port: { type: "string" },
       host: { type: "string" },
+      edit: { type: "boolean" },
       "no-strict": { type: "boolean" },
     },
   }));
@@ -42,9 +43,16 @@ const port = [values.port, process.env.PORT].map((v) => Number(v)).find((n) => N
 const host = values.host ?? process.env.HOST;
 
 if (cmd === "dev") {
-  const server = await createDevServer({ folder, shell: staticShell, base, md, port, ...(host === undefined ? {} : { host }) });
+  // `--edit` makes the folder writable over HTTP for anyone who can reach the port, so it stays
+  // opt-in per run and inherits the server's loopback-only default bind.
+  const server = await createDevServer({
+    folder, shell: staticShell, base, md, port,
+    ...(host === undefined ? {} : { host }),
+    ...(values.edit === true ? { edit: true } : {}),
+  });
   await server.listen();
   server.printUrls();
+  if (values.edit === true) console.log("  ➜  Editor: /__edit/");
 } else {
   try {
     const r = await buildStatic({

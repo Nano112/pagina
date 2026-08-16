@@ -5,6 +5,9 @@
     // `@pagina/core` is typechecked from source so this package does not need core built first.
     "paths": {
       "@pagina/core": ["../core/src/index.ts"],
+      // Only `test/edit.test.ts` uses this: the editor's own `HttpBackend` proves the middleware
+      // and the client agree, so it is typechecked from source too rather than from a stale build.
+      "@pagina/editor/store": ["../editor/src/store/index.ts"],
       // The bare `kineglyph` specifier a client entry imports is provided by the page's
       // import map at runtime; for typechecking it is `@kineglyph/web/bundle`.
       "kineglyph": ["../../node_modules/@kineglyph/web/src/bundle.ts"]

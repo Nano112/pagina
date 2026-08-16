@@ -56,6 +56,7 @@ docs/
   theme/kineglyph.mjs    # optional: exports { light, dark } ThemeTokens
   media/hero.gif         # referenced relatively from the markdown
   snippets/quickstart.py # `--8<--` include targets
+  .pagina/               # written by `pagina dev --edit` (published render); gitignore it
 ```
 
 ```yaml
@@ -84,6 +85,9 @@ Rules:
 - Links between pages are written as relative `.md` paths and rewritten to site URLs; a link to
   a page outside `nav`, or to a `#heading` that does not exist, is an error.
 - Everything that is not `.md` or `article.yaml` is copied into the site 1:1 at the same path.
+- Dotfiles and `node_modules/` are not content: they are skipped by the renderer and by the
+  editor's file listing. `.pagina/` in particular is the editor's own output (`rendered/`,
+  `published.json`) — add it to `.gitignore`; nothing writes into it except `publish`.
 
 ### Markdown dialect
 
@@ -133,7 +137,7 @@ hatch for fully custom, non-pre-renderable interactivity.
 ## CLI
 
 ```
-pagina dev   <folder> [--port N] [--base /] [--host addr]
+pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit]
 pagina build <folder> [--out dist] [--base /] [--no-strict]
 ```
 
@@ -143,6 +147,14 @@ pagina build <folder> [--out dist] [--base /] [--no-strict]
 - `build` writes the site and exits `1` with the full diagnostic list on a strict failure;
   `--no-strict` downgrades content problems to warnings so you can render a half-ported folder.
 - `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
+- `--edit` turns on the in-browser editor: `/__edit/` (and `/__edit/<page href>`) serves the
+  editor, every page grows an "Edit this page" link, and the article folder is exposed for
+  reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package
+  implements: `files`, `upload`, `rename`, `publish`, `events`). It is off by default and
+  inherits the loopback-only bind, because anyone who can reach the port can rewrite the folder.
+  `publish` writes `<folder>/.pagina/rendered/` — the only path the middleware refuses to let a
+  plain write touch. In dev the editor is served from `@pagina/editor`'s TypeScript source
+  through Vite's `/@fs`; a packaged consumer points the same page at `dist/editor.js`/`.css`.
 
 ### With gerrymander (optional)
 
