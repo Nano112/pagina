@@ -29,6 +29,6 @@ export async function renderPage(o: RenderPageOptions): Promise<{ page: Rendered
     ? { ...f, scene: `${base.replace(/\/$/, "")}/${resolveRelative(o.path, f.scene)}` } : f);
   return {
     page: { path: o.path, href, title: rendered.title || o.path, html: linked.html, headings: rendered.headings, figures, links: linked.links },
-    diagnostics: [...snip.diagnostics, ...linked.diagnostics],
+    diagnostics: [...snip.diagnostics, ...figs.diagnostics.map((d) => ({ ...d, page: o.path })), ...linked.diagnostics],
   };
 }

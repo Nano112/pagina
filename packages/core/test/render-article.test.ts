@@ -60,6 +60,20 @@ describe("renderArticle", () => {
     expect(r.diagnostics.map((d) => d.code).sort()).toEqual(["anchor-missing", "link-unresolved", "nav-missing-file"]);
   });
 
+  it("errors when two pages claim the same figure id", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md"
+        ? `# X\n\n<figure class="kg" id="inline-demo" data-scene="../scenes/demo.mjs"></figure>`
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: false });
+    const dupes = r.diagnostics.filter((d) => d.code === "figure-id-collision");
+    expect(dupes).toHaveLength(1);
+    expect(dupes[0]).toMatchObject({ severity: "error", message: expect.stringContaining("inline-demo") });
+    await expect(renderArticle({ fs, strict: true })).rejects.toBeInstanceOf(PaginaBuildError);
+  });
+
   it("flags a same-page anchor to a missing heading, and not one to a real heading", async () => {
     const base = nodeFs(fixture);
     const fs: ContentFs = { ...base,

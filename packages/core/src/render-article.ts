@@ -60,6 +60,15 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     const p = pages[href]!;
     metas[href] = { title: p.title, headings: p.headings, breadcrumbs: f.crumbs, ...(i > 0 ? { prev: hrefOf(present[i - 1]!.page) } : {}), ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}) };
   });
+  // Figure ids key the manifest and name the pre-rendered SVGs, so two pages claiming the same
+  // id would silently overwrite each other's figures.
+  const seen = new Map<string, string>();
+  for (const p of Object.values(pages))
+    for (const f of p.figures) {
+      const owner = seen.get(f.id);
+      if (owner === undefined) seen.set(f.id, p.path);
+      else diagnostics.push({ severity: "error", code: "figure-id-collision", message: `figure id "${f.id}" is used by both ${owner} and ${p.path}`, page: p.path });
+    }
   const figures: Manifest["figures"] = Object.fromEntries(Object.values(pages).flatMap((p) => p.figures.map((f) => [f.id, { page: p.href, kind: f.kind, ...(f.scene === undefined ? {} : { scene: f.scene }), staticBase: `${base}/_pagina/figures/${pageSlug(p.href)}/${f.id}` }])));
   const assets = (await o.fs.list(".")).filter((f) => !/\.md$/i.test(f) && f !== "article.yaml");
   const article: Omit<typeof config, "nav" | "snippets"> = {

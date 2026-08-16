@@ -17,6 +17,15 @@ describe("extractFigures", () => {
     expect(r.html).toContain(`<img src="/media/s.svg" alt="static">`);           // static untouched
   });
 
+  it("rejects an unusable author-supplied id, falling back to the generated one", () => {
+    const html = `<figure class="kg" id="../../evil" data-scene="/scenes/demo.mjs"></figure>`;
+    const r = extractFigures(html, opts);
+    expect(r.figures).toEqual([{ id: "kg-guide-figures-1", kind: "module", scene: "/scenes/demo.mjs" }]);
+    expect(r.diagnostics.map((d) => [d.severity, d.code])).toEqual([["warning", "figure-id-invalid"]]);
+    expect(r.html).toContain(`id="kg-guide-figures-1"`);
+    expect(r.html).not.toContain("../../evil");
+  });
+
   it("does not treat class tokens that merely contain \"kg\" as the kg marker", () => {
     const html = `<figure class="kg-static"><img src="x.svg"></figure><figure class="not-kg"><img src="y.svg"></figure>`;
     const r = extractFigures(html, opts);
