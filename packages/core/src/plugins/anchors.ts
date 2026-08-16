@@ -10,7 +10,17 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, "") || "section";
 }
 
-export interface AnchorEnv { headings?: Heading[] | undefined; slugCounts?: Map<string, number> }
+export interface AnchorEnv {
+  headings?: Heading[] | undefined;
+  slugCounts?: Map<string, number>;
+  /**
+   * Set `false` to skip id assignment for this parse. Renderers always want ids; the editor never
+   * does — a generated slug on a heading token is indistinguishable from an author's explicit
+   * `{#custom-id}`, and writing a generated one back into the markdown would be a silent edit.
+   * Opting out per call keeps that a property of the parse, not of the shared `MarkdownIt`.
+   */
+  pgAnchors?: boolean;
+}
 
 /**
  * Renders markdown that will be spliced into an enclosing `html_block` — today only
@@ -46,6 +56,7 @@ export interface NestedHeadings { headings?: readonly Heading[] }
 export function anchorsPlugin(md: MarkdownIt): void {
   md.core.ruler.push("pg_anchors", (state) => {
     const env = state.env as AnchorEnv;
+    if (env.pgAnchors === false) return;
     const headings = (env.headings ??= []);
     const counts = (env.slugCounts ??= new Map());
     /** Records `base` and returns it suffixed if it has been handed out before. */

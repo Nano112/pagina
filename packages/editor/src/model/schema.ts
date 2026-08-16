@@ -50,6 +50,32 @@ const CellAlign = Extension.create({
   },
 });
 
+/**
+ * Tight vs loose lists. markdown renders a tight list as `<li>text</li>` and a loose one (items
+ * separated by blank lines) as `<li><p>text</p></li>`, but the two produce the *same* ProseMirror
+ * document — list items hold `block+` either way — so without this attribute the distinction is
+ * lost on the first save and the page's HTML changes. `prosemirror-markdown`'s list serializer
+ * already reads `attrs.tight`; the parser fills it in from the source.
+ */
+const ListTight = Extension.create({
+  name: "paginaListTight",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["bulletList", "orderedList"],
+        attributes: {
+          tight: {
+            default: true,
+            parseHTML: (element: HTMLElement): boolean => element.querySelector(":scope > li > p") === null,
+            // A rendering detail of the markdown, not of the DOM: lists always render as `<ul><li>`.
+            renderHTML: (): Record<string, string> => ({}),
+          },
+        },
+      },
+    ];
+  },
+});
+
 /** `![alt](src){ width="480" .cls }` — markdown-it-attrs' extras have to survive the round trip. */
 const ImageAttrs = Image.extend({
   addAttributes() {
@@ -86,6 +112,7 @@ export function editorExtensions(): Extensions {
     StarterKit.configure({ link: false, codeBlock: { languageClassPrefix: "language-" } }),
     HeadingId,
     CellAlign,
+    ListTight,
     LinkAttrs.configure({ openOnClick: false, autolink: false, linkOnPaste: false }),
     // Markdown images are inline: `text ![a](b) text` is one paragraph, and even a lone image sits
     // inside one. TipTap's default (a block node) would make such a paragraph unrepresentable.

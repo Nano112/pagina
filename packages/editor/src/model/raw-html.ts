@@ -36,6 +36,9 @@ export interface RawHtmlNode {
 
 const FIGURE_RE = /^<figure\b([^>]*)>([\s\S]*?)<\/figure>\s*$/;
 const MODEL_VIEWER_RE = /^<model-viewer\b([^>]*?)(\/?)>(?:([\s\S]*?)<\/model-viewer>)?\s*$/;
+// Non-greedy to the first `</script>`, which is what the HTML parser does too — so a scene whose
+// source contains that sequence inside a string literal truncates here (it would break the browser
+// as well, and the fix is the same: split the literal). Matches core's `extractFigures` regex.
 const KG_SCRIPT_RE = /<script\b[^>]*\btype="text\/kineglyph"[^>]*>([\s\S]*?)<\/script>/;
 const FIGCAPTION_RE = /<figcaption>([\s\S]*?)<\/figcaption>/;
 const MD_IMAGE_RE = /!\[([^\]]*)\]\(\s*([^)\s]*)(?:\s+"([^"]*)")?\s*\)(?:\s*\{([^}]*)\})?/;

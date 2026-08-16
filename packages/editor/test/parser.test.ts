@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { parseMarkdown } from "../src/model/parser.js";
+import { createEditorMarkdown, parseMarkdown } from "../src/model/parser.js";
 import { INNER_HTML_KEY } from "../src/model/raw-html.js";
 
 const repo = (path: string): string => fileURLToPath(new URL(`../../../${path}`, import.meta.url));
@@ -191,6 +191,28 @@ describe("parseMarkdown — standard markdown", () => {
       ["lit", "highlight", "#ffd"],
       ["red", "textStyle", "#f00"],
     ]);
+  });
+
+  it("reconciles interleaved inline marks instead of leaking a closing tag", () => {
+    const { doc } = parseMarkdown('<mark style="background:#ffd">A<span style="color:#f00">B</mark>C</span>\n');
+    expect(doc.child(0).textContent).toBe("ABC");
+    expect(doc.child(0).children.map((n) => [n.text, n.marks.map((m) => `${m.type.name}:${String(m.attrs["color"])}`).sort()])).toEqual([
+      ["A", ["highlight:#ffd"]],
+      ["B", ["highlight:#ffd", "textStyle:#f00"]],
+      ["C", ["textStyle:#f00"]],
+    ]);
+  });
+
+  it("leaves a closing tag that never opened as literal text", () => {
+    const { doc } = parseMarkdown("plain </mark> text\n");
+    expect(doc.child(0).textContent).toBe("plain </mark> text");
+    expect(doc.child(0).children.every((n) => n.marks.length === 0)).toBe(true);
+  });
+
+  it("does not mutate a caller-supplied markdown-it instance", () => {
+    const md = createEditorMarkdown();
+    expect(parseMarkdown("# Title\n", { md }).doc.child(0).attrs["explicitId"]).toBeNull();
+    expect(md.parse("# Title\n", {}).find((t) => t.type === "heading_open")!.attrGet("id")).toBe("title");
   });
 
   it("keeps inline HTML it does not model as literal text", () => {

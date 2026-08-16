@@ -25,11 +25,13 @@ export interface ParseOptions {
   readonly md?: MarkdownIt;
 }
 
-/** The tokeniser the editor wants: pagina's dialect, HTML left alone, headings left unslugged. */
+/**
+ * The tokeniser the editor wants: pagina's dialect with raw HTML left raw. Heading ids are opted
+ * out of per parse via the `pgAnchors: false` env flag, not by configuring the instance, so a
+ * shared `MarkdownIt` can serve the renderer and the editor at once.
+ */
 export function createEditorMarkdown(): MarkdownIt {
-  const md = createMarkdown({ mdInHtml: false });
-  md.disable("pg_anchors", true);
-  return md;
+  return createMarkdown({ mdInHtml: false });
 }
 
 let defaultMd: MarkdownIt | undefined;
@@ -46,14 +48,28 @@ const withMeta = (type: string, meta: unknown): Token => {
   return t;
 };
 
+type InlineMark = "highlight" | "textStyle";
+
+const MARK_TOKEN: Record<InlineMark, string> = { highlight: "pg_highlight", textStyle: "pg_text_color" };
+const closeMark = (mark: InlineMark): Token => token(`${MARK_TOKEN[mark]}_close`, "", -1);
+const openMark = (mark: InlineMark, color: string | null): Token => {
+  const t = withMeta(`${MARK_TOKEN[mark]}_open`, { color });
+  t.nesting = 1;
+  return t;
+};
+
 /**
  * Inline HTML → marks. `<mark …>text</mark>` and `<span style="color:…">text</span>` become
  * mark open/close tokens; every other `html_inline` token degrades to its literal text, because
  * the schema has no inline-HTML mark and silently dropping the author's markup would be worse.
+ *
+ * HTML nesting is not required to be well formed, but ProseMirror's mark stack is: closing a mark
+ * that is not on top (`<mark>A<span>B</mark>C</span>`) means unwinding the marks above it, closing
+ * it, and re-opening those — otherwise the stray tag survives as literal text in the document.
  */
 function rewriteInline(children: readonly Token[]): Token[] {
   const out: Token[] = [];
-  const open: ("highlight" | "textStyle")[] = [];
+  const open: { mark: InlineMark; color: string | null }[] = [];
   for (const child of children) {
     if (child.type === "softbreak") {
       // A soft break is a real newline in the source; " " would silently reflow the paragraph.
@@ -77,23 +93,24 @@ function rewriteInline(children: readonly Token[]): Token[] {
       continue;
     }
     if (found.open) {
-      const t = withMeta(found.mark === "highlight" ? "pg_highlight_open" : "pg_text_color_open", { color: found.color });
-      t.nesting = 1;
-      out.push(t);
-      open.push(found.mark);
+      out.push(openMark(found.mark, found.color));
+      open.push({ mark: found.mark, color: found.color });
       continue;
     }
     // Only close a mark we opened; a stray `</span>` from hand-written HTML stays literal text.
-    if (open[open.length - 1] !== found.mark) {
+    const at = open.findLastIndex((e) => e.mark === found.mark);
+    if (at === -1) {
       literal();
       continue;
     }
-    open.pop();
-    const t = token(found.mark === "highlight" ? "pg_highlight_close" : "pg_text_color_close", "", -1);
-    out.push(t);
+    const above = open.slice(at + 1);
+    for (let j = open.length - 1; j > at; j--) out.push(closeMark(open[j]!.mark));
+    out.push(closeMark(found.mark));
+    for (const entry of above) out.push(openMark(entry.mark, entry.color));
+    open.splice(at, 1);
   }
   // An unbalanced open would leave the mark hanging over the rest of the paragraph.
-  for (let i = open.length - 1; i >= 0; i--) out.push(token(open[i] === "highlight" ? "pg_highlight_close" : "pg_text_color_close", "", -1));
+  for (let i = open.length - 1; i >= 0; i--) out.push(closeMark(open[i]!.mark));
   return out;
 }
 
@@ -156,6 +173,17 @@ export function preprocessTokens(tokens: readonly Token[]): Token[] {
 // ---------------------------------------------------------------------------------------------
 
 const meta = (t: Token): Record<string, unknown> => (t.meta ?? {}) as Record<string, unknown>;
+
+/**
+ * A list is tight when its items' paragraphs are `hidden` — markdown-it's way of saying "render
+ * `<li>text</li>`, not `<li><p>text</p></li>". The document has no other trace of it, so the
+ * serializer would have to guess; see the `tight` attribute in `schema.ts`.
+ */
+const listIsTight = (tokens: readonly Token[], i: number): boolean => {
+  while (++i < tokens.length) if (tokens[i]!.type !== "list_item_open") return tokens[i]!.hidden;
+  return false;
+};
+
 const align = (t: Token): string | null => /text-align:\s*(\w+)/.exec(t.attrGet("style") ?? "")?.[1] ?? null;
 
 const tokenSpec: Record<string, ParseSpec> = {
@@ -163,8 +191,8 @@ const tokenSpec: Record<string, ParseSpec> = {
   blockquote: { block: "blockquote" },
   heading: { block: "heading", getAttrs: (t) => ({ level: Number(t.tag.slice(1)), explicitId: t.attrGet("id") }) },
   hr: { node: "horizontalRule" },
-  bullet_list: { block: "bulletList" },
-  ordered_list: { block: "orderedList", getAttrs: (t) => ({ start: Number(t.attrGet("start") ?? 1) }) },
+  bullet_list: { block: "bulletList", getAttrs: (_t, tokens, i) => ({ tight: listIsTight(tokens, i) }) },
+  ordered_list: { block: "orderedList", getAttrs: (t, tokens, i) => ({ start: Number(t.attrGet("start") ?? 1), tight: listIsTight(tokens, i) }) },
   list_item: { block: "listItem" },
   code_block: { block: "codeBlock", noCloseToken: true, getAttrs: () => ({ language: null }) },
   fence: { block: "codeBlock", noCloseToken: true, getAttrs: (t) => ({ language: t.info.trim() === "" ? null : t.info.trim() }) },
@@ -216,22 +244,15 @@ const parserFor = (md: MarkdownIt): MarkdownParser => {
  *
  * Core's `pg_anchors` rule stamps a generated slug onto every heading, which would be
  * indistinguishable from an author's `{#explicit-id}` by the time the parser sees the token — so
- * the rule is switched off for the duration of the parse. `attrGet("id")` is then set only by
- * markdown-it-attrs, i.e. only when the author wrote one.
+ * the parse opts out with `pgAnchors: false`. `attrGet("id")` is then set only by
+ * markdown-it-attrs, i.e. only when the author wrote one. The flag travels in the parse env, so
+ * a caller-supplied `MarkdownIt` is never mutated.
  */
 export function parseMarkdown(markdown: string, opts: ParseOptions = {}): ParseResult {
   const text = markdown.replace(/\r\n?/g, "\n");
   const front = FRONT_MATTER_RE.exec(text);
   const body = front === null ? text : text.slice(front[0].length);
   const md = opts.md ?? (defaultMd ??= createEditorMarkdown());
-  // `disable` mutates the instance, so it is restored to `createMarkdown`'s default (enabled)
-  // afterwards; every parse disables the rule again first, so the default instance stays correct.
-  md.disable("pg_anchors", true);
-  let doc: ProseMirrorNode;
-  try {
-    doc = parserFor(md).parse(body, {});
-  } finally {
-    md.enable("pg_anchors", true);
-  }
+  const doc = parserFor(md).parse(body, { pgAnchors: false });
   return front === null ? { doc } : { doc, frontMatter: front[1] ?? "" };
 }

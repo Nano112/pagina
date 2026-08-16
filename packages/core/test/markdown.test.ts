@@ -107,6 +107,25 @@ describe("anchors + title", () => {
   });
 });
 
+describe("pgAnchors env flag", () => {
+  it("assigns heading ids by default", () => {
+    const headings = md.parse("# One\n\n## Two\n", {}).filter((t) => t.type === "heading_open");
+    expect(headings.map((t) => t.attrGet("id"))).toEqual(["one", "two"]);
+  });
+
+  it("assigns none when the parse opts out with pgAnchors: false", () => {
+    const headings = md.parse("# One\n\n## Two {#kept}\n", { pgAnchors: false }).filter((t) => t.type === "heading_open");
+    // Only markdown-it-attrs' explicit `{#kept}` survives, which is what lets the editor tell an
+    // author's id apart from a generated slug.
+    expect(headings.map((t) => t.attrGet("id"))).toEqual([null, "kept"]);
+  });
+
+  it("leaves the instance unchanged for the next parse", () => {
+    md.parse("# One\n", { pgAnchors: false });
+    expect(md.parse("# One\n", {}).find((t) => t.type === "heading_open")!.attrGet("id")).toBe("one");
+  });
+});
+
 describe("md_in_html", () => {
   it('renders markdown="span" content inline, stripping the attribute', () => {
     const src = '<figure markdown="span">\n  ![A](../media/x.gif){ width="480" }\n  <figcaption>Cap.</figcaption>\n</figure>';
