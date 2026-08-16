@@ -4,6 +4,7 @@ import { escapeHtml } from "markdown-it/lib/common/utils.mjs";
 import { anchorsPlugin, type AnchorEnv } from "./plugins/anchors.js";
 import { tabsPlugin } from "./plugins/tabs.js";
 import { admonitionPlugin } from "./plugins/admonition.js";
+import { mdInHtmlPlugin } from "./plugins/md-in-html.js";
 import type { Heading } from "./types.js";
 
 export interface MarkdownOptions { readonly highlight?: (code: string, lang: string) => string }
@@ -24,7 +25,7 @@ export function createMarkdown(opts: MarkdownOptions = {}): MarkdownIt {
       return `<pre><code class="language-${escapeHtml(lang)}">${escapeHtml(code)}</code></pre>`;
     },
   });
-  md.use(anchorsPlugin).use(attrsPlugin).use(tabsPlugin).use(admonitionPlugin);
+  md.use(anchorsPlugin).use(attrsPlugin).use(tabsPlugin).use(admonitionPlugin).use(mdInHtmlPlugin);
   return md;
 }
 

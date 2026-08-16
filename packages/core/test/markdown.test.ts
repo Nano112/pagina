@@ -84,3 +84,22 @@ describe("anchors + title", () => {
     expect(h).toContain('width="480"');
   });
 });
+
+describe("md_in_html", () => {
+  it('renders markdown="span" content inline, stripping the attribute', () => {
+    const src = '<figure markdown="span">\n  ![A](../media/x.gif){ width="480" }\n  <figcaption>Cap.</figcaption>\n</figure>';
+    const h = renderMarkdown(md, src).html;
+    expect(h).toContain('<img src="../media/x.gif" alt="A" width="480">');
+    expect(h).toContain("<figcaption>Cap.</figcaption>");
+    expect(h).not.toContain("![A]");
+    expect(h).not.toContain('markdown="span"');
+  });
+  it('renders markdown="1" content as block-level markdown', () => {
+    const h = renderMarkdown(md, '<div markdown="1">\n\n**bold**\n\n</div>').html;
+    expect(h).toContain("<p><strong>bold</strong></p>");
+  });
+  it("leaves an html_block without a markdown attribute untouched", () => {
+    const h = renderMarkdown(md, `<figure class="kg" data-scene="x.mjs"></figure>`).html;
+    expect(h).toContain(`<figure class="kg" data-scene="x.mjs"></figure>`);
+  });
+});
