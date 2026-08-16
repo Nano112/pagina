@@ -2,7 +2,12 @@
   "name": "pagina",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/core", "packages/vite", "packages/shell-static", "packages/cli"],
+  "workspaces": [
+    "packages/core",
+    "packages/vite",
+    "packages/shell-static",
+    "packages/cli"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -19,5 +24,10 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git"
   }
 }

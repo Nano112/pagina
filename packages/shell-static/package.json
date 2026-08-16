@@ -9,7 +9,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "client"],
+  "files": [
+    "dist",
+    "client"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -27,7 +30,18 @@
     "@kineglyph/web": "*"
   },
   "peerDependenciesMeta": {
-    "@kineglyph/core": { "optional": true },
-    "@kineglyph/web": { "optional": true }
-  }
+    "@kineglyph/core": {
+      "optional": true
+    },
+    "@kineglyph/web": {
+      "optional": true
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/shell-static"
+  },
+  "homepage": "https://github.com/Nano112/pagina#readme"
 }

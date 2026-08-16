@@ -32,5 +32,12 @@
     "@kineglyph/web": {
       "optional": true
     }
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Nano112/pagina#readme"
 }

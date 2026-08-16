@@ -1,119 +1,212 @@
 # pagina
 
-Renders an "article folder" (markdown + assets + Kineglyph scene modules) into a static docs
-site, or serves it live with hot-swapped figures.
+**A static-docs renderer for folders of markdown, assets, and live [Kineglyph](https://github.com/Nano112/kineglyph) diagrams.**
 
-Workspaces: `packages/core` (parsing/rendering, `@pagina/core`), `packages/shell-static` (page
-template, theme, highlighted markdown, `@pagina/shell-static`), `packages/vite` (`buildStatic`,
-`createDevServer`, `@pagina/vite`), `packages/cli` (the `pagina` binary, `@pagina/cli`).
+pagina turns an *article folder* — an `article.yaml`, some markdown, whatever assets they
+reference, and optionally Kineglyph scene modules — into a complete static documentation
+site, or serves it live with hot reload while you write. It replaces MkDocs for the
+[Nucleation](https://github.com/Schem-at/Nucleation) docs and is built to be reusable for
+any project that wants the same folder-in, site-out contract.
 
-## Dev loop
+Design goals, in order:
 
-### Fresh clone
+- **A folder is the whole article.** Portable, diffable, previewable on GitHub. No database,
+  no host-specific syntax in the content.
+- **Diagrams are code, not JSON.** A Kineglyph figure is a script — inline in the page or a
+  sibling `.mjs` — that imports helpers from the bare specifier `kineglyph`. It is
+  pre-rendered to SVG at build time and hydrated to a live, interactive figure in the browser.
+- **The renderer is a library; the site is a shell.** `@pagina/core` produces a manifest plus
+  HTML fragments; `@pagina/shell-static` is one shell over that output. Another shell (a Laravel
+  Blade view, say) can consume the same manifest without pulling in anything else.
+- **Strict by default.** A nav entry without a file, a dead link, a missing snippet, a broken
+  anchor, or a figure that fails to pre-render fails the build with a diagnostic naming the page.
 
-Kineglyph is not published; it is consumed from a linked checkout. Clone it as a sibling of this
-repo, build it, and register each of its packages as a global link:
+> **Status:** early. The pipeline is complete and browser-verified end-to-end (build, dev
+> server, HMR, theme toggle, three figure forms), and Nucleation's docs are being ported page by
+> page. `@kineglyph/*` is not yet on npm, so the dev loop uses `npm link` (see below).
+
+## Quick start
 
 ```sh
-git clone <kineglyph remote> ~/Documents/code/kineglyph
-cd ~/Documents/code/kineglyph && npm run bootstrap
-for p in packages/*; do (cd "$p" && npm link); done   # core, svg, anime, plot, scenes, web, export
-```
+# 1. Kineglyph is consumed from a sibling checkout (until it is published)
+git clone https://github.com/Nano112/kineglyph.git ../kineglyph
+(cd ../kineglyph && npm run bootstrap && for p in packages/*; do (cd "$p" && npm link); done)
 
-Then, in this repo:
-
-```sh
+# 2. This repo
 npm install && npm run link:kineglyph
-ls node_modules/@kineglyph        # 7 symlinks
+npm run build
+npm install && npm run link:kineglyph      # once: creates node_modules/.bin/pagina, then re-link
+
+# 3. Render the fixture article
+npx pagina dev   packages/core/test/fixture              # http://127.0.0.1:4321
+npx pagina build packages/core/test/fixture --out dist   # static site in ./dist
 ```
 
-### Everyday
+`npm install` prunes the `@kineglyph/*` symlinks every time; `npm run link:kineglyph` puts them
+back. If figures fail with "cannot resolve `kineglyph`", that is what happened.
 
-`npm install` drops the symlinks, so relink after every install:
+## The article folder
 
-```sh
-npm install
-npm run link:kineglyph   # re-links @kineglyph/{core,svg,anime,plot,scenes,web,export}
-npm run build             # builds core, vite, shell-static, cli (dependency order)
-npm install                # re-creates node_modules/.bin/pagina now that packages/cli/dist exists
-npm run link:kineglyph   # npm install drops the kineglyph symlinks again — re-link once more
+```
+docs/
+  article.yaml           # slug, title, nav — the only source of page order
+  index.md
+  features/basics.md
+  scenes/intro.mjs       # a Kineglyph scene: `export default defineScene(...)`
+  theme/kineglyph.mjs    # optional: exports { light, dark } ThemeTokens
+  media/hero.gif         # referenced relatively from the markdown
+  snippets/quickstart.py # `--8<--` include targets
 ```
 
-Every plain `npm install` drops the kineglyph symlinks (and, the first time, hasn't created
-`node_modules/.bin/pagina` yet because `packages/cli`'s `bin` target doesn't exist until after a
-build) — re-run `npm run link:kineglyph` after any `npm install`.
-
-This machine runs [gerry](https://nano112.github.io/gerrymander) for local hostnames/ports.
-`gerrymander.yaml` wires the `frontend` service's `dev:` command to the CLI; `gerry dev` grants a
-sticky port and routes `https://pagina.test` to it:
-
-```sh
-gerry dev                                   # serves packages/core/test/fixture by default
-PAGINA_CONTENT=path/to/folder gerry dev     # or point it at another folder
-gerry down                                  # release the hostname/port when done
+```yaml
+# article.yaml
+slug: nucleation
+title: Nucleation
+form: docs                 # the only form today
+status: published          # draft | published
+tags: [minecraft, schematics]
+kineglyph:
+  theme: theme/kineglyph.mjs   # optional; defaults to Kineglyph's default theme
+  width: 960                   # pre-render layout width
+snippets:
+  roots: [".", ".."]           # where `--8<--` paths resolve; "." only, by default
+nav:
+  - { title: Home, page: index.md }
+  - section: Get started
+    children:
+      - { title: Basics, page: features/basics.md }
 ```
 
-Without gerry, run the CLI directly — either via the workspace bin link (`npx pagina`, once
-`node_modules/.bin/pagina` exists per the install sequence above) or by path — port precedence:
-`--port` flag > `PORT` env var > `4321`, ignoring blank/non-numeric values:
+Rules:
 
-```sh
-npx pagina dev <folder> [--port 4321] [--base /] [--host <addr>]
-npx pagina build <folder> [--out dist] [--base /] [--no-strict]
+- `nav` is the page list. A page not in `nav` is not built; a `nav` entry whose file is missing
+  is an error.
+- Links between pages are written as relative `.md` paths and rewritten to site URLs; a link to
+  a page outside `nav`, or to a `#heading` that does not exist, is an error.
+- Everything that is not `.md` or `article.yaml` is copied into the site 1:1 at the same path.
 
-# equivalently:
-node packages/cli/dist/cli.js dev <folder> [--port 4321] [--base /] [--host <addr>]
-node packages/cli/dist/cli.js build <folder> [--out dist] [--base /] [--no-strict]
-```
+### Markdown dialect
 
-`dev` binds loopback only (`127.0.0.1`) and allows only `.test`/`localhost`/`127.0.0.1` Host
-headers by default; pass `--host` (or set `HOST`) to bind wider — `gerrymander.yaml`'s `dev:`
-command does this (`--host 0.0.0.0`) so gerry's proxy can reach it. `build` exits `1` and prints
-the `PaginaBuildError` diagnostics on a strict failure. `dev` hot-swaps figures over HMR and
-full-reloads on everything else.
+CommonMark + GFM + raw HTML, plus the MkDocs/pymdownx subset that existing docs tend to use:
 
-## Folder contract
+| Syntax | Renders as |
+|---|---|
+| `=== "Python"` + 4-space-indented body (consecutive blocks form one group) | accessible tab group |
+| `!!! note "Title"` / `??? tip "Title"` + indented body | admonition / collapsible admonition |
+| `--8<-- "path/to/file.py:section"` | file (or `[start:section]…[end:section]` region) inlined, re-indented to the directive |
+| `## Heading {#custom-id}` and `[text](x.md){ .cls }`, `![img](x.gif){ width="480" }` | explicit ids / attributes (markdown-it-attrs) |
+| `<figure markdown="span">…</figure>` (also `markdown="1"`/`"block"`) | markdown rendered inside raw HTML (MkDocs `md_in_html`) |
+| fenced code | Shiki dual-theme highlighting (light/dark via CSS variables) |
 
-An article folder has `article.yaml` (`slug`, `title`, `form`, `status`, `visibility`, `tags`,
-optional `kineglyph: { theme, width }`, `snippets: { roots }`, and `nav` — the sole source of the
-page list and site nav), the markdown pages `nav` references (admonitions `!!! note "..."`, tabs
-`=== "Label"`, snippet includes `--8<-- "path[:region]"`), and everything else as a plain asset
-copied 1:1 into the build.
+Headings get stable slug ids (deduplicated `-2`, `-3`) and feed the page table of contents.
 
-## Kineglyph embeds
+### Kineglyph figures
 
-Three ways to embed a figure (raw HTML — markdown has no figure syntax):
+Three interchangeable forms — the host element is always `<figure class="kg">`:
 
 ```html
-<figure class="kg" data-scene="../scenes/demo.mjs"></figure>                 <!-- module -->
+<!-- sibling module: the file exports `default defineScene(...)` -->
+<figure class="kg" data-scene="scenes/intro.mjs"></figure>
 
-<figure class="kg" id="my-figure"><script type="text/kineglyph">             <!-- inline -->
-import { defineScene, stack, heading } from "kineglyph";
-export default defineScene({ schemaVersion: 2, id: "my-figure", title: "…", root: stack("r", [heading("h", "…")]) });
-</script></figure>
+<!-- inline: same module, embedded -->
+<figure class="kg" id="intro">
+  <script type="text/kineglyph">
+    import { defineScene, stack, heading } from "kineglyph";
+    export default defineScene({ schemaVersion: 2, id: "intro", title: "Intro",
+      root: stack("r", [heading("h", "Hello")], { padding: 16, width: "fill" }) });
+  </script>
+</figure>
 
-<figure class="kg" data-static="../media/static.svg"><img src="../media/static.svg" alt="…"></figure> <!-- static -->
+<!-- static only: you supply the image, nothing hydrates -->
+<figure class="kg" data-static="media/intro.svg"><img src="media/intro.svg" alt="Intro"></figure>
 ```
 
-Module and inline figures pre-render to light/dark SVGs at build time and then hydrate
-client-side (`figure.kg[data-kineglyph-mounted="true"]`). A static figure is *not* pre-rendered —
-the author supplies the image and it stays a plain `<img>`.
+Module and inline figures are pre-rendered at build time to `_pagina/figures/<page>/<id>.{light,dark}.svg`
+(a `<picture>` fallback is injected so the page is complete without JavaScript), then hydrated
+in the browser by Kineglyph's `mountAll()`. In `pagina dev`, saving a scene file hot-swaps the
+figure in place — no reload. A page may set `data-controls="false"` / `data-readout="false"` on
+the host to hide Kineglyph's playback chrome.
 
-An author-supplied `id` must match `[A-Za-z0-9_.-]+` (it becomes a URL path segment and a
-manifest key); anything else is replaced by the generated id with a `figure-id-invalid` warning.
-Two pages claiming the same figure id is a `figure-id-collision` error.
+Everything else in the page can still be a plain `<script type="module">` — that is the escape
+hatch for fully custom, non-pre-renderable interactivity.
+
+## CLI
+
+```
+pagina dev   <folder> [--port N] [--base /] [--host addr]
+pagina build <folder> [--out dist] [--base /] [--no-strict]
+```
+
+- Port precedence: `--port` > `PORT` env > `4321`. Blank or non-numeric values are ignored.
+- `dev` binds `127.0.0.1` and accepts only `.test` / `localhost` / `127.0.0.1` Host headers by
+  default; use `--host` (or `HOST`) to bind wider.
+- `build` writes the site and exits `1` with the full diagnostic list on a strict failure;
+  `--no-strict` downgrades content problems to warnings so you can render a half-ported folder.
+- `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
+
+### With gerrymander (optional)
+
+The repo ships a `gerrymander.yaml`. On a machine running
+[gerry](https://nano112.github.io/gerrymander), `gerry dev` grants a sticky port and routes
+`https://pagina.test` to the dev server:
+
+```sh
+gerry dev                                        # serves the fixture
+PAGINA_CONTENT=path/to/docs gerry dev            # or any article folder
+gerry down
+```
+
+## Architecture
+
+```
+packages/core          @pagina/core          pure renderer: article.yaml, markdown pipeline,
+                                             figures, links, strict renderArticle → { manifest, pages, diagnostics }
+packages/vite          @pagina/vite          Node side: NodeContentFs, figure pre-render via
+                                             @kineglyph/export, buildStatic, createDevServer (Vite + HMR)
+packages/shell-static  @pagina/shell-static  the default site: HTML template, CSS, client runtime
+                                             (theme toggle, tabs, code copy, Kineglyph mount), Shiki
+packages/cli           @pagina/cli           `pagina dev|build`
+```
+
+Two invariants are enforced, not just intended:
+
+- **`@pagina/core` never imports Node.** It receives a `ContentFs` (`read`/`readBinary`/`exists`/`list`);
+  ESLint blocks `node:*` imports under `packages/core/src`. The same core runs in a browser,
+  which is what will make an in-browser editor possible later.
+- **Shells consume only core's public output.** The `Shell` interface lives in `@pagina/core`
+  (`render(article: RenderedArticle, ctx) → { [outputPath]: html }`); `@pagina/shell-static`
+  depends on core alone. A second shell needs nothing from `@pagina/vite`.
+
+The manifest (`_pagina/manifest.json`) records the article metadata, the nav tree, per-page
+title/headings/prev/next/breadcrumbs, every figure's `staticBase` (append `.<theme>.svg`), and
+the asset list.
 
 ## Trust model
 
 Markdown pages and scene modules are **trusted content**. The markdown pipeline runs with
-`html: true` (raw HTML passes through unsanitised), scene modules are executed both at build time
-(to pre-render SVGs) and in the browser, and `snippets.roots` may point outside the article
-folder. Pagina is a renderer for authors with commit access to the folder it is given — not a
-sandbox for untrusted, user-submitted documents.
+`html: true` (raw HTML passes through unsanitised), scene modules execute both at build time and
+in the browser, and `snippets.roots` may point outside the article folder. pagina renders
+folders written by people with commit access to them; it is not a sandbox for user-submitted
+documents.
 
-## Deviations from the design spec
+## Development
 
-- The figure provider is Kineglyph-only for now; the spec's pluggable-provider seam is not built.
-- The manifest records a figure's pre-renders as `staticBase` (append `.<theme>.svg`) rather than
-  the spec's `static: Record<theme, path>` map.
-- Pagefind search and the Playwright smoke test are not yet added.
+```sh
+npm test               # vitest, all packages (core, vite incl. dev-server + real Vite build, shell-static)
+npm run typecheck
+npm run lint
+npm run build          # core → vite → shell-static → cli (dependency order)
+```
+
+The fixture article at `packages/core/test/fixture/` exercises every syntax above and all three
+figure forms; it is what the integration tests build.
+
+### Deviations from the design spec (known, tracked)
+
+- The figure provider is Kineglyph-only; the pluggable-provider seam is not built yet.
+- Figures are recorded as `staticBase` rather than a `static: Record<theme, path>` map.
+- Pagefind search and a Playwright smoke test are not yet added.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
