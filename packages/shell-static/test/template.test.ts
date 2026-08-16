@@ -15,6 +15,29 @@ const article: RenderedArticle = {
 };
 const ctx = { base: "/", dev: false, clientUrl: "/_pagina/pagina.js", cssUrl: "/_pagina/pagina.css", kineglyphRuntimeUrl: "/_pagina/kineglyph.js" };
 
+const nastyTitle = 'A "quoted" & <b>title</b>';
+const nastyArticle: RenderedArticle = {
+  diagnostics: [],
+  manifest: {
+    article: { slug: "t", title: "T Docs", form: "docs", status: "published", visibility: "public", tags: [] },
+    nav: [{ title: nastyTitle, href: '/g/q"uote/' }],
+    pages: {
+      "/": {
+        title: nastyTitle,
+        headings: [{ id: "h", text: nastyTitle, level: 2 }],
+        breadcrumbs: [{ title: nastyTitle, href: '/g/q"uote/' }],
+      },
+    },
+    figures: {}, assets: [],
+  },
+  pages: {
+    "/": {
+      path: "index.md", href: "/", title: nastyTitle, html: "<p>hi</p>",
+      headings: [{ id: "h", text: nastyTitle, level: 2 }], figures: [], links: [],
+    },
+  },
+};
+
 describe("renderPageHtml", () => {
   it("emits import map, nav with current marker, toc, prev/next and content", () => {
     const html = renderPageHtml(article, "/g/page/", ctx);
@@ -27,5 +50,12 @@ describe("renderPageHtml", () => {
     expect(html).toContain(`<h2 id="a">A</h2>`);
     expect(html).toContain(`data-pagina-theme-toggle`);
     expect(html).toContain(`<script type="module" src="/_pagina/pagina.js"></script>`);
+  });
+
+  it("escapes quotes/ampersands/tags inside attribute values", () => {
+    const html = renderPageHtml(nastyArticle, "/", ctx);
+    expect(html).not.toMatch(/href="[^"]*"[^"\s>]*"/);
+    expect(html).toContain("A &quot;quoted&quot; &amp; &lt;b&gt;title&lt;/b&gt;");
+    expect(html).toContain(`href="/g/q&quot;uote/"`);
   });
 });

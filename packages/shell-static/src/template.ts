@@ -21,7 +21,7 @@ function navHtml(nodes: readonly NavNode[], current: string, base: string, depth
     .map((n) =>
       n.children
         ? `<li class="pg-nav__section"><span class="pg-nav__label">${esc(n.title)}</span>${navHtml(n.children, current, base, depth + 1)}</li>`
-        : `<li><a class="pg-nav__link" href="${withBase(base, n.href!)}"${n.href === current ? ` aria-current="page"` : ""}>${esc(n.title)}</a></li>`,
+        : `<li><a class="pg-nav__link" href="${esc(withBase(base, n.href!))}"${n.href === current ? ` aria-current="page"` : ""}>${esc(n.title)}</a></li>`,
     )
     .join("")}</ul>`;
 }
@@ -36,18 +36,18 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     toc.length === 0
       ? ""
       : `<nav class="pg-toc" aria-label="On this page"><p class="pg-toc__label">On this page</p><ul>${toc
-          .map((h) => `<li class="pg-toc__item pg-toc__item--${h.level}"><a href="${withBase(ctx.base, href)}#${h.id}">${esc(h.text)}</a></li>`)
+          .map((h) => `<li class="pg-toc__item pg-toc__item--${h.level}"><a href="${esc(`${withBase(ctx.base, href)}#${h.id}`)}">${esc(h.text)}</a></li>`)
           .join("")}</ul></nav>`;
   const prev =
     meta.prev === undefined
       ? ""
-      : `<a class="pg-pager__link pg-pager__link--prev" rel="prev" href="${withBase(ctx.base, meta.prev)}"><span>Previous</span>${esc(article.manifest.pages[meta.prev]!.title)}</a>`;
+      : `<a class="pg-pager__link pg-pager__link--prev" rel="prev" href="${esc(withBase(ctx.base, meta.prev))}"><span>Previous</span>${esc(article.manifest.pages[meta.prev]!.title)}</a>`;
   const next =
     meta.next === undefined
       ? ""
-      : `<a class="pg-pager__link pg-pager__link--next" rel="next" href="${withBase(ctx.base, meta.next)}"><span>Next</span>${esc(article.manifest.pages[meta.next]!.title)}</a>`;
+      : `<a class="pg-pager__link pg-pager__link--next" rel="next" href="${esc(withBase(ctx.base, meta.next))}"><span>Next</span>${esc(article.manifest.pages[meta.next]!.title)}</a>`;
   const crumbs = meta.breadcrumbs
-    .map((c) => (c.href ? `<a href="${withBase(ctx.base, c.href)}">${esc(c.title)}</a>` : `<span>${esc(c.title)}</span>`))
+    .map((c) => (c.href ? `<a href="${esc(withBase(ctx.base, c.href))}">${esc(c.title)}</a>` : `<span>${esc(c.title)}</span>`))
     .join(`<span class="pg-crumbs__sep">/</span>`);
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
@@ -59,7 +59,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <link rel="stylesheet" href="${esc(ctx.cssUrl)}">
 </head>
 <body>
-<header class="pg-header"><a class="pg-header__title" href="${withBase(ctx.base, "/")}">${esc(a.title)}</a><button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>
+<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav><article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>
