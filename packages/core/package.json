@@ -3,6 +3,6 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "development": "./src/index.ts", "import": "./dist/index.js" } },
   "files": ["dist"],
   "scripts": { "build": "tsc -p tsconfig.build.json", "typecheck": "tsc -p tsconfig.json --noEmit" },
-  "dependencies": { "markdown-it": "^14.1.0", "yaml": "^2.8.0" },
+  "dependencies": { "markdown-it": "^14.1.0", "markdown-it-attrs": "^4.3.1", "yaml": "^2.8.0" },
   "devDependencies": { "@types/markdown-it": "^14.1.2" }
 }
