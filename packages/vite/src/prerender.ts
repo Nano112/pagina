@@ -2,19 +2,36 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defaultTheme, type ThemeTokens } from "@kineglyph/core";
-import { prerender } from "@kineglyph/export";
+import { prerender, rewriteImports } from "@kineglyph/export";
 import type { ArticleConfig, Diagnostic, RenderedArticle } from "@pagina/core";
+import { resolveKineglyphBundle } from "./kineglyph.js";
 
 export interface KineglyphThemes { readonly light: ThemeTokens; readonly dark: ThemeTokens }
 
 /**
  * Loads the `{ light, dark }` token pair named by `article.yaml`'s `kineglyph.theme`
  * (a module path relative to the folder). Falls back to Kineglyph's default theme.
+ *
+ * This is a plain Node `import()`, outside Vite's module graph, so — unlike the browser
+ * bundle (aliased in `dev.ts`/`build.ts`) or scene figures (rewritten by
+ * `@kineglyph/export`'s `prerender`) — the bare `kineglyph` specifier a theme module uses
+ * has nothing to resolve it. Read the source as text and rewrite that one specifier (and
+ * any relative imports, resolved against the theme file's own location) before evaluating
+ * it, the same technique `@kineglyph/export` uses internally for scene modules.
  */
 export async function loadKineglyphThemes(folder: string, config: ArticleConfig): Promise<KineglyphThemes> {
   const rel = config.kineglyph?.theme;
   if (rel === undefined) return { light: defaultTheme, dark: defaultTheme };
-  const url = `${pathToFileURL(resolve(folder, rel)).href}?t=${Date.now()}`;
+  const abs = resolve(folder, rel);
+  const baseUrl = pathToFileURL(abs).href;
+  const source = await readFile(abs, "utf8");
+  const rewritten = rewriteImports(source, (specifier) => {
+    if (specifier === "kineglyph") return pathToFileURL(resolveKineglyphBundle("import")).href;
+    if (specifier.startsWith("./") || specifier.startsWith("../") || specifier.startsWith("/"))
+      return new URL(specifier, baseUrl).href;
+    return specifier;
+  });
+  const url = `data:text/javascript;base64,${Buffer.from(rewritten, "utf8").toString("base64")}`;
   const mod = (await import(url)) as { default?: Partial<KineglyphThemes>; light?: ThemeTokens; dark?: ThemeTokens };
   const light = mod.light ?? mod.default?.light ?? defaultTheme;
   const dark = mod.dark ?? mod.default?.dark ?? light;
