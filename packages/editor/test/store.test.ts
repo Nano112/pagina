@@ -195,6 +195,7 @@ describe("ArticleStore", () => {
     const state = store.files.get("index.md")!;
     expect(state.status).toBe("conflict");
     expect(state.theirs).toBe("# Theirs\n");
+    expect(state.conflict).toMatchObject({ kind: "changed", theirs: "# Theirs\n" });
     expect(store.status.state).toBe("conflict");
 
     await store.resolveConflict("index.md", "theirs");
@@ -264,6 +265,50 @@ describe("ArticleStore", () => {
 
     await store.resolveConflict("index.md", "theirs");   // theirs fetched lazily
     expect(store.files.get("index.md")?.text).toBe("# Remote\n");
+    store.destroy();
+  });
+
+  it("holds a dirty file whose remote copy was deleted, without resurrecting it", async () => {
+    const b = new MemoryBackend(base());
+    const write = vi.spyOn(b, "write");
+    const store = await loaded(b);
+    await store.open("index.md");
+    store.setText("index.md", "# Unsaved\n");
+    await b.emit({ type: "deleted", path: "index.md" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const state = store.files.get("index.md")!;
+    expect(state.status).toBe("conflict");
+    expect(state.conflict).toEqual({ kind: "deleted" });
+    expect(state.text).toBe("# Unsaved\n");
+
+    // the queued write must not fire — that would silently recreate the file the other side removed
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(write).not.toHaveBeenCalled();
+    expect(await b.stat("index.md")).toBeNull();
+    expect(store.status.state).toBe("conflict");
+
+    await store.resolveConflict("index.md", "theirs");
+    expect(store.files.has("index.md")).toBe(false);
+    expect(await b.stat("index.md")).toBeNull();
+    store.destroy();
+  });
+
+  it("re-creates a remotely deleted file when the author keeps mine", async () => {
+    const b = new MemoryBackend(base());
+    const store = await loaded(b);
+    await store.open("index.md");
+    store.setText("index.md", "# Unsaved\n");
+    await b.emit({ type: "deleted", path: "index.md" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.files.get("index.md")?.conflict).toEqual({ kind: "deleted" });
+
+    await store.resolveConflict("index.md", "mine");
+    const state = store.files.get("index.md")!;
+    expect(state.status).toBe("saved");
+    expect(state.dirty).toBe(false);
+    expect(state.conflict).toBeUndefined();
+    expect((await b.read("index.md")).text).toBe("# Unsaved\n");
     store.destroy();
   });
 

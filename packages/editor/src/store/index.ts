@@ -6,7 +6,7 @@
  */
 export {
   ArticleStore,
-  type ArticleStoreOptions, type FileState, type FileStatus,
+  type ArticleStoreOptions, type FileConflict, type FileState, type FileStatus,
   type StoreEvent, type StoreEventMap, type StoreStatus,
 } from "./article-store.js";
 export { MemoryBackend, type MemoryBackendOptions } from "./memory-backend.js";

@@ -3,8 +3,9 @@
  *
  * It keeps an in-memory mirror of the article folder and makes every edit land locally first:
  * `setText` is synchronous, and persistence happens behind it (debounced per file, retried with
- * backoff, versioned with `If-Match`). A 409 never overwrites anyone: the file goes to `conflict`
- * and waits for `resolveConflict`.
+ * backoff, versioned with `If-Match`). Nothing the store queues can overwrite someone else's work:
+ * a 409, or word that the file changed or was deleted underneath us, cancels the queued write and
+ * parks the file in `conflict` until `resolveConflict` says which side wins.
  *
  * The mirror doubles as a `ContentFs`, so `@pagina/core` can render a live preview of unsaved text
  * without a round trip.
@@ -18,6 +19,18 @@ import { ConflictError } from "./types.js";
 
 export type FileStatus = "saved" | "saving" | "dirty" | "error" | "conflict";
 
+/**
+ * Why a file is in `conflict`, and what a resolution has to work with.
+ *
+ * `changed` may arrive with the server's text already in hand (a 409 body carries it) or without it
+ * (an SSE event does not), in which case it is fetched when the author actually asks to see it.
+ * `deleted` has no text to fetch and no version to match against — the two resolutions are "accept
+ * the deletion" and "put the file back".
+ */
+export type FileConflict =
+  | { readonly kind: "changed"; readonly theirs?: string; readonly version?: string }
+  | { readonly kind: "deleted" };
+
 export interface FileState {
   readonly path: string;
   readonly text?: string;
@@ -27,7 +40,9 @@ export interface FileState {
   readonly status: FileStatus;
   /** Why the last save failed, for the error banner. */
   readonly error?: string;
-  /** The server's text at the time of the conflict; fetched lazily for conflicts raised by events. */
+  /** Set exactly when `status` is `"conflict"`. */
+  readonly conflict?: FileConflict;
+  /** Convenience view of `conflict.theirs` — the server's text, when it is already known. */
   readonly theirs?: string;
 }
 
@@ -86,13 +101,11 @@ interface Record_ {
   dirty: boolean;
   status: FileStatus;
   error: string | undefined;
-  theirs: string | undefined;
-  /** The server version we lost to, so "overwrite with mine" can pass a valid `If-Match`. */
-  remoteVersion: string | undefined;
+  /** Set exactly while `status === "conflict"`; the single source of truth for the banner. */
+  conflict: FileConflict | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   attempt: number;
   saving: Promise<void> | undefined;
-  pending: boolean;
 }
 
 export class ArticleStore {
@@ -155,7 +168,8 @@ export class ArticleStore {
       ...(r.text === undefined ? {} : { text: r.text }),
       ...(r.bytes === undefined ? {} : { bytes: r.bytes }),
       ...(r.error === undefined ? {} : { error: r.error }),
-      ...(r.theirs === undefined ? {} : { theirs: r.theirs }),
+      ...(r.conflict === undefined ? {} : { conflict: r.conflict }),
+      ...(r.conflict?.kind === "changed" && r.conflict.theirs !== undefined ? { theirs: r.conflict.theirs } : {}),
     };
   }
 
@@ -234,23 +248,48 @@ export class ArticleStore {
   }
 
   /**
-   * Ends a conflict. `"theirs"` discards the local edit and takes the server text; `"mine"` re-writes
-   * the local text against the server's current version, so it wins deliberately rather than by luck.
+   * Ends a conflict, in whichever of its two shapes.
+   *
+   * For a `changed` conflict, `"theirs"` discards the local edit and takes the server text, while
+   * `"mine"` re-writes the local text against the server's current version — so overwriting is
+   * deliberate rather than a race that happened to go our way. The server text is fetched here if
+   * the conflict arrived without it (an SSE event carries no body).
+   *
+   * For a `deleted` conflict there is nothing to read and no version to match: `"theirs"` accepts
+   * the deletion and drops the file from the mirror, and `"mine"` re-creates it with an unversioned
+   * write.
    */
   async resolveConflict(path: string, choice: "theirs" | "mine"): Promise<void> {
     const r = this.#recs.get(path);
-    if (r === undefined || r.status !== "conflict") return;
-    let theirs = r.theirs;
-    let version = r.remoteVersion;
+    if (r === undefined || r.status !== "conflict" || r.conflict === undefined) return;
+    const conflict = r.conflict;
+    r.error = undefined;
+    r.attempt = 0;
+
+    if (conflict.kind === "deleted") {
+      r.conflict = undefined;
+      if (choice === "theirs") {
+        this.#forget(path);
+        this.#emit("files", undefined);
+        this.#emit("status", this.status);
+        return;
+      }
+      r.version = "";            // the file is gone, so the re-creation carries no If-Match
+      r.dirty = true;
+      this.#setStatus(r, "dirty");
+      await this.#save(r);
+      this.#emit("files", undefined);
+      return;
+    }
+
+    let theirs = conflict.theirs;
+    let version = conflict.version;
     if (theirs === undefined || version === undefined) {
-      const fresh = await this.#backend.read(path);   // conflicts raised by an event carry no body
+      const fresh = await this.#backend.read(path);
       theirs = fresh.text;
       version = fresh.version;
     }
-    r.theirs = undefined;
-    r.remoteVersion = undefined;
-    r.error = undefined;
-    r.attempt = 0;
+    r.conflict = undefined;
     if (choice === "theirs") {
       r.text = theirs;
       r.version = version;
@@ -305,10 +344,12 @@ export class ArticleStore {
   /**
    * Renders one page from the mirror — unsaved text included — through `@pagina/core`.
    *
-   * Snippet roots that point outside the folder (`../…`) cannot come from the mirror, which only
-   * ever holds folder-relative paths. The `ContentFs` therefore falls back to `backend.read` for
-   * such paths; a backend that refuses to serve them (the HTTP one will 404, since the listing never
-   * contains `..`) simply produces core's usual `snippet-missing` diagnostic and placeholder.
+   * `article.yaml` may declare snippet roots that reach outside the folder (`../…`). The mirror is
+   * built from the folder listing, which by definition never contains those paths, so they can only
+   * come from the backend: the `ContentFs` falls back to `backend.stat`/`backend.read` for them and
+   * caches the result outside `files`, since such a file is readable but not editable here. A
+   * backend that declines to serve them — the HTTP one does, its listing having no `..` entries to
+   * match — yields core's usual `snippet-missing` diagnostic and placeholder instead.
    */
   async render(path: string): Promise<RenderedPage> {
     const config = this.#requireArticle();
@@ -382,8 +423,8 @@ export class ArticleStore {
     if (r === undefined) {
       r = {
         path, text: undefined, bytes: undefined, version: this.#entries.get(path)?.version ?? "",
-        dirty: false, status: "saved", error: undefined, theirs: undefined, remoteVersion: undefined,
-        timer: undefined, attempt: 0, saving: undefined, pending: false,
+        dirty: false, status: "saved", error: undefined, conflict: undefined,
+        timer: undefined, attempt: 0, saving: undefined,
       };
       this.#recs.set(path, r);
     }
@@ -419,23 +460,32 @@ export class ArticleStore {
     r.timer = setTimeout(() => { r.timer = undefined; void this.#save(r); }, this.#debounceMs);
   }
 
+  /**
+   * A file has at most one save in flight. A debounce timer that fires mid-save (easy during a
+   * backoff wait) just joins the running one: `#runSave` loops until the text it wrote is the text
+   * in the mirror, so a newer edit is picked up without a second queue entry.
+   */
   #save(r: Record_): Promise<void> {
-    if (r.saving !== undefined) { r.pending = true; return r.saving; }
+    if (r.saving !== undefined) return r.saving;
     if (r.timer !== undefined) { clearTimeout(r.timer); r.timer = undefined; }
-    const run = this.#runSave(r).finally(() => {
-      r.saving = undefined;
-      if (r.pending) {
-        r.pending = false;
-        if (r.dirty && r.status !== "conflict" && r.status !== "error") void this.#save(r);
-      }
-    });
+    const run = this.#runSave(r).finally(() => { r.saving = undefined; });
     r.saving = run;
     return run;
   }
 
+  /** Enters the conflict state: cancels the queued write, so nothing can save over the other side. */
+  #enterConflict(r: Record_, conflict: FileConflict, message: string): void {
+    if (r.timer !== undefined) { clearTimeout(r.timer); r.timer = undefined; }
+    r.conflict = conflict;
+    r.error = message;
+    this.#setStatus(r, "conflict");
+  }
+
   async #runSave(r: Record_): Promise<void> {
     for (;;) {
-      if (!r.dirty || this.#destroyed) return;
+      // A conflicted file is never written: whoever set the conflict also cancelled the timer, and
+      // this second check keeps a save that was already in flight from finishing the job anyway.
+      if (!r.dirty || this.#destroyed || r.status === "conflict") return;
       const text = r.text ?? "";
       this.#setStatus(r, "saving");
       try {
@@ -452,10 +502,7 @@ export class ArticleStore {
         return;
       } catch (e) {
         if (e instanceof ConflictError) {
-          r.theirs = e.theirs;
-          r.remoteVersion = e.version;
-          r.error = e.message;
-          this.#setStatus(r, "conflict");
+          this.#enterConflict(r, { kind: "changed", theirs: e.theirs, version: e.version }, e.message);
           return;
         }
         r.attempt += 1;
@@ -472,7 +519,12 @@ export class ArticleStore {
     if (this.#destroyed) return;
     const r = this.#recs.get(ev.path);
     if (ev.type === "deleted") {
-      if (r?.dirty === true) { r.remoteVersion = undefined; r.error = `${ev.path} was deleted on the server`; this.#setStatus(r, "conflict"); return; }
+      if (r?.dirty === true) {
+        // Unsaved work against a file that no longer exists: hold it and let the author decide,
+        // rather than letting the queued write quietly resurrect the file.
+        this.#enterConflict(r, { kind: "deleted" }, `${ev.path} was deleted on the server`);
+        return;
+      }
       this.#forget(ev.path);
       this.#emit("files", undefined);
       return;
@@ -484,12 +536,8 @@ export class ArticleStore {
     }
     if (r.dirty) {
       // Someone else moved while we were editing: flag it, but leave the local text on screen. The
-      // server's version is fetched only if the author actually asks to see it.
-      if (r.timer !== undefined) { clearTimeout(r.timer); r.timer = undefined; }
-      r.theirs = undefined;
-      r.remoteVersion = ev.version;
-      r.error = `${ev.path} changed on the server`;
-      this.#setStatus(r, "conflict");
+      // server's text is fetched only if the author actually asks to see it.
+      this.#enterConflict(r, { kind: "changed", ...(ev.version === undefined ? {} : { version: ev.version }) }, `${ev.path} changed on the server`);
       return;
     }
     if (r.text === undefined && r.bytes === undefined) {
