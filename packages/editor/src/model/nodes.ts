@@ -140,7 +140,7 @@ export const FigureImage = Node.create({
   selectable: true,
   draggable: true,
   addAttributes() {
-    return { src: stringAttr("src", ""), alt: stringAttr("alt", ""), width: stringAttr("width"), caption: stringAttr("caption", "") };
+    return { src: stringAttr("src", ""), alt: stringAttr("alt", ""), title: stringAttr("title"), width: stringAttr("width"), caption: stringAttr("caption", "") };
   },
   parseHTML() {
     return [{ tag: "figure[data-pg-figure-image]" }];

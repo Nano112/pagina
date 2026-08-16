@@ -31,6 +31,25 @@ const HeadingId = Extension.create({
   },
 });
 
+/** `|:--|--:|` column alignment; TipTap's table cells model spans and widths but not alignment. */
+const CellAlign = Extension.create({
+  name: "paginaCellAlign",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["tableCell", "tableHeader"],
+        attributes: {
+          align: {
+            default: null,
+            parseHTML: (element: HTMLElement): string | null => element.style.textAlign || null,
+            renderHTML: (attrs: Record<string, unknown>): Record<string, string> => (typeof attrs["align"] === "string" ? { style: `text-align:${attrs["align"]}` } : {}),
+          },
+        },
+      },
+    ];
+  },
+});
+
 /** `![alt](src){ width="480" .cls }` — markdown-it-attrs' extras have to survive the round trip. */
 const ImageAttrs = Image.extend({
   addAttributes() {
@@ -66,8 +85,11 @@ export function editorExtensions(): Extensions {
   return [
     StarterKit.configure({ link: false, codeBlock: { languageClassPrefix: "language-" } }),
     HeadingId,
+    CellAlign,
     LinkAttrs.configure({ openOnClick: false, autolink: false, linkOnPaste: false }),
-    ImageAttrs,
+    // Markdown images are inline: `text ![a](b) text` is one paragraph, and even a lone image sits
+    // inside one. TipTap's default (a block node) would make such a paragraph unrepresentable.
+    ImageAttrs.configure({ inline: true }),
     Table.configure({ resizable: false }),
     TableRow,
     TableHeader,
