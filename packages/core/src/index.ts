@@ -3,3 +3,7 @@ export { parseArticleConfig } from "./config.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets } from "./plugins/snippets.js";
 export { slugify } from "./plugins/anchors.js";
+export { extractFigures } from "./figures.js";
+export { hrefOf, resolveRelative, rewriteLinks } from "./links.js";
+export { renderPage, pageSlug } from "./render-page.js";
+export { renderArticle, PaginaBuildError } from "./render-article.js";
