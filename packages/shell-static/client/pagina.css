@@ -1,171 +1,168 @@
-/* @pagina/shell-static — default theme ---------------------------------------------------- */
+/* @pagina/shell-static — default theme ----------------------------------------------------
+ *
+ * Four cascade layers, declared here in cascade order (later wins):
+ *
+ *   pagina.reset    box-sizing and body basics
+ *   pagina.tokens   the `--pg-*` contract (see `tokens.css`)
+ *   pagina.reading  the content column: typography, code, admonitions, tabs, tables, figures
+ *   pagina.chrome   header, nav, TOC, pager, theme toggle, layout grid
+ *
+ * Every rule below lives in a layer, and *unlayered CSS beats layered CSS regardless of
+ * specificity*. A host therefore restyles pagina with ordinary selectors and no `!important`;
+ * a host that wants only the tokens links `pagina.tokens.css` instead of this file.
+ *
+ * The declaration line must stay the first statement in the file: it is what fixes the order,
+ * and a layer first used later would otherwise sort itself after the ones named here.
+ *
+ * `tokens.css` carries the reset + tokens layers and is also shipped on its own; it is imported
+ * rather than duplicated so the two sheets cannot drift.
+ */
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;
+@import "./tokens.css";
 
-:root {
-  --pg-bg: #ffffff;
-  --pg-bg-raised: #f6f7f9;
-  --pg-fg: #1a1d23;
-  --pg-muted: #6b7280;
-  --pg-line: #e3e6eb;
-  --pg-accent: #3b5bdb;
-  --pg-accent-fg: #ffffff;
-  --pg-code-bg: #f6f7f9;
-  --pg-shiki-bg: #ffffff;
-  --pg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --pg-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --pg-note: #3b5bdb;
-  --pg-tip: #0f9d58;
-  --pg-warning: #b7791f;
-  --pg-danger: #d64545;
+@layer pagina.reading {
+  a { color: var(--pg-accent); }
+  code, pre, kbd { font-family: var(--pg-font-mono); font-size: 0.875em; }
+
+  /* Content typography ---------------------------------------------------------------------- */
+  .pg-content { max-width: var(--pg-measure); }
+  .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
+    font-family: var(--pg-font-display); line-height: 1.25; scroll-margin-top: 4rem;
+  }
+  .pg-content h1 { font-size: 1.9rem; }
+  .pg-content h2 { font-size: 1.4rem; margin-top: 2rem; }
+  .pg-content h3 { font-size: 1.15rem; margin-top: 1.5rem; }
+  .pg-content p, .pg-content ul, .pg-content ol { margin: 0.9rem 0; }
+  .pg-content img { max-width: 100%; }
+  .pg-content blockquote {
+    margin: 1.25rem 0; padding: 0 0 0 1rem;
+    border-left: 3px solid var(--pg-line-strong); color: var(--pg-muted);
+  }
+  .pg-content pre {
+    position: relative; overflow: auto; background: var(--pg-code-bg);
+    border: 1px solid var(--pg-line); border-radius: var(--pg-radius-lg); padding: 0.9rem 1rem;
+  }
+  .pg-content :not(pre) > code {
+    background: var(--pg-code-bg); border-radius: var(--pg-radius); padding: 0.1rem 0.35rem;
+  }
+
+  /* Tables ---------------------------------------------------------------------------------- */
+  .pg-content table { border-collapse: collapse; margin: 1.25rem 0; }
+  .pg-content th, .pg-content td {
+    border: 1px solid var(--pg-line); padding: 0.4rem 0.65rem; text-align: left;
+  }
+  .pg-content thead th { background: var(--pg-bg-sunken); border-bottom-color: var(--pg-line-strong); }
+
+  /* Tabs -------------------------------------------------------------------------------------- */
+  .pg-tabs { margin: 1rem 0; }
+  .pg-tabs__list { display: flex; gap: 0; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--pg-line); }
+  .pg-tabs [role="tab"] {
+    background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+    padding: 0.5rem 0.9rem; color: var(--pg-muted); font: inherit; font-size: 0.9rem;
+  }
+  .pg-tabs [role="tab"][aria-selected="true"] { color: var(--pg-accent); border-bottom-color: var(--pg-accent); font-weight: 600; }
+  .pg-tabs [role="tabpanel"][hidden] { display: none; }
+  .pg-tabs [role="tabpanel"] { padding-top: 0.9rem; }
+
+  /* Admonitions -------------------------------------------------------------------------------- */
+  .pg-admonition {
+    border-left: 3px solid var(--pg-note); background: var(--pg-bg-raised);
+    border-radius: 0 var(--pg-radius) var(--pg-radius) 0; padding: 0.75rem 1rem; margin: 1.25rem 0;
+  }
+  .pg-admonition__title { font-weight: 600; margin-bottom: 0.25rem; }
+  .pg-admonition--note { border-color: var(--pg-note); }
+  .pg-admonition--tip { border-color: var(--pg-tip); }
+  .pg-admonition--warning { border-color: var(--pg-warning); }
+  .pg-admonition--danger { border-color: var(--pg-danger); }
+
+  /* Code-copy button ---------------------------------------------------------------------------- */
+  .pg-copy {
+    position: absolute; top: 0.4rem; right: 0.4rem; font-size: 0.75rem;
+    background: var(--pg-bg); color: var(--pg-muted); border: 1px solid var(--pg-line);
+    border-radius: var(--pg-radius); padding: 0.15rem 0.5rem; cursor: pointer;
+  }
+  .pg-copy:hover { color: var(--pg-fg); }
+
+  /* Kineglyph figures --------------------------------------------------------------------------- */
+  figure.kg { margin: 1.5rem 0; }
+  figure.kg [data-kg-stage] { min-height: 8rem; }
+  picture.kg-static img { width: 100%; height: auto; display: block; }
+
+  /* Shiki dual-theme hookup: shiki emits inline `color`/`background-color` plus
+     `--shiki-dark`/`--shiki-dark-bg` custom properties (via `defaultColor: false`); swap to the
+     dark variables under our own dark theme. The `!important` is not a preference: shiki writes
+     its colours as an inline `style`, which no ordinary rule can outrank. `--pg-shiki-bg` gives
+     a host the same handle on the light surface (the dark rule below is more specific, so it
+     still wins under `[data-theme="dark"]`). */
+  .shiki { background-color: var(--pg-shiki-bg) !important; }
+  [data-theme="dark"] .shiki,
+  [data-theme="dark"] .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
 }
 
-[data-theme="dark"] {
-  --pg-bg: #14161a;
-  --pg-bg-raised: #1c1f26;
-  --pg-fg: #e7e9ee;
-  --pg-muted: #9aa1ac;
-  --pg-line: #2b2f38;
-  --pg-accent: #7c9bff;
-  --pg-accent-fg: #0d1117;
-  --pg-code-bg: #1c1f26;
-  --pg-shiki-bg: #1c1f26;
-  --pg-note: #7c9bff;
-  --pg-tip: #3ddc84;
-  --pg-warning: #e0b34c;
-  --pg-danger: #ff7b7b;
-}
+@layer pagina.chrome {
+  /* Header ----------------------------------------------------------------------------------- */
+  .pg-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--pg-line);
+    position: sticky; top: 0; background: var(--pg-bg); z-index: 10;
+  }
+  .pg-header__title { font-weight: 600; text-decoration: none; color: var(--pg-fg); font-family: var(--pg-font-display); }
 
-* { box-sizing: border-box; }
-html { color-scheme: light; }
-[data-theme="dark"] { color-scheme: dark; }
-body {
-  margin: 0;
-  background: var(--pg-bg);
-  color: var(--pg-fg);
-  font-family: var(--pg-font);
-  line-height: 1.55;
-}
-a { color: var(--pg-accent); }
-code, pre, kbd { font-family: var(--pg-font-mono); font-size: 0.875em; }
+  /* Theme toggle ------------------------------------------------------------------------------ */
+  .pg-theme-toggle {
+    width: 34px; height: 18px; border-radius: 999px; border: 1px solid var(--pg-line);
+    background: var(--pg-bg-raised); padding: 2px; cursor: pointer; display: inline-flex;
+  }
+  .pg-theme-toggle__thumb {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--pg-accent);
+    transition: transform 150ms ease; transform: translateX(0);
+  }
+  [data-theme="dark"] .pg-theme-toggle__thumb { transform: translateX(16px); }
 
-/* Header ----------------------------------------------------------------------------------- */
-.pg-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--pg-line);
-  position: sticky; top: 0; background: var(--pg-bg); z-index: 10;
-}
-.pg-header__title { font-weight: 600; text-decoration: none; color: var(--pg-fg); }
+  /* Shell grid: nav | content | toc, collapsing to one column under 960px -------------------- */
+  .pg-shell {
+    display: grid; grid-template-columns: 240px minmax(0, 1fr) 220px;
+    gap: 0; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 960px) {
+    .pg-shell { grid-template-columns: 1fr; }
+    .pg-nav, .pg-toc { display: none; }
+  }
 
-/* Theme toggle ------------------------------------------------------------------------------ */
-.pg-theme-toggle {
-  width: 34px; height: 18px; border-radius: 999px; border: 1px solid var(--pg-line);
-  background: var(--pg-bg-raised); padding: 2px; cursor: pointer; display: inline-flex;
-}
-.pg-theme-toggle__thumb {
-  width: 12px; height: 12px; border-radius: 50%; background: var(--pg-accent);
-  transition: transform 150ms ease; transform: translateX(0);
-}
-[data-theme="dark"] .pg-theme-toggle__thumb { transform: translateX(16px); }
+  .pg-nav { padding: 1.5rem 1rem; border-right: 1px solid var(--pg-line); }
+  .pg-nav__list { list-style: none; margin: 0; padding: 0; }
+  .pg-nav__list--0 { margin-bottom: 0.5rem; }
+  .pg-nav__list--1 { padding-left: 0.75rem; }
+  .pg-nav__section { margin-top: 0.75rem; }
+  .pg-nav__label { display: block; font-weight: 600; font-size: 0.8rem; color: var(--pg-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.25rem; }
+  .pg-nav__link { display: block; padding: 0.2rem 0; color: var(--pg-fg); text-decoration: none; }
+  .pg-nav__link:hover { color: var(--pg-accent); }
+  .pg-nav__link[aria-current="page"] { color: var(--pg-accent); font-weight: 600; }
 
-/* Shell grid: nav | content | toc, collapsing to one column under 960px -------------------- */
-.pg-shell {
-  display: grid; grid-template-columns: 240px minmax(0, 1fr) 220px;
-  gap: 0; max-width: 1400px; margin: 0 auto;
-}
-@media (max-width: 960px) {
-  .pg-shell { grid-template-columns: 1fr; }
-  .pg-nav, .pg-toc { display: none; }
-}
+  .pg-main { min-width: 0; padding: 1.5rem 2rem; }
 
-.pg-nav { padding: 1.5rem 1rem; border-right: 1px solid var(--pg-line); }
-.pg-nav__list { list-style: none; margin: 0; padding: 0; }
-.pg-nav__list--0 { margin-bottom: 0.5rem; }
-.pg-nav__list--1 { padding-left: 0.75rem; }
-.pg-nav__section { margin-top: 0.75rem; }
-.pg-nav__label { display: block; font-weight: 600; font-size: 0.8rem; color: var(--pg-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.25rem; }
-.pg-nav__link { display: block; padding: 0.2rem 0; color: var(--pg-fg); text-decoration: none; }
-.pg-nav__link:hover { color: var(--pg-accent); }
-.pg-nav__link[aria-current="page"] { color: var(--pg-accent); font-weight: 600; }
+  .pg-crumbs { font-size: 0.85rem; color: var(--pg-muted); margin-bottom: 1rem; }
+  .pg-crumbs a { color: var(--pg-muted); text-decoration: none; }
+  .pg-crumbs a:hover { color: var(--pg-accent); }
+  .pg-crumbs__sep { margin: 0 0.35rem; }
 
-.pg-main { min-width: 0; padding: 1.5rem 2rem; }
+  /* Pager ------------------------------------------------------------------------------------------ */
+  .pg-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; }
+  .pg-pager__link {
+    flex: 1; display: block; border: 1px solid var(--pg-line); border-radius: var(--pg-radius);
+    padding: 0.6rem 0.9rem; text-decoration: none; color: var(--pg-fg);
+  }
+  .pg-pager__link span { display: block; font-size: 0.75rem; color: var(--pg-muted); }
+  .pg-pager__link--next { text-align: right; }
 
-.pg-crumbs { font-size: 0.85rem; color: var(--pg-muted); margin-bottom: 1rem; }
-.pg-crumbs a { color: var(--pg-muted); text-decoration: none; }
-.pg-crumbs a:hover { color: var(--pg-accent); }
-.pg-crumbs__sep { margin: 0 0.35rem; }
-
-/* Content typography ------------------------------------------------------------------------ */
-.pg-content { max-width: 72ch; }
-.pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 { line-height: 1.25; scroll-margin-top: 4rem; }
-.pg-content h1 { font-size: 1.9rem; }
-.pg-content h2 { font-size: 1.4rem; margin-top: 2rem; }
-.pg-content h3 { font-size: 1.15rem; margin-top: 1.5rem; }
-.pg-content p, .pg-content ul, .pg-content ol { margin: 0.9rem 0; }
-.pg-content img { max-width: 100%; }
-.pg-content pre {
-  position: relative; overflow: auto; background: var(--pg-code-bg);
-  border: 1px solid var(--pg-line); border-radius: 6px; padding: 0.9rem 1rem;
-}
-.pg-content :not(pre) > code {
-  background: var(--pg-code-bg); border-radius: 4px; padding: 0.1rem 0.35rem;
-}
-
-/* Tabs ---------------------------------------------------------------------------------------- */
-.pg-tabs { margin: 1rem 0; }
-.pg-tabs__list { display: flex; gap: 0; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--pg-line); }
-.pg-tabs [role="tab"] {
-  background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
-  padding: 0.5rem 0.9rem; color: var(--pg-muted); font: inherit; font-size: 0.9rem;
-}
-.pg-tabs [role="tab"][aria-selected="true"] { color: var(--pg-accent); border-bottom-color: var(--pg-accent); font-weight: 600; }
-.pg-tabs [role="tabpanel"][hidden] { display: none; }
-.pg-tabs [role="tabpanel"] { padding-top: 0.9rem; }
-
-/* Admonitions ---------------------------------------------------------------------------------- */
-.pg-admonition {
-  border-left: 3px solid var(--pg-note); background: var(--pg-bg-raised);
-  border-radius: 0 6px 6px 0; padding: 0.75rem 1rem; margin: 1.25rem 0;
-}
-.pg-admonition__title { font-weight: 600; margin-bottom: 0.25rem; }
-.pg-admonition--note { border-color: var(--pg-note); }
-.pg-admonition--tip { border-color: var(--pg-tip); }
-.pg-admonition--warning { border-color: var(--pg-warning); }
-.pg-admonition--danger { border-color: var(--pg-danger); }
-
-/* Code-copy button ------------------------------------------------------------------------------ */
-.pg-copy {
-  position: absolute; top: 0.4rem; right: 0.4rem; font-size: 0.75rem;
-  background: var(--pg-bg); color: var(--pg-muted); border: 1px solid var(--pg-line);
-  border-radius: 4px; padding: 0.15rem 0.5rem; cursor: pointer;
-}
-.pg-copy:hover { color: var(--pg-fg); }
-
-/* Pager ------------------------------------------------------------------------------------------ */
-.pg-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; }
-.pg-pager__link {
-  flex: 1; display: block; border: 1px solid var(--pg-line); border-radius: 6px;
-  padding: 0.6rem 0.9rem; text-decoration: none; color: var(--pg-fg);
-}
-.pg-pager__link span { display: block; font-size: 0.75rem; color: var(--pg-muted); }
-.pg-pager__link--next { text-align: right; }
-
-/* Table of contents (sticky) ---------------------------------------------------------------------- */
-.pg-toc { padding: 1.5rem 1rem; position: sticky; top: 3.5rem; align-self: start; max-height: calc(100vh - 4rem); overflow: auto; }
-.pg-toc__label { font-weight: 600; font-size: 0.8rem; color: var(--pg-muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 0 0 0.5rem; }
-.pg-toc ul { list-style: none; margin: 0; padding: 0; }
-.pg-toc__item a { display: block; padding: 0.15rem 0; font-size: 0.85rem; color: var(--pg-muted); text-decoration: none; }
-.pg-toc__item a:hover { color: var(--pg-accent); }
-.pg-toc__item--3 { padding-left: 0.75rem; }
-
-/* Kineglyph figures ------------------------------------------------------------------------------- */
-figure.kg { margin: 1.5rem 0; }
-figure.kg [data-kg-stage] { min-height: 8rem; }
-picture.kg-static img { width: 100%; height: auto; display: block; }
-
-/* Shiki dual-theme hookup: shiki emits inline `color`/`background-color` plus
-   `--shiki-dark`/`--shiki-dark-bg` custom properties (via `defaultColor: false`); swap to the
-   dark variables under our own dark theme. */
-[data-theme="dark"] .shiki,
-[data-theme="dark"] .shiki span {
-  color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
+  /* Table of contents (sticky) ---------------------------------------------------------------------- */
+  .pg-toc { padding: 1.5rem 1rem; position: sticky; top: 3.5rem; align-self: start; max-height: calc(100vh - 4rem); overflow: auto; }
+  .pg-toc__label { font-weight: 600; font-size: 0.8rem; color: var(--pg-muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 0 0 0.5rem; }
+  .pg-toc ul { list-style: none; margin: 0; padding: 0; }
+  .pg-toc__item a { display: block; padding: 0.15rem 0; font-size: 0.85rem; color: var(--pg-muted); text-decoration: none; }
+  .pg-toc__item a:hover { color: var(--pg-accent); }
+  .pg-toc__item--3 { padding-left: 0.75rem; }
 }
