@@ -137,8 +137,8 @@ hatch for fully custom, non-pre-renderable interactivity.
 ## CLI
 
 ```
-pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit]
-pagina build <folder> [--out dist] [--base /] [--no-strict]
+pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome]
+pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome]
 ```
 
 - Port precedence: `--port` > `PORT` env > `4321`. Blank or non-numeric values are ignored.
@@ -147,6 +147,8 @@ pagina build <folder> [--out dist] [--base /] [--no-strict]
 - `build` writes the site and exits `1` with the full diagnostic list on a strict failure;
   `--no-strict` downgrades content problems to warnings so you can render a half-ported folder.
 - `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
+- `--theme full|tokens|none` picks how much pagina CSS a page links and `--no-chrome` drops
+  pagina's own header row — see [Theming](#theming).
 - `--edit` turns on the in-browser editor: `/__edit/` (and `/__edit/<page href>`) serves the
   editor, every page grows an "Edit this page" link, and the article folder is exposed for
   reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package
@@ -180,6 +182,24 @@ The zone runs with `--edit`, so whatever it serves can be **rewritten from a bro
 the default is `.pagina-scratch/` — a gitignored copy the `dev:` command makes from
 `packages/core/test/fixture` on first run — and not the fixture itself, which is tracked content a
 dozen tests assert against. Delete the folder to start over; `PAGINA_CONTENT` bypasses it entirely.
+
+## Theming
+
+pagina ships one plain stylesheet, and every rule in it sits in a cascade layer
+(`@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;`). Unlayered CSS beats
+layered CSS at any specificity, so **your rules win over pagina's** with a plain selector and no
+`!important`. Four escape hatches, in increasing order of control:
+
+1. **Map the tokens** — ~20 `--pg-*` custom properties (surfaces, ink, accent, lines, radii,
+   fonts, measure) that everything pagina draws reads from. Most sites stop here.
+2. **Override rules** — ordinary CSS, thanks to the layers.
+3. **`--theme tokens`** — link `pagina.tokens.css` (tokens + reset) and style the content column
+   yourself.
+4. **`--theme none`** — no pagina stylesheet at all; the `pg-*` markup is the whole contract.
+   `--no-chrome` additionally drops pagina's header row when your layout supplies one.
+
+The editor shares the same contract — it has no palette of its own.
+Full token table and a copy-pasteable host mapping: **[docs/theming.md](docs/theming.md)**.
 
 ## Editor
 
