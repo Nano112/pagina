@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import { defaultTheme, mountKineglyph, type KineglyphController } from "kineglyph";
-import { Code2, PencilRuler } from "lucide-react";
+import { Code2, PencilRuler, SlidersHorizontal } from "lucide-react";
 import { RemoveBlock, useBlockChrome } from "./chrome.js";
 import { useArticleStore, useStoreRevision } from "../useStore.js";
 import { useFigureBuilder, usePagePath } from "../context.js";
@@ -38,6 +38,8 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
   const inlineSource = attrOf(node.attrs, "source");
   const staticHref = attrOf(node.attrs, "static");
   const id = attrOf(node.attrs, "id");
+  /** `data-instrument="true"` — the author's opt-in to playback and inspection. */
+  const instrument = attrOf(node.attrs, "instrument") === "true";
 
   const stage = useRef<HTMLDivElement>(null);
   const controller = useRef<KineglyphController | undefined>(undefined);
@@ -96,7 +98,18 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
         if (cancelled || stage.current === null) return;
         if (scene === undefined || scene === null || typeof scene !== "object")
           throw new Error("the module's default export is not a scene");
-        controller.current = mountKineglyph(stage.current, { scene: scene as SceneSource, theme: defaultTheme });
+        // The preview wears the chrome the published page will, so "quiet" is something the
+        // author sees rather than discovers after publishing. The rule is pagina's editorial
+        // default, stated once in `@pagina/shell-static`'s `client/figure-chrome.ts`: quiet
+        // unless the figure opted in, and `"auto"` rather than `true` when it did, so the scene
+        // still gets the final word on whether a transport means anything.
+        const chrome = instrument ? ("auto" as const) : false;
+        controller.current = mountKineglyph(stage.current, {
+          scene: scene as SceneSource,
+          theme: defaultTheme,
+          controls: chrome,
+          readout: chrome,
+        });
         setError(undefined);
       })
       .catch((e: unknown) => {
@@ -105,7 +118,7 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [source, instrument]);
 
   useEffect(
     () => () => {
@@ -146,6 +159,30 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
         {spec === null || openBuilder === undefined ? null : (
           <button type="button" className="pge-btn pge-btn--sm" onClick={build}>
             <PencilRuler size={14} aria-hidden="true" /> Open in builder
+          </button>
+        )}
+        {kind === "static" ? null : (
+          /*
+           * The one editorial decision about a figure that is not a decision about its scene:
+           * is this a picture, or a thing a reader can drive?
+           *
+           * It lives on the figure card rather than in the scene builder because it is an
+           * attribute of *this* `<figure>`, while the builder edits a `scenes/*.mjs` that any
+           * number of figures may share — the same diagram can be quiet in an article and an
+           * instrument on a reference page.
+           */
+          <button
+            type="button"
+            className="pge-btn pge-btn--sm"
+            aria-pressed={instrument}
+            title={
+              instrument
+                ? "This figure offers playback and inspection where its scene supports them."
+                : "This figure is a picture: no playback, no inspection readout."
+            }
+            onClick={() => updateAttributes({ instrument: instrument ? null : "true" })}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" /> Interactive
           </button>
         )}
         {kind === "static" ? null : (

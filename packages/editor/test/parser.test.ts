@@ -114,6 +114,19 @@ describe("parseMarkdown — one synthetic sample per custom node", () => {
     expect(still!.attrs).toMatchObject({ kind: "static", static: "a.svg", extraAttrs: null });
   });
 
+  it("figureKg — data-instrument is modelled, not swept into extraAttrs", () => {
+    // It has to be a first-class attribute for the card's Interactive toggle to write it; parked
+    // in `extraAttrs` it would round-trip but be unreachable to anything but hand-editing.
+    const { doc } = parseMarkdown(
+      '<figure class="kg" data-scene="s.mjs" data-instrument="true"></figure>\n\n' +
+        '<figure class="kg" data-scene="t.mjs"></figure>\n',
+    );
+    const [loud, quiet] = ofType(doc, "figureKg");
+    expect(loud!.attrs).toMatchObject({ instrument: "true", extraAttrs: null });
+    // Absent is the default, and it stays absent rather than becoming "false".
+    expect(quiet!.attrs).toMatchObject({ instrument: null, extraAttrs: null });
+  });
+
   it("figureImage", () => {
     const { doc } = parseMarkdown('<figure markdown="span">\n  ![Alt text](img/a.png){ width="480" }\n  <figcaption>The caption.</figcaption>\n</figure>\n');
     expect(doc.child(0).type.name).toBe("figureImage");

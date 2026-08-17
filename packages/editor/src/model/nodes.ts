@@ -107,7 +107,7 @@ export const Snippet = Node.create({
   },
 });
 
-const KG_KEYS = ["kind", "id", "scene", "source", "static", "controls", "readout", "extraAttrs"] as const;
+const KG_KEYS = ["kind", "id", "scene", "source", "static", "controls", "readout", "instrument", "extraAttrs"] as const;
 
 /**
  * `<figure class="kg" …>` — a Kineglyph figure. `kind` mirrors core's `FigureRef`:

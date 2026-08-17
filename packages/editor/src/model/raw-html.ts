@@ -42,7 +42,7 @@ const MODEL_VIEWER_RE = /^<model-viewer\b([^>]*?)(\/?)>(?:([\s\S]*?)<\/model-vie
 const KG_SCRIPT_RE = /<script\b[^>]*\btype="text\/kineglyph"[^>]*>([\s\S]*?)<\/script>/;
 const FIGCAPTION_RE = /<figcaption>([\s\S]*?)<\/figcaption>/;
 const MD_IMAGE_RE = /!\[([^\]]*)\]\(\s*([^)\s]*)(?:\s+"([^"]*)")?\s*\)(?:\s*\{([^}]*)\})?/;
-const KG_KNOWN = ["id", "data-scene", "data-static", "data-controls", "data-readout"];
+const KG_KNOWN = ["id", "data-scene", "data-static", "data-controls", "data-readout", "data-instrument"];
 
 const hasClass = (attrs: Record<string, string>, name: string): boolean =>
   (attrs["class"] ?? "").split(/\s+/).includes(name);
@@ -68,6 +68,8 @@ function classifyFigure(attrText: string, inner: string): RawHtmlNode | null {
         static: attrs["data-static"] ?? null,
         controls: attrs["data-controls"] ?? null,
         readout: attrs["data-readout"] ?? null,
+        // pagina's own: "this figure is worth poking at". Absent means the figure is a picture.
+        instrument: attrs["data-instrument"] ?? null,
         extraAttrs: Object.keys(extra).length === 0 ? null : JSON.stringify(extra),
       },
     };

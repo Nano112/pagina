@@ -12,6 +12,10 @@ import "./pagina.css";
 // theme toggle, HMR bridge) is wired up before the guarded `mountAll` call further down, so a
 // runtime load failure or a figure throwing doesn't take those features down with it.
 import { mountAll, defaultTheme, type ThemeTokens, type EmbeddedFigure } from "kineglyph";
+// pagina's editorial default: a figure in prose is a picture, and the instrument is opted into
+// with `data-instrument="true"`. See the module for why that opinion lives here and not in the
+// library.
+import { figureChrome } from "./figure-chrome.js";
 
 type Themes = { light: ThemeTokens; dark: ThemeTokens };
 type Theme = "light" | "dark";
@@ -114,7 +118,7 @@ if (kgThemeUrl !== undefined && kgThemeUrl !== "") {
 }
 
 try {
-  figures = await mountAll({ theme: () => themes[current()] });
+  figures = await mountAll({ theme: () => themes[current()], mountOptions: figureChrome });
 } catch (e) {
   console.warn("pagina: kineglyph mount failed", e);
 }

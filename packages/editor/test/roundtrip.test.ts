@@ -263,6 +263,8 @@ After.
     "kineglyph figures",
     `<figure class="kg" data-scene="scenes/demo.mjs" data-controls="false" data-readout="false"></figure>
 
+<figure class="kg" data-scene="scenes/lab.mjs" data-instrument="true"><figcaption>An instrument, opted in.</figcaption></figure>
+
 <figure class="kg" id="inline-demo"><script type="text/kineglyph">
 export default { id: "inline-demo" };
 </script></figure>

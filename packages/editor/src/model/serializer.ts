@@ -224,14 +224,14 @@ const nodes: Record<string, NodeSerializer> = {
 
   /**
    * Canonical `<figure class="kg" …>`: attribute order is fixed (class, data-scene, id,
-   * data-static, data-controls, data-readout, then whatever `extraAttrs` kept) so the same figure
-   * always serializes to the same bytes. An inline scene's source goes back inside its
-   * `<script type="text/kineglyph">`; any other inner HTML rides along under `INNER_HTML_KEY`.
+   * data-static, data-controls, data-readout, data-instrument, then whatever `extraAttrs` kept) so
+   * the same figure always serializes to the same bytes. An inline scene's source goes back inside
+   * its `<script type="text/kineglyph">`; any other inner HTML rides along under `INNER_HTML_KEY`.
    */
   figureKg(state, node) {
     const extra = jsonAttrs(some(node.attrs, "extraAttrs"));
     const ordered = new Map<string, string>([["class", extra.get("class") ?? "kg"]]);
-    for (const [key, attr] of [["scene", "data-scene"], ["id", "id"], ["static", "data-static"], ["controls", "data-controls"], ["readout", "data-readout"]] as const) {
+    for (const [key, attr] of [["scene", "data-scene"], ["id", "id"], ["static", "data-static"], ["controls", "data-controls"], ["readout", "data-readout"], ["instrument", "data-instrument"]] as const) {
       const value = some(node.attrs, key);
       if (value !== null) ordered.set(attr, value);
     }
