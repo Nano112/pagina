@@ -8,10 +8,14 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 export const ARTICLE = fileURLToPath(new URL(".tmp/article/", import.meta.url));
+/** A second copy, for the static-host spec: two servers must not write to one folder. */
+export const STATIC_ARTICLE = fileURLToPath(new URL(".tmp/static-article/", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("../packages/core/test/fixture/", import.meta.url));
 
 export default async function globalSetup(): Promise<void> {
-  await rm(ARTICLE, { recursive: true, force: true });
-  await mkdir(ARTICLE, { recursive: true });
-  await cp(FIXTURE, ARTICLE, { recursive: true });
+  for (const target of [ARTICLE, STATIC_ARTICLE]) {
+    await rm(target, { recursive: true, force: true });
+    await mkdir(target, { recursive: true });
+    await cp(FIXTURE, target, { recursive: true });
+  }
 }

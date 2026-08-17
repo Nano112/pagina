@@ -5,6 +5,14 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plain-JS Node scripts under `e2e/`: the TS configs supply Node's globals everywhere else,
+    // and these files are outside them, so `no-undef` needs the handful they actually use.
+    files: ["e2e/**/*.mjs"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly" },
+    },
+  },
+  {
     files: ["packages/core/src/**/*.ts"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [{ group: ["node:*", "fs", "path", "os", "url", "child_process"], message: "@pagina/core is environment-agnostic; inject a ContentFs instead." }] }],
