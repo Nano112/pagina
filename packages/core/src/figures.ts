@@ -64,6 +64,19 @@ const HAS_DESC = /<desc\b/;
 export interface InlineFiguresResult { readonly html: string; readonly diagnostics: Diagnostic[] }
 
 /**
+ * A drawn figure, and what the page needs to know about it beyond its pixels.
+ *
+ * `needsRuntime` is Kineglyph's `sceneNeedsRuntime` answer for the resolved scene: whether a live
+ * mount could show a reader anything this SVG cannot. It is settled here, at publish time, rather
+ * than in the browser — deciding it in the browser would mean fetching and resolving the scene
+ * module first, which is the whole of the cost the decision exists to avoid.
+ */
+export interface DrawnFigure { readonly svg: string; readonly needsRuntime?: boolean }
+/** A bare string is a figure with no opinion about hydration, which is how it always behaved. */
+export type FigureSvg = string | DrawnFigure;
+const svgOf = (drawn: FigureSvg): string => (typeof drawn === "string" ? drawn : drawn.svg);
+
+/**
  * Drops each pre-rendered SVG into the frame `extractFigures` left for it.
  *
  * This runs after the figures are drawn and before the page is written, so the SVG is part of the
@@ -75,18 +88,27 @@ export interface InlineFiguresResult { readonly html: string; readonly diagnosti
  * scroll rule works out how far the figure may shrink before its type stops being legible. It goes
  * on the `<figure>` rather than the frame because the stage is the frame's *sibling*, and a custom
  * property has to be on a shared ancestor for both to read it.
+ *
+ * A figure whose scene has nothing to drive also gains `data-kg-inert="true"`. That is a fact about
+ * the scene, not an instruction: it says "the live runtime would redraw this frame and nothing
+ * more". pagina's client reads it and skips hydrating, which keeps the server-rendered SVG — the
+ * one a screen reader can already read and CSS already themes — instead of replacing it with an
+ * identical picture built in JavaScript.
  */
 export function inlineFigureSvgs(
   html: string,
-  svgFor: (id: string) => string | undefined,
+  svgFor: (id: string) => FigureSvg | undefined,
   page?: string,
 ): InlineFiguresResult {
   const diagnostics: Diagnostic[] = [];
   const out = html.replace(
     /(<figure\b[^>]*>)<div class="kg-frame" data-kg-static data-kg-frame="([^"]+)"><\/div>/g,
-    (whole, open: string, id: string) => {
-      const svg = svgFor(id);
-      if (svg === undefined) return whole;
+    (whole, openTag: string, id: string) => {
+      const drawn = svgFor(id);
+      if (drawn === undefined) return whole;
+      const svg = svgOf(drawn);
+      const inert = typeof drawn !== "string" && drawn.needsRuntime === false;
+      const open = inert ? withAttr(openTag, "data-kg-inert", "true") : openTag;
       if (!HAS_DESC.test(svg))
         diagnostics.push({
           severity: "warning",
@@ -111,6 +133,12 @@ function withStyle(open: string, declarations: string): string {
   return open.replace(existing[0], `style="${declarations};${existing[1]!}"`);
 }
 
+/** Adds an attribute to a start tag, leaving one the author already wrote alone. */
+function withAttr(open: string, name: string, value: string): string {
+  if (new RegExp(`\\b${name}=`).test(open)) return open;
+  return `${open.replace(/\s*\/?>$/, "")} ${name}="${value}">`;
+}
+
 /**
  * Every page of `article` with its figures inlined. The article is not mutated.
  *
@@ -122,7 +150,7 @@ function withStyle(open: string, declarations: string): string {
  */
 export function inlineArticleFigures(
   article: RenderedArticle,
-  svgFor: (id: string) => string | undefined,
+  svgFor: (id: string) => FigureSvg | undefined,
 ): { article: RenderedArticle; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   const pages = Object.fromEntries(

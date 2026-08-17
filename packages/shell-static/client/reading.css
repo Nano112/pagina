@@ -31,7 +31,15 @@
    *
    * Every value below is the one that was previously arriving from the UA sheet, so nothing about
    * a page without a reset changes. */
-  .pg-content { max-width: var(--pg-measure); }
+  /*
+   * `container-type` makes the reading column *measurable* from inside it: `100cqw` is the real
+   * width of the prose, whatever decided it — the measure, a host's own cap, or the viewport.
+   * A figure that has broken out of the column needs that number to put its caption back in line
+   * with the paragraphs, and `--pg-measure` cannot supply it: it is `72ch`, and `ch` is
+   * font-relative, so the same token means one thing on a paragraph, another inside a smaller
+   * `figcaption`, and another again on a host element that caps the column in a different size.
+   */
+  .pg-content { max-width: var(--pg-measure); container-type: inline-size; }
   .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
     font-family: var(--pg-font-display); font-weight: 700; line-height: 1.25; scroll-margin-top: 4rem;
   }
@@ -56,7 +64,16 @@
    * time — is given its own scroll box rather than being squeezed into the column. `pre` has
    * worked this way from the start; figures join the same rule rather than growing a second
    * mechanism, because "wide thing, scrolls sideways" should read as one idea. */
-  .pg-content pre, .pg-content .kg-frame { overflow: auto; overscroll-behavior-x: contain; }
+  .pg-content pre { overflow: auto; overscroll-behavior-x: contain; }
+  /*
+   * A figure's scroll box is stated unscoped, on the same selector as the floor that makes it
+   * necessary (`.kg-frame > svg`'s `min-width`, below). The two used to be written apart — the
+   * floor everywhere, the scrolling only inside `.pg-content` — which meant a figure rendered
+   * anywhere else got a drawing wider than its box and no way to reach the rest of it, and the
+   * page scrolled sideways instead. A container that enforces a minimum has to be able to scroll
+   * past it; keeping the pair together is what stops them drifting apart again.
+   */
+  .kg-frame { overflow: auto; overscroll-behavior-x: contain; }
 
   .pg-content pre {
     position: relative; background: var(--pg-code-bg);
@@ -162,26 +179,43 @@
   figure.kg {
     --kg-w: 960; --kg-h: 540;
     /*
-     * The width the drawing is really painted at, and the height that follows from it.
+     * The narrowest the drawing may be painted: the point below which its type stops being
+     * readable and the figure scrolls instead of shrinking.
      *
-     * Stated once, because two things read it — the pre-rendered frame, as the `min-width` that
-     * makes it scroll rather than shrink, and the live stage, as the height it holds back before
-     * the runtime lands. Written out twice they could disagree, and a disagreement here is a
-     * figure that changes size the moment JavaScript arrives.
+     * Stated once, because two things read it — the pre-rendered frame and the live stage — and
+     * written out twice they could disagree. A disagreement here is a figure that changes size
+     * the moment JavaScript arrives.
      */
-    --kg-drawn-w: max(100cqw, var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
-    --kg-drawn-h: calc(var(--kg-drawn-w) * var(--kg-h) / var(--kg-w));
+    --kg-floor-w: calc(var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
     display: flex; flex-direction: column;
     /*
      * More air above and below the figure than between the figure and its caption. That
      * difference is the whole of it: it makes the drawing and its caption read as one object
      * placed in the prose, rather than as two stacked blocks that happen to be adjacent.
      */
-    gap: 0.5rem; margin: 2rem 0;
-    /* So the sizes above can be written in terms of the figure's own width. */
-    container-type: inline-size;
+    gap: 0.5rem; margin-block: 2rem;
+    /*
+     * A diagram is wider than prose by nature.
+     *
+     * The reading measure is chosen for sentences — around 72 characters, because that is how far
+     * an eye tracks comfortably. A figure is not read that way; it is looked at, and squeezing one
+     * into the measure scales its type down with it. A 960-wide diagram in a 697px column renders
+     * at 0.73, which turns 12px labels into 8.7px: above `--pg-figure-min-scale`, so nothing
+     * complains, and still too small to read.
+     *
+     * `--pg-figure-max` is how wide a figure may get. It defaults to `100%` — the measure, exactly
+     * today's layout — so a host that says nothing sees no change. A host that has room says so:
+     *
+     *     :root { --pg-figure-max: min(960px, calc(100vw - 4rem)); }
+     *
+     * The figure is centred on the column by an inline margin that goes negative as it grows,
+     * which is what keeps the prose where it is: only the figure moves. The `100%` here is the
+     * column's width, because that is this element's containing block.
+     */
+    width: var(--pg-figure-max, 100%);
+    margin-inline: calc((100% - var(--pg-figure-max, 100%)) / 2);
   }
-  .pg-content .kg-frame { max-width: 100%; }
+  .kg-frame { max-width: 100%; }
   .kg-frame > svg {
     display: block; width: 100%; height: auto;
     /*
@@ -191,10 +225,13 @@
      *
      * The floor is a *scale* of the figure's own width rather than a fixed width, so it means the
      * same thing to every figure: a 400-wide one never scrolls, a 960-wide one starts scrolling
-     * below 672px. Deliberately not `min(100%, …)` — a percentage resolves against the frame, so
-     * the floor would collapse to the frame's width and could never be crossed.
+     * below 672px.
+     *
+     * `max(100%, …)` and deliberately not `min(…)`: the drawing is as wide as the box it is in,
+     * and never narrower than the floor. A `min()` would collapse to the frame's width and the
+     * floor could never be crossed.
      */
-    min-width: var(--kg-drawn-w);
+    min-width: max(100%, var(--kg-floor-w));
   }
   /*
    * The live stage holds back exactly the space the pre-rendered frame was occupying, so swapping
@@ -205,10 +242,24 @@
    * is the drawing's own height and nothing more — the floor would only have made a short, wide
    * figure grow on hydration in the other direction.
    *
+   * Two halves, because the drawing has two states. `aspect-ratio` reserves the height the
+   * drawing has when it fits — off the stage's *own* width, so it follows a figure that has
+   * broken out of the column without needing to be told how wide that made it. `min-height`
+   * reserves the other state: below the legibility floor the drawing keeps its size and the stage
+   * scrolls, so its height stops following the stage's width and settles at the floor's.
+   *
+   * Both are scoped to `:empty`, which is the only state a reservation can be about: a stage with
+   * a figure in it should be as tall as that figure and nothing else. Left unscoped, the
+   * `aspect-ratio` caps the height of a *mounted* figure and silently clips the readout and
+   * transport off an opted-in one — which is exactly what happened the first time this was tried.
+   *
    * `mountAll` appends the stage last, after any caption the author wrote, so the caption is
    * ordered back to the bottom rather than the markup being fought over.
    */
-  figure.kg [data-kg-stage] { min-height: var(--kg-drawn-h); }
+  figure.kg [data-kg-stage]:empty {
+    aspect-ratio: var(--kg-w) / var(--kg-h);
+    min-height: calc(var(--kg-floor-w) * var(--kg-h) / var(--kg-w));
+  }
   /*
    * The live drawing keeps the frame's floor as well as its geometry.
    *
@@ -220,7 +271,7 @@
    * out to the column, so a floor written for a 960-wide layout would make it scroll for nothing.
    */
   figure.kg .kg-figure:not(:has(.kg-figure__controls, .kg-figure__readout, .kg-figure__machine)) svg {
-    min-width: var(--kg-drawn-w);
+    min-width: max(100%, var(--kg-floor-w));
   }
   figure.kg > figcaption {
     order: 1;
@@ -230,6 +281,20 @@
      * itself is wider than the prose. `pretty` keeps a one-word last line off the end of it.
      */
     max-width: 60ch;
+    /*
+     * The picture may leave the column; the caption is prose and stays in it.
+     *
+     * This is the figure's overhang on one side: `100%` is the figure's own width, `100cqw` is the
+     * reading column's (see `container-type` on `.pg-content`), so the caption starts exactly
+     * where the paragraph above it does. Zero, and therefore invisible, for a figure that did not
+     * break out.
+     *
+     * The column is measured rather than derived from `--pg-measure`, because the token is `72ch`
+     * and `ch` is font-relative: read on this caption it is a different number than on a
+     * paragraph, and on a host that caps the column in a different size it is a different number
+     * again. The one thing that is never wrong is the width the column actually has.
+     */
+    margin-inline-start: max(0px, calc((100% - 100cqw) / 2));
     color: var(--pg-muted);
     font-size: 0.8125rem; line-height: 1.55;
     text-wrap: pretty;

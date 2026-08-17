@@ -6,7 +6,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { inlineArticleFigures, parseArticleConfig, renderArticle, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
-import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes } from "./prerender.js";
+import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
 import { viteEditMiddleware, type EditWatcher } from "./edit-middleware.js";
 import { pagePathForHref, renderEditPage } from "./edit-page.js";
 
@@ -131,7 +131,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
         const contentFs = new NodeContentFs(folder);
         let article: Promise<RenderedArticle> | undefined;
         let themes: Promise<{ themes: KineglyphThemes; width?: number }> | undefined;
-        const figCache = new Map<string, { theme: string; svg: string; inlineSvg: string }[]>();
+        const figCache = new Map<string, PrerenderedFigure[]>();
         const getArticle = (): Promise<RenderedArticle> =>
           (article ??= renderArticle({ fs: contentFs, strict: false, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) }));
         const getThemes = (): Promise<{ themes: KineglyphThemes; width?: number }> =>
@@ -145,7 +145,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
          * to render is logged and reported as "not there": the request 404s, the static
          * `<img>` simply does not load, and the client runtime still hydrates the figure.
          */
-        const renderFigure = async (id: string): Promise<{ theme: string; svg: string; inlineSvg: string }[] | undefined> => {
+        const renderFigure = async (id: string): Promise<PrerenderedFigure[] | undefined> => {
           const cached = figCache.get(id);
           if (cached !== undefined) return cached;
           const a = await getArticle();
@@ -251,11 +251,12 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
               // Figures are inlined into the page here as they are in a build, so dev shows the
               // same document a reader gets — themed by the host's CSS, and legible with the
               // runtime turned off. Only this page's figures are rendered, and each is cached.
-              const rendered = new Map<string, string>();
+              const rendered = new Map<string, { svg: string; needsRuntime: boolean }>();
               for (const fig of requested.figures) {
                 if (fig.kind === "static") continue;
-                const svg = (await renderFigure(fig.id))?.[0]?.inlineSvg;
-                if (svg !== undefined) rendered.set(fig.id, svg);
+                const first = (await renderFigure(fig.id))?.[0];
+                if (first !== undefined)
+                  rendered.set(fig.id, { svg: first.inlineSvg, needsRuntime: first.needsRuntime });
               }
               const withFigures = inlineArticleFigures(a, (id) => rendered.get(id)).article;
               const pages = await o.shell.render(withFigures, {

@@ -65,6 +65,7 @@ rest keep their defaults.
 | `--pg-code-bg` | `#f6f7f9` | `#1c1f26` | Inline code and un-highlighted code blocks |
 | `--pg-shiki-bg` | `#ffffff` | `#1c1f26` | Highlighted (shiki) code block background |
 | `--pg-figure-min-scale` | `0.7` | — | How far a Kineglyph figure may scale down before it scrolls instead |
+| `--pg-figure-max` | `100%` | — | How wide a Kineglyph figure may get; `100%` is the reading measure |
 
 Dark values apply under `[data-theme="dark"]` on the root element, which pagina's theme toggle
 sets. Tokens with no dark column are scheme-independent.
@@ -128,6 +129,28 @@ because a diagram scaled to a phone takes its 16px type down to 6px with it.
 its frame scrolls sideways. The live figure obeys the same floor, because a quiet figure is mounted
 at the width its geometry was decided at — the reader gets the picture they were already looking
 at, not a re-layout of it, and nothing moves when the runtime lands.
+
+### How wide a figure may get: `--pg-figure-max`
+
+The reading measure is chosen for sentences. A diagram is not read that way, and squeezing one into
+the measure scales its type down with it — a 960-wide figure in a 697px column renders at 0.73,
+which turns 12px labels into 8.7px. That is above `--pg-figure-min-scale`, so the scroll rule never
+fires; it is simply too small.
+
+`--pg-figure-max` says how much room a figure may take. It defaults to `100%` — the measure — so a
+host that says nothing keeps exactly the layout it had. A host with gutters to spare opts in:
+
+```css
+:root { --pg-figure-max: min(960px, calc(100vw - 4rem)); }
+```
+
+Two things stay put. The **prose** does not move: a figure centres itself on the column with an
+inline margin that goes negative as it grows, so nothing but the figure is affected. And the
+**caption** stays in the column, inset by the figure's overhang, because a caption is prose.
+
+Guard the value against the viewport (`calc(100vw - …)`) so a wide figure cannot push the page
+sideways on a phone; below the measure the term collapses and the figure behaves exactly as before,
+scrolling at `--pg-figure-min-scale` rather than shrinking.
 
 ### A figure in prose is a picture: `data-instrument`
 

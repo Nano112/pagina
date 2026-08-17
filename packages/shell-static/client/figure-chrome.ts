@@ -31,6 +31,34 @@
  * wrote `data-controls="false"` keeps its silence, and one that wrote `data-controls="true"` keeps
  * its transport even where `"auto"` would have declined. Only figures that said *nothing* change,
  * which is the whole set this is meant to change.
+ *
+ * ### And the figure that should not hydrate at all
+ *
+ * Quiet is not the end of it. Once a figure has no chrome, ask what the mount is still for. For a
+ * still diagram — no timeline, nothing inspectable, no machine, no live surface — the answer is
+ * nothing: the runtime resolves the same scene at the same width and draws the same picture over
+ * the top of the pre-rendered SVG that was already on screen. It is not a no-op, it is a loss. The
+ * server-rendered frame is the accessible one, it is painted before any script runs, and replacing
+ * it costs a module fetch, a resolve and a DOM rebuild to arrive back where it started.
+ *
+ * So pagina declines those. `inlineFigureSvgs` marks them `data-kg-inert="true"` at publish time,
+ * from Kineglyph's own `sceneNeedsRuntime`, and `figureChrome` returns `null` — which `mountAll`
+ * reads as "skip this element", *before* it fetches the scene.
+ *
+ * What that gives up, deliberately, is small and each piece was checked:
+ *
+ * - **Theme reactivity.** Colour is `var(--kg-color-*)` in the emitted SVG and mapped from `--pg-*`
+ *   in `tokens.css`, so a theme flip retints the frame through CSS with no JavaScript at all. What
+ *   a live mount adds over that is repainting colours a scene *derived* (`mixColor`), which have no
+ *   role to name them by, and honouring a runtime theme's font or radii — both of which would
+ *   change the figure's geometry, so an inert figure is better off not following them.
+ * - **Resizing.** A quiet figure is mounted at a fixed `--kg-w` and the runtime attaches no
+ *   `ResizeObserver` when a width is given, so there was nothing to lose.
+ * - **Lazy mounting.** Not mounting is strictly cheaper than mounting late.
+ *
+ * A figure with no `data-kg-inert` mark is mounted exactly as before, so a figure that has never
+ * been pre-rendered — dev before a build, a failed prerender, a host that inlines nothing — still
+ * hydrates. The mark is only ever added when there is a frame to keep.
  */
 
 /** The subset of Kineglyph's `MountOptions` this decides. Structural, so no runtime import. */
@@ -51,6 +79,15 @@ function naturalWidth(element: HTMLElement): number | undefined {
 }
 
 /**
+ * Whether this figure already shows something without JavaScript. The same selector `mountAll`
+ * uses to find the frame it hides, because declining to mount is only safe when there is a frame
+ * that would have been hidden.
+ */
+function hasStaticFrame(element: HTMLElement): boolean {
+  return element.querySelector(":scope > img, :scope > picture, :scope > [data-kg-static]") !== null;
+}
+
+/**
  * The chrome options for one `<figure class="kg">`.
  *
  * Returned as a *partial*: a key that is absent is a key pagina declines to have an opinion about,
@@ -58,10 +95,20 @@ function naturalWidth(element: HTMLElement): number | undefined {
  * spread last over the runtime's dataset-derived options, so returning a value here would
  * overwrite what the author explicitly wrote.
  */
-export function figureChrome(element: HTMLElement): FigureChrome {
+export function figureChrome(element: HTMLElement): FigureChrome | null {
   // `data-instrument` is the author's word for "this figure is worth poking at". Anything other
   // than "true" (including the attribute being absent) leaves the figure quiet.
   const wanted = element.dataset.instrument === "true" ? "auto" : false;
+  /*
+   * Declined: the scene has nothing the runtime could drive (`data-kg-inert`, stamped at publish
+   * time) and there is a pre-rendered frame to keep. Both halves matter — the mark alone is not
+   * enough, because a figure with no frame has nothing to show if we do not mount.
+   *
+   * An author who asked for the instrument gets it even here: `data-instrument="true"` is a
+   * request to be able to poke at the thing, and the runtime's own `"auto"` will still decline any
+   * chrome the scene does not justify.
+   */
+  if (wanted === false && element.dataset.kgInert === "true" && hasStaticFrame(element)) return null;
   const chrome: {
     controls?: boolean | "auto";
     readout?: boolean | "auto";

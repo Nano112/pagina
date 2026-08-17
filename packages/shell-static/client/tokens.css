@@ -123,6 +123,13 @@
 
     /* How far a figure may scale down before it scrolls instead. See `reading.css`. */
     --pg-figure-min-scale: 0.7;
+    /*
+     * How wide a figure may get. A diagram is wider than prose by nature, so a host with room in
+     * its gutters can let figures use it: `min(960px, calc(100vw - 4rem))`, say. The default is
+     * the reading measure, so a host that says nothing sees exactly the layout it had. Only the
+     * figure moves — its caption stays in the column and the prose does not shift.
+     */
+    --pg-figure-max: 100%;
   }
 
   /* Dark redefines colours only: geometry, type and measure are scheme-independent. */

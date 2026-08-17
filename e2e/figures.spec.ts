@@ -330,6 +330,173 @@ test.describe("hydration does not resize the figure", () => {
   });
 });
 
+/**
+ * A still figure is not hydrated at all.
+ *
+ * `inline-demo` is a heading in a box: no timeline, nothing inspectable, no machine. Mounting it
+ * would fetch a module, resolve a scene and rebuild the DOM in order to draw the SVG that was
+ * already on screen — and would throw away the server-rendered one, which is the copy a screen
+ * reader has already read and CSS has already themed. So the publish marks it `data-kg-inert` and
+ * the client declines it. The height assertion above already proves the reader cannot tell.
+ */
+test.describe("a figure with nothing to drive is left alone", () => {
+  const INERT = "figure.kg#inline-demo";
+
+  test("keeps the server-rendered SVG and never mounts", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    // Wait for a figure that *does* mount, so "not mounted" is a decision rather than a race.
+    await settled(page);
+
+    const state = await page.locator(INERT).evaluate((el) => ({
+      inert: el.dataset.kgInert,
+      mounted: el.dataset.kineglyphMounted,
+      error: el.dataset.kineglyphError,
+      stages: el.querySelectorAll("[data-kg-stage]").length,
+      frameHidden: el.querySelector<HTMLElement>("[data-kg-static]")!.hidden,
+      frameSvgs: el.querySelectorAll(".kg-frame > svg").length,
+    }));
+    expect(state).toEqual({
+      inert: "true",
+      mounted: undefined,
+      error: undefined,
+      stages: 0,
+      frameHidden: false,
+      frameSvgs: 1,
+    });
+  });
+
+  test("still hydrates the figures that have something to drive", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await settled(page);
+    const mounted = await page.evaluate(() =>
+      [...document.querySelectorAll('figure.kg[data-kineglyph-mounted="true"]')].map((f) => f.id).sort(),
+    );
+    expect(mounted).toEqual(["chrome-demo", "instrument-demo", "kg-guide-figures-1"]);
+  });
+});
+
+/**
+ * A diagram is wider than prose by nature: `--pg-figure-max`.
+ *
+ * The measure is chosen for sentences. Squeezing a 960-wide diagram into it scales the type down
+ * with the picture — comfortably above `--pg-figure-min-scale`, so the scroll rule never fires,
+ * and still too small to read. The token lets a host spend the room it actually has.
+ *
+ * The tests below set it on the page rather than in the fixture, because the default is the thing
+ * every other test in this file already covers: opting in is what needs proving.
+ */
+/** The value `docs/theming.md` tells a host to write: room to spare, guarded against the viewport. */
+const HOST_OPT_IN = "min(960px, calc(100vw - 4rem))";
+
+/**
+ * Sets `--pg-figure-max` the way a host would — in a stylesheet the document links — rather than
+ * through `addStyleTag`, which needs JavaScript and so cannot run in the no-JS lane that matters
+ * most here. The next navigation gets it.
+ */
+async function optIn(page: Page, value: string): Promise<void> {
+  await page.route(/\/guide\/figures\/?$/, async (route) => {
+    const response = await route.fetch();
+    const html = await response.text();
+    await route.fulfill({
+      response,
+      body: html.replace("</head>", `<style>:root { --pg-figure-max: ${value}; }</style></head>`),
+    });
+  });
+}
+
+test.describe("a figure may be wider than the column", () => {
+  const CAPTION = `${FIGURE} > figcaption`;
+  const PROSE = ".pg-content > h2";
+
+  /** Reads the geometry that matters, before and after the host opts in. */
+  const geometry = async (page: Page): Promise<Record<string, number>> =>
+    await page.evaluate(
+      ([fig, caption, prose]) => {
+        const f = document.querySelector(fig!)!.getBoundingClientRect();
+        const svg = document.querySelector(`${fig!} .kg-frame > svg`)!;
+        const box = svg.getBoundingClientRect();
+        const viewBox = Number((svg.getAttribute("viewBox") ?? "0 0 1 1").split(/\s+/)[2]);
+        return {
+          figureLeft: Math.round(f.left),
+          figureWidth: Math.round(f.width),
+          captionLeft: Math.round(document.querySelector(caption!)!.getBoundingClientRect().left),
+          proseLeft: Math.round(document.querySelector(prose!)!.getBoundingClientRect().left),
+          drawn: Math.round(box.width),
+          // What a 12px label actually lands at, which is the whole point of the token.
+          scale: Math.round((box.width / viewBox) * 100) / 100,
+          pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      },
+      [FIGURE, CAPTION, PROSE],
+    );
+
+  test.use({ javaScriptEnabled: false, viewport: { width: 1280, height: 900 } });
+
+  test("uses the room the host offers, and leaves the prose exactly where it was", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await expect(page.locator(STATIC)).toBeVisible();
+    const before = await geometry(page);
+
+    await optIn(page, HOST_OPT_IN);
+    await page.goto(PUBLISHED);
+    await expect(page.locator(STATIC)).toBeVisible();
+    const after = await geometry(page);
+    console.log("[figures] --pg-figure-max", JSON.stringify({ before, after }, null, 1));
+
+    // The figure grows to its natural width, so it is drawn at 1:1 and its type is its own size.
+    expect(after.figureWidth).toBeGreaterThan(before.figureWidth!);
+    expect(after.scale).toBe(1);
+    expect(before.scale!).toBeLessThan(1);
+    // The prose does not move with it: only the figure's own margins changed.
+    expect(after.proseLeft).toBe(before.proseLeft);
+    // …and the figure is centred on the column it left, not shoved to one side.
+    const overhang = (after.figureWidth! - before.figureWidth!) / 2;
+    expect(Math.abs(before.figureLeft! - after.figureLeft! - overhang)).toBeLessThanOrEqual(1);
+    // The caption is prose, so it stays in the column with the paragraphs.
+    expect(Math.abs(after.captionLeft! - after.proseLeft!)).toBeLessThanOrEqual(1);
+    // And the page still does not scroll sideways.
+    expect(after.pageScroll).toBeLessThanOrEqual(1);
+  });
+
+  test("changes nothing for a host that does not opt in", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await expect(page.locator(STATIC)).toBeVisible();
+    const g = await geometry(page);
+    // The default is `100%` — the measure — so the figure and the prose share an edge.
+    expect(g.figureLeft).toBe(g.proseLeft);
+    expect(g.captionLeft).toBe(g.proseLeft);
+  });
+});
+
+test.describe("a wide figure on a phone", () => {
+  test.use({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+
+  test("collapses back to the column and scrolls, rather than pushing the page sideways", async ({ page }) => {
+    // The value a host is told to write: the viewport term is what makes it safe here.
+    await optIn(page, HOST_OPT_IN);
+    await page.goto(PUBLISHED);
+    await expect(page.locator(STATIC)).toBeVisible();
+
+    const measured = await frame(page).evaluate((el) => ({
+      scroll: el.scrollWidth,
+      client: el.clientWidth,
+      rendered: Math.round(el.querySelector("svg")!.getBoundingClientRect().width),
+      pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      captionLeft: Math.round(el.closest("figure")!.querySelector("figcaption")!.getBoundingClientRect().left),
+      proseLeft: Math.round(document.querySelector(".pg-content > h2")!.getBoundingClientRect().left),
+    }));
+    console.log("[figures] wide figure at 390px", JSON.stringify(measured, null, 1));
+
+    // Still scrolling at the legibility floor, exactly as it did before the token existed.
+    expect(measured.scroll).toBeGreaterThan(measured.client);
+    expect(measured.rendered).toBe(672); // 960 × --pg-figure-min-scale
+    // The page itself does not scroll, which is the failure a breakout invites.
+    expect(measured.pageScroll).toBeLessThanOrEqual(1);
+    // Below the measure there is no overhang to inset, so the caption is where it always was.
+    expect(measured.captionLeft).toBe(measured.proseLeft);
+  });
+});
+
 test.describe("what it looks like", () => {
   /**
    * The deliverable: the same diagram in the same host theme, three ways, so the change is legible

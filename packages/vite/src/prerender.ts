@@ -43,6 +43,15 @@ function toFolderRelative(url: string, base: string): string {
   return (url.startsWith(base) ? url.slice(base.length) : url).replace(/^\/+/, "");
 }
 
+/** One theme's rendering of one figure, plus whether hydrating it could show a reader more. */
+export interface PrerenderedFigure {
+  readonly theme: string;
+  readonly svg: string;
+  readonly inlineSvg: string;
+  /** `sceneNeedsRuntime` for the resolved scene — see `@kineglyph/export`. */
+  readonly needsRuntime: boolean;
+}
+
 export interface PrerenderedFigures {
   /**
    * Figure id → one entry per theme. Only figures that rendered successfully appear.
@@ -50,7 +59,7 @@ export interface PrerenderedFigures {
    * `svg` is the standalone document written to `_pagina/figures/…`; `inlineSvg` is the same
    * frame as an HTML fragment, which is what goes into the page.
    */
-  readonly figures: Map<string, { theme: string; svg: string; inlineSvg: string }[]>;
+  readonly figures: Map<string, PrerenderedFigure[]>;
   readonly diagnostics: Diagnostic[];
 }
 
@@ -69,7 +78,7 @@ export async function prerenderFigures(
   width = 960,
   base = "/",
 ): Promise<PrerenderedFigures> {
-  const figures = new Map<string, { theme: string; svg: string; inlineSvg: string }[]>();
+  const figures = new Map<string, PrerenderedFigure[]>();
   const diagnostics: Diagnostic[] = [];
   const themeList = [{ name: "light", tokens: themes.light }, { name: "dark", tokens: themes.dark }];
   for (const page of Object.values(article.pages)) {
@@ -90,7 +99,10 @@ export async function prerenderFigures(
         // That matters now the SVG is inlined: its ids share a namespace with the `<figure>` that
         // holds it, and `fig.id` is already taken by the figure element.
         const results = await prerender(source, { themes: themeList, width, baseUrl, idPrefix: fig.id });
-        figures.set(fig.id, results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg })));
+        figures.set(
+          fig.id,
+          results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg, needsRuntime: r.needsRuntime })),
+        );
       } catch (error) {
         diagnostics.push({
           severity: "error",

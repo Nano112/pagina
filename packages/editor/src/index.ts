@@ -19,7 +19,7 @@ import { ArticleStore, HttpBackend, type ArticleBackend } from "./store/index.js
 export * from "./model/index.js";
 export * from "./store/index.js";
 export {
-  publishArticle, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH,
+  publishArticle, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH, type RenderedFigures,
   type FigureThemes, type FigureSvgs,
 } from "./ui/publish.js";
 

@@ -126,7 +126,10 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
   // Inline the figures into the pages before the shell renders them. That is what makes a diagram
   // part of the document instead of a subresource: an `<img>` is a separate document, and no host
   // CSS — nor any screen reader — crosses that boundary.
-  const inlined = inlineArticleFigures(article, (id) => prerendered.figures.get(id)?.[0]?.inlineSvg);
+  const inlined = inlineArticleFigures(article, (id) => {
+    const first = prerendered.figures.get(id)?.[0];
+    return first === undefined ? undefined : { svg: first.inlineSvg, needsRuntime: first.needsRuntime };
+  });
   diagnostics.push(...inlined.diagnostics);
   for (const asset of article.manifest.assets) {
     await mkdir(dirname(join(o.outDir, asset)), { recursive: true });

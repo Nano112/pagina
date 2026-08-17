@@ -71,3 +71,42 @@ describe("a figure that was explicit stays exactly as it was", () => {
     expect(figureChrome(el)).toEqual({ readout: "auto", machineControls: "auto" });
   });
 });
+
+/**
+ * A still figure does not hydrate. Both halves have to hold — the scene has nothing to drive
+ * (`data-kg-inert`, stamped at publish time) *and* there is a pre-rendered frame to keep — because
+ * declining without a frame would leave the reader looking at an empty `<figure>`.
+ */
+describe("a figure with nothing to drive", () => {
+  const inert = (attrs: Record<string, string> = {}): HTMLElement => {
+    const el = figure({ "data-kg-inert": "true", ...attrs });
+    el.innerHTML = `<div data-kg-static><svg viewBox="0 0 960 144"></svg></div>`;
+    return el;
+  };
+
+  it("is declined, so the server-rendered SVG is what the reader keeps", () => {
+    expect(figureChrome(inert())).toBeNull();
+  });
+
+  it("is mounted anyway when there is no frame to fall back to", () => {
+    // Dev before a build, or a prerender that failed: the only way to see the figure is to draw it.
+    const el = figure({ "data-kg-inert": "true" });
+    expect(figureChrome(el)).not.toBeNull();
+  });
+
+  it("is mounted anyway when the author asked for an instrument", () => {
+    // Asking to poke at a thing is asking for the live thing. `"auto"` still withholds any chrome
+    // the scene does not justify, so this costs the reader nothing they can see.
+    expect(figureChrome(inert({ "data-instrument": "true" }))).toEqual({
+      controls: "auto",
+      readout: "auto",
+      machineControls: "auto",
+    });
+  });
+
+  it("is mounted when it is not marked — the mark is the only thing that declines", () => {
+    const el = figure();
+    el.innerHTML = `<div data-kg-static><svg viewBox="0 0 960 144"></svg></div>`;
+    expect(figureChrome(el)).not.toBeNull();
+  });
+});

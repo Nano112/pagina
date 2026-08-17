@@ -19,6 +19,7 @@ import {
   documentFontFamily,
   renderSvg,
   resolveFigure,
+  sceneNeedsRuntime,
   seekTimeline,
   withFontFamily,
 } from "kineglyph";
@@ -41,6 +42,19 @@ export interface FigureThemes {
 
 /** Figure id → theme name → SVG, which is the shape `POST {base}/publish` carries. */
 export type FigureSvgs = Record<string, Record<string, string>>;
+
+/**
+ * What a publish learned by drawing the figures.
+ *
+ * `figures` is the payload — unchanged, because a backend stores it. `needsRuntime` never leaves
+ * the browser: it decides whether each figure's `<figure>` is marked inert in the page HTML, so a
+ * still diagram keeps its server-rendered SVG instead of being redrawn by JavaScript that has
+ * nothing to add.
+ */
+export interface RenderedFigures {
+  readonly figures: FigureSvgs;
+  readonly needsRuntime: Record<string, boolean>;
+}
 
 /**
  * The `{ light, dark }` token pair named by `article.yaml`'s `kineglyph.theme`, or Kineglyph's
@@ -98,8 +112,9 @@ export async function renderArticleFigures(
   article: RenderedArticle,
   themes: FigureThemes,
   width: number = DEFAULT_FIGURE_WIDTH,
-): Promise<FigureSvgs> {
+): Promise<RenderedFigures> {
   const figures: FigureSvgs = {};
+  const needsRuntime: Record<string, boolean> = {};
   const themeList: readonly (readonly [string, ThemeTokens])[] = [["light", themes.light], ["dark", themes.dark]];
   for (const page of Object.values(article.pages)) {
     for (const fig of page.figures) {
@@ -113,23 +128,31 @@ export async function renderArticleFigures(
           throw new Error("the module's default export is not a scene");
         }
         const svgs: Record<string, string> = {};
+        // Whether the runtime could add anything is a fact about the scene's structure, not its
+        // palette, so either theme's resolution answers it; the last one is simply the one to hand.
+        let needy = true;
         for (const [name, tokens] of themeList) {
           const scene = resolveFigure(figure as FigureSource, { width, theme: tokens });
           const errors = (scene.diagnostics ?? []).filter((d) => d.severity === "error");
           if (errors.length > 0) {
             throw new Error(errors.map((d) => `${d.code}: ${d.message}`).join("; "));
           }
+          needy = sceneNeedsRuntime(scene);
           const frame = seekTimeline(scene, scene.timeline?.duration ?? 0);
           svgs[name] = renderSvg(frame, { idPrefix: `${fig.id}-${name}` });
         }
         figures[fig.id] = svgs;
+        // Settled here rather than in the browser: the page can only skip hydrating a figure it
+        // already knows is inert, and finding that out at read time would mean fetching and
+        // resolving the scene module first — the whole of the cost the skip exists to avoid.
+        needsRuntime[fig.id] = needy;
       } catch (error) {
         // Deliberately not thrown: one broken diagram must not cost the author the whole publish.
         console.warn(`pagina: figure ${fig.id} (${page.path}) did not render — ${messageOf(error)}`);
       }
     }
   }
-  return figures;
+  return { figures, needsRuntime };
 }
 
 /** The scene module's text, preferring the store's copy so unsaved edits are what gets published. */
@@ -150,13 +173,14 @@ export async function publishArticle(store: ArticleStore): Promise<{ publishedAt
   const measured = globalThis.document?.querySelector(".pg-content") ?? undefined;
   const themes = themesInHostFont(await loadFigureThemes(store), measured);
   const width = store.article?.kineglyph?.width ?? DEFAULT_FIGURE_WIDTH;
-  const figures = await renderArticleFigures(store, article, themes, width);
+  const { figures, needsRuntime } = await renderArticleFigures(store, article, themes, width);
   // The published pages carry their figures inline. The per-theme SVGs still go up beside them —
   // they are standalone assets — but the page no longer points at one, because an `<img>` is a
   // document boundary and a diagram that a host cannot theme or a reader cannot hear is not one.
   const inlined = inlineArticleFigures(article, (id) => {
     const svgs = figures[id];
-    return svgs === undefined ? undefined : Object.values(svgs)[0];
+    const svg = svgs === undefined ? undefined : Object.values(svgs)[0];
+    return svg === undefined ? undefined : { svg, needsRuntime: needsRuntime[id] ?? true };
   });
   for (const diagnostic of inlined.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
   return await store.publish(figures, inlined.article);

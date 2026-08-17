@@ -33,6 +33,9 @@ vi.mock("kineglyph", () => ({
     diagnostics: figure.broken === true ? [{ severity: "error", code: "bad-scene", message: "no" }] : [],
   }),
   seekTimeline: (scene: Record<string, unknown>, time: number) => ({ ...scene, time }),
+  // The real one asks the resolved scene whether a live mount could add anything; the stub scene
+  // above carries a 400ms timeline, so "yes", and no figure here is marked inert.
+  sceneNeedsRuntime: (scene: { timeline?: { duration: number } }) => (scene.timeline?.duration ?? 0) > 0,
   renderSvg: (frame: { id: string; width: number; theme: { name: string; family?: string }; time: number }, options: { idPrefix: string }) =>
     `<svg viewBox="0 0 960 240" data-id="${frame.id}" data-width="${String(frame.width)}" data-theme="${frame.theme.name}" data-font="${frame.theme.family ?? ""}" data-time="${String(frame.time)}" data-prefix="${options.idPrefix}"><desc>d</desc></svg>`,
   // The preview and node views reach for these; nothing here mounts anything.

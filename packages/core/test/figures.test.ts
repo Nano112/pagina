@@ -86,4 +86,21 @@ describe("inlineFigureSvgs", () => {
 
     expect(html).toContain(`<div class="kg-frame" data-kg-static data-kg-frame="f"></div>`);
   });
+
+  it("marks a figure the live runtime could add nothing to", () => {
+    // Settled at publish time so the page never has to fetch a scene module to learn it.
+    const { html } = inlineFigureSvgs(framed(), () => ({ svg: svg(), needsRuntime: false }));
+
+    expect(html).toContain(
+      `<figure class="kg" id="f" data-scene="/s.mjs" data-kg-inert="true" style="--kg-w:960;--kg-h:240">`,
+    );
+  });
+
+  it("does not mark a figure that has something to drive, or one that said nothing", () => {
+    expect(inlineFigureSvgs(framed(), () => ({ svg: svg(), needsRuntime: true })).html).not.toContain(
+      "data-kg-inert",
+    );
+    // A bare string is the old signature: no opinion, so no mark and no behaviour change.
+    expect(inlineFigureSvgs(framed(), () => svg()).html).not.toContain("data-kg-inert");
+  });
 });
