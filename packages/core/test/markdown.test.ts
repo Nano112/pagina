@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMarkdown, renderMarkdown } from "../src/markdown.js";
 import { expandSnippets } from "../src/plugins/snippets.js";
+import { ADMONITION_KINDS } from "../src/plugins/admonition.js";
 import type { ContentFs } from "../src/types.js";
 
 const md = createMarkdown();
@@ -56,10 +57,51 @@ describe("tabs", () => {
 
 describe("admonitions", () => {
   it("renders !!! with a title and ??? as details", () => {
-    expect(renderMarkdown(md, `!!! note "Heads up"\n    Body **here**.`).html)
-      .toContain(`<aside class="pg-admonition pg-admonition--note"><p class="pg-admonition__title">Heads up</p>`);
-    expect(renderMarkdown(md, `!!! warning\n    B`).html).toContain(`pg-admonition__title">Warning</p>`);
-    expect(renderMarkdown(md, `??? tip "More"\n    B`).html).toMatch(/<details[^>]*><summary>More<\/summary>/);
+    const note = renderMarkdown(md, `!!! note "Heads up"\n    Body **here**.`).html;
+    expect(note).toContain(`<aside class="pg-admonition pg-admonition--note"><p class="pg-admonition__title">`);
+    expect(note).toContain(`<span class="pg-admonition__label">Heads up</span>`);
+    expect(renderMarkdown(md, `!!! warning\n    B`).html).toContain(`<span class="pg-admonition__label">Warning</span>`);
+    expect(renderMarkdown(md, `??? tip "More"\n    B`).html)
+      .toMatch(/<details class="[^"]*pg-admonition--collapsible"><summary class="pg-admonition__title">/);
+  });
+
+  /**
+   * The kind has to be *legible*, not merely present in a class name.
+   *
+   * A stripe in a colour is what `danger` and `note` used to have in common, and it is the whole
+   * of what a reader skimming, or a reader who cannot separate the hues, was given. Each kind
+   * therefore carries a glyph of its own and a label, and the glyphs must actually differ.
+   */
+  it("gives every kind its own glyph and a label a reader can see", () => {
+    const glyphs = new Map<string, string>();
+    for (const kind of ADMONITION_KINDS) {
+      const html = renderMarkdown(md, `!!! ${kind}\n    B`).html;
+      expect(html, kind).toContain(`pg-admonition--${kind}`);
+      expect(html, kind).toContain(`<span class="pg-admonition__label">${kind.charAt(0).toUpperCase()}${kind.slice(1)}</span>`);
+      const icon = /<svg class="pg-admonition__icon"[^>]*>([\s\S]*?)<\/svg>/.exec(html)?.[1];
+      expect(icon, `${kind} has an icon`).toBeDefined();
+      glyphs.set(kind, icon!);
+    }
+    expect(new Set(glyphs.values()).size, "every kind's glyph is distinct").toBe(ADMONITION_KINDS.length);
+    // The glyph is decoration beside a label, so it must not be announced.
+    expect(renderMarkdown(md, `!!! danger\n    B`).html).toContain('aria-hidden="true"');
+  });
+
+  it("keeps a kind it does not know, and falls back to note's glyph", () => {
+    const html = renderMarkdown(md, `!!! spoiler "Ending"\n    B`).html;
+    expect(html).toContain("pg-admonition--spoiler");
+    expect(html).toContain(`<span class="pg-admonition__label">Ending</span>`);
+    expect(html).toContain(`d="m15 5 4 4"`); // note's pencil
+  });
+
+  it("drops the label but keeps the bar for an explicitly empty title", () => {
+    const aside = renderMarkdown(md, `!!! quote ""\n    B`).html;
+    expect(aside).toContain("pg-admonition--untitled");
+    expect(aside).not.toContain("pg-admonition__label");
+    // A `<details>` with no summary cannot be opened, so the bar — and the chevron — stay.
+    const details = renderMarkdown(md, `??? quote ""\n    B`).html;
+    expect(details).toContain("<summary class=\"pg-admonition__title\">");
+    expect(details).toContain("pg-admonition__chevron");
   });
 });
 

@@ -3,6 +3,7 @@ export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
 export { parseArticleConfig } from "./config.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets } from "./plugins/snippets.js";
+export { ADMONITION_KINDS } from "./plugins/admonition.js";
 export { slugify } from "./plugins/anchors.js";
 export { extractFigures } from "./figures.js";
 export { hrefOf, resolveRelative, rewriteLinks } from "./links.js";

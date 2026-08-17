@@ -44,11 +44,36 @@
     --pg-font-display: var(--pg-font);
     /* Content column width */
     --pg-measure: 72ch;
-    /* Admonition hues */
+    /*
+     * Admonitions, three tokens per kind.
+     *
+     * `--pg-<kind>` is the hue: the accent edge and the glyph. `--pg-<kind>-surface` is the
+     * tinted ground the block sits on. `--pg-<kind>-fg` is the title text, which is a separate
+     * token rather than the hue because a hue chosen to read as a 3px edge is usually too light
+     * to carry text at 4.5:1 on its own tint — `tip`'s green is 3.1:1 on white. A host retints a
+     * kind by defining the three, and never by overriding a rule.
+     */
     --pg-note: #3b5bdb;
+    --pg-note-surface: #eef1fd;
+    --pg-note-fg: #2b3f9e;
     --pg-tip: #0f9d58;
+    --pg-tip-surface: #e9f7f0;
+    --pg-tip-fg: #0a6b3d;
+    --pg-info: #0b7285;
+    --pg-info-surface: #e6f4f7;
+    --pg-info-fg: #0a5a6b;
     --pg-warning: #b7791f;
+    --pg-warning-surface: #fdf3e3;
+    --pg-warning-fg: #8a5a12;
     --pg-danger: #d64545;
+    --pg-danger-surface: #fdecec;
+    --pg-danger-fg: #a12727;
+    --pg-example: #7048e8;
+    --pg-example-surface: #f1ecfd;
+    --pg-example-fg: #5227b8;
+    --pg-quote: #6b7280;
+    --pg-quote-surface: #f2f3f5;
+    --pg-quote-fg: #4b5159;
     /* Code surfaces */
     --pg-code-bg: #f6f7f9;
     --pg-shiki-bg: #ffffff;
@@ -66,9 +91,26 @@
     --pg-line: #2b2f38;
     --pg-line-strong: #3d434f;
     --pg-note: #7c9bff;
+    --pg-note-surface: #1b2130;
+    --pg-note-fg: #a8bcff;
     --pg-tip: #3ddc84;
+    --pg-tip-surface: #16241d;
+    --pg-tip-fg: #6ee7a8;
+    --pg-info: #4dc4d9;
+    --pg-info-surface: #14242a;
+    --pg-info-fg: #7fd8e8;
     --pg-warning: #e0b34c;
+    --pg-warning-surface: #2a2317;
+    --pg-warning-fg: #edc76e;
     --pg-danger: #ff7b7b;
+    --pg-danger-surface: #2c1b1c;
+    --pg-danger-fg: #ff9d9d;
+    --pg-example: #b197fc;
+    --pg-example-surface: #221c33;
+    --pg-example-fg: #c9b6ff;
+    --pg-quote: #9aa1ac;
+    --pg-quote-surface: #1e2027;
+    --pg-quote-fg: #b6bcc6;
     --pg-code-bg: #1c1f26;
     --pg-shiki-bg: #1c1f26;
   }

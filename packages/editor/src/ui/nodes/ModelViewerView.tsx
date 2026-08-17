@@ -13,7 +13,8 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
-import { Trash2, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
+import { RemoveBlock, useBlockChrome } from "./chrome.js";
 import { useEditorConfig, usePagePath } from "../context.js";
 import { useArticleStore } from "../useStore.js";
 import { relativePath } from "../paths.js";
@@ -73,6 +74,7 @@ export function ModelViewerView({ node, editor, getPos, updateAttributes }: Reac
   const { modelViewerUrl } = useEditorConfig();
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | undefined>(undefined);
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
 
   const src = typeof node.attrs["src"] === "string" ? node.attrs["src"] : "";
   const alt = typeof node.attrs["alt"] === "string" ? node.attrs["alt"] : "";
@@ -98,15 +100,9 @@ export function ModelViewerView({ node, editor, getPos, updateAttributes }: Reac
       .catch((e: unknown) => setBusy(`Upload failed: ${e instanceof Error ? e.message : String(e)}`));
   };
 
-  const remove = (): void => {
-    const pos = getPos();
-    if (pos === undefined) return;
-    editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
-  };
-
   return (
     <NodeViewWrapper className="pge-card pge-model" contentEditable={false} onKeyDown={swallowKeys}>
-      <div className="pge-card__head">
+      <div className="pge-card__head" {...chromeProps}>
         <span className="pge-card__badge">3D model</span>
         <span className="pge-card__title">{src === "" ? "(no source)" : src}</span>
         <span className="pge-card__spacer" />
@@ -124,9 +120,7 @@ export function ModelViewerView({ node, editor, getPos, updateAttributes }: Reac
             if (file !== undefined) upload(file);
           }}
         />
-        <button type="button" className="pge-icon" title="Remove model" aria-label="Remove model" onClick={remove}>
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
+        <RemoveBlock thing="model" onRemove={remove} />
       </div>
 
       {src === "" ? (

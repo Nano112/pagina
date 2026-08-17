@@ -52,3 +52,22 @@ export const FigureBuilderProvider = FigureBuilderContext.Provider;
 
 export const useFigureBuilder = (): ((request: FigureBuilderRequest) => void) | undefined =>
   useContext(FigureBuilderContext);
+
+/** A line for the status bar, from anywhere that is not the shell — an upload, a refused insert. */
+export interface EditorNotice {
+  readonly kind: "info" | "error";
+  readonly text: string;
+}
+
+/**
+ * How a command that declines to run says so.
+ *
+ * A context rather than a prop because the two surfaces that run inserts (the toolbar and the
+ * slash menu) and the node views all need it, and threading a callback through each of them was
+ * four props for one sentence.
+ */
+const NoticeContext = createContext<((notice: EditorNotice) => void) | undefined>(undefined);
+
+export const NoticeProvider = NoticeContext.Provider;
+
+export const useNotify = (): ((notice: EditorNotice) => void) | undefined => useContext(NoticeContext);

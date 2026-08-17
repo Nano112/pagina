@@ -205,6 +205,27 @@ const y = \`template\`;
     Body of a collapsible admonition.
 `,
   ),
+  /**
+   * Every kind, both markers, titled and not.
+   *
+   * The redesign gave each kind a glyph, an ink and a ground of its own, none of which the
+   * markdown knows about — so the thing that has to be proved is that it still *doesn't*: seven
+   * kinds × `!!!`/`???` × title/no title must come back as the bytes they went in as. An omitted
+   * title is the case with a trap in it, because core resolves it to the capitalised kind and the
+   * serializer has to recognise that and write nothing.
+   */
+  synthetic(
+    "every admonition kind, titled, untitled and collapsible",
+    `${["note", "tip", "info", "warning", "danger", "example", "quote"]
+      .flatMap((kind) => [
+        `!!! ${kind}\n    Untitled ${kind}: the title resolves to the kind.`,
+        `!!! ${kind} "A ${kind} with a title"\n    Titled ${kind}.`,
+        `??? ${kind} "Collapsible ${kind}"\n    Collapsible, titled.`,
+        `??? ${kind}\n    Collapsible, untitled.`,
+      ])
+      .join("\n\n")}
+`,
+  ),
   synthetic(
     "snippets",
     `Before.

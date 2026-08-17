@@ -150,10 +150,94 @@ ${sheets.map((s) => `<link rel="stylesheet" href="/vendor/pagina/${s}">`).join("
 </script>
 </body></html>`;
 
+/**
+ * A host's *own* theme, on top of the reset: near-black translucent surfaces, a magenta accent,
+ * a display face that is not the system stack.
+ *
+ * This is schemat.io's shape, and it is here because "looks good in pagina's default palette" is
+ * not the claim being made — the claim is that a host retints every kind of admonition by
+ * defining tokens, and never by fighting a rule. If a colour anywhere in the block were
+ * hard-coded, this page is where it would show.
+ */
+const HOST_THEME = `<style>
+:root {
+  --pg-bg: #0b0b0f;
+  --pg-bg-raised: #15151d;
+  --pg-bg-sunken: #08080c;
+  --pg-fg: #ece9f2;
+  --pg-muted: #9a93ab;
+  --pg-accent: #ff2bd1;
+  --pg-accent-fg: #14040f;
+  --pg-line: #262233;
+  --pg-line-strong: #3b3550;
+  --pg-radius: 0.5rem;
+  --pg-radius-lg: 0.875rem;
+  --pg-font: Figtree, system-ui, sans-serif;
+  --pg-font-display: Figtree, system-ui, sans-serif;
+  --pg-code-bg: #111019;
+  --pg-shiki-bg: #111019;
+
+  --pg-note: #7aa2ff;   --pg-note-surface: #12131f;   --pg-note-fg: #a9c0ff;
+  --pg-tip: #3ddc84;    --pg-tip-surface: #0e1a15;    --pg-tip-fg: #7ce9ae;
+  --pg-info: #4fd6ee;   --pg-info-surface: #0d1a1e;   --pg-info-fg: #8ae4f5;
+  --pg-warning: #ffc857; --pg-warning-surface: #1d1710; --pg-warning-fg: #ffd888;
+  --pg-danger: #ff5c8a; --pg-danger-surface: #1e1017;  --pg-danger-fg: #ff92b1;
+  --pg-example: #c08bff; --pg-example-surface: #17111f; --pg-example-fg: #d4b0ff;
+  --pg-quote: #8f88a6;  --pg-quote-surface: #131320;   --pg-quote-fg: #b3adc4;
+}
+body { background: var(--pg-bg); color: var(--pg-fg); }
+</style>`;
+
+/** The published page: core's HTML, in a host's article shell, with the built site sheet. */
+const publishedPage = (html, theme) => `<!doctype html>
+<html lang="en"${theme === "dark" ? ' data-theme="dark"' : ""}>
+<head>
+<meta charset="utf-8"><title>Admonitions (published, ${theme})</title>
+${RESET}
+<link rel="stylesheet" href="/vendor/pagina/pagina.css">
+${theme === "dark" ? HOST_THEME : ""}
+</head>
+<body>
+<main style="max-width:56rem;margin:0 auto;padding:2rem 1.5rem">
+  <article class="pg-content" data-published>${html}</article>
+</main>
+</body></html>`;
+
+/** The same page, open in the editor, under the same host. */
+const editorPage = (theme) => `<!doctype html>
+<html lang="en"${theme === "dark" ? ' data-theme="dark"' : ""}>
+<head>
+<meta charset="utf-8"><title>Admonitions (editing, ${theme})</title>
+${RESET}
+<link rel="stylesheet" href="/vendor/pagina/pagina.css">
+<link rel="stylesheet" href="/vendor/pagina/editor.css">
+${theme === "dark" ? HOST_THEME : ""}
+<script type="importmap">{"imports":{"kineglyph":"/vendor/pagina/kineglyph-web.js"}}</script>
+</head>
+<body>
+<pagina-editor data-editor backend-url="${API}" page="guide/admonitions.md" base="/" theme="${theme}"></pagina-editor>
+<script type="module">
+  import { defineElement } from "/vendor/pagina/editor.js";
+  defineElement();
+  window.__paginaDefined = true;
+</script>
+</body></html>`;
+
+/** Core's HTML for the page the global setup wrote into the article folder. */
+async function renderAdmonitions() {
+  const { createMarkdown, renderMarkdown } = await import("@pagina/core");
+  const source = await readFile(resolve(ARTICLE, "guide/admonitions.md"), "utf8");
+  return renderMarkdown(createMarkdown(), source).html;
+}
+
 const HOST_PAGES = {
   "/host-reset": () => resetHostPage(["editor.css"]),
   "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
   "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),
+  "/admonitions/published": async () => publishedPage(await renderAdmonitions(), "light"),
+  "/admonitions/published-dark": async () => publishedPage(await renderAdmonitions(), "dark"),
+  "/admonitions/editing": () => editorPage("light"),
+  "/admonitions/editing-dark": () => editorPage("dark"),
 };
 
 const edit = viteEditMiddleware(ARTICLE, { base: API, siteBase: "/" });
@@ -182,7 +266,7 @@ createServer((req, res) => {
       const hostPage = HOST_PAGES[path];
       if (hostPage !== undefined) {
         res.setHeader("content-type", "text/html; charset=utf-8");
-        res.end(hostPage());
+        res.end(await hostPage());
         return;
       }
       // The published site, served as flat files at its own base — no rewriting, no index

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { Editor } from "@tiptap/core";
 import type { ArticleStore } from "../store/index.js";
 import { filterInserts, type InsertAction, type InsertContext } from "./inserts.js";
-import { useFigureBuilder, usePagePath } from "./context.js";
+import { useFigureBuilder, useNotify, usePagePath } from "./context.js";
 
 /** The trigger: a `/` at the start of a text block, followed by word characters only. */
 const TRIGGER = /^\/([\w-]*)$/;
@@ -62,6 +62,7 @@ export interface SlashMenuProps {
 export function SlashMenu({ editor, store, onPickFile }: SlashMenuProps): ReactNode {
   const pagePath = usePagePath();
   const openBuilder = useFigureBuilder();
+  const notify = useNotify();
   const [trigger, setTrigger] = useState<Trigger | undefined>(undefined);
   const [active, setActive] = useState(0);
   /** Dismissed with Escape: stays shut until the author leaves the line and types `/` again. */
@@ -87,11 +88,12 @@ export function SlashMenu({ editor, store, onPickFile }: SlashMenuProps): ReactN
         store,
         pagePath,
         ...(openBuilder === undefined ? {} : { openBuilder }),
+        ...(notify === undefined ? {} : { notify }),
         pickFile: onPickFile,
       };
       action.run(ctx);
     },
-    [editor, store, pagePath, openBuilder, onPickFile],
+    [editor, store, pagePath, openBuilder, notify, onPickFile],
   );
 
   useEffect(() => {

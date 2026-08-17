@@ -12,10 +12,11 @@
  * "Edit source" is always there for a module or an inline scene, and it is the plain truth: the
  * module's text. "Remove" deletes the node.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import { defaultTheme, mountKineglyph, type KineglyphController } from "kineglyph";
-import { Code2, PencilRuler, Trash2 } from "lucide-react";
+import { Code2, PencilRuler } from "lucide-react";
+import { RemoveBlock, useBlockChrome } from "./chrome.js";
 import { useArticleStore, useStoreRevision } from "../useStore.js";
 import { useFigureBuilder, usePagePath } from "../context.js";
 import { evaluateSceneModule, parseSpecFromModule, type SceneSource } from "../kineglyph.js";
@@ -116,11 +117,7 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
 
   const spec = source === undefined ? null : parseSpecFromModule(source);
 
-  const remove = useCallback((): void => {
-    const pos = getPos();
-    if (pos === undefined) return;
-    editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize));
-  }, [editor, getPos, node.nodeSize]);
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
 
   const saveSource = (): void => {
     if (kind === "inline") updateAttributes({ source: draft });
@@ -142,7 +139,7 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
 
   return (
     <NodeViewWrapper className="pge-card pge-figure" contentEditable={false} onKeyDown={swallowKeys}>
-      <div className="pge-card__head">
+      <div className="pge-card__head" {...chromeProps}>
         <span className="pge-card__badge">figure</span>
         <span className="pge-card__title">{id === "" ? (sceneHref === "" ? "(no scene)" : sceneHref) : id}</span>
         <span className="pge-card__spacer" />
@@ -164,9 +161,7 @@ export function FigureKgView({ node, editor, getPos, updateAttributes }: ReactNo
             <Code2 size={14} aria-hidden="true" /> Edit source
           </button>
         )}
-        <button type="button" className="pge-icon" title="Remove figure" aria-label="Remove figure" onClick={remove}>
-          <Trash2 size={14} aria-hidden="true" />
-        </button>
+        <RemoveBlock thing="figure" onRemove={remove} />
       </div>
 
       {kind === "static" ? (

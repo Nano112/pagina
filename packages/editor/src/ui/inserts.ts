@@ -8,6 +8,7 @@
  */
 import type { Editor } from "@tiptap/core";
 import type { SimpleSceneSpec } from "kineglyph";
+import { insideAdmonition } from "../model/block-controls.js";
 import type { ArticleStore } from "../store/index.js";
 import type { FigureBuilderRequest } from "./context.js";
 import { relativePath } from "./paths.js";
@@ -22,7 +23,19 @@ export interface InsertContext {
   readonly openBuilder?: ((request: FigureBuilderRequest) => void) | undefined;
   /** Opens the host's file chooser and uploads whatever comes back. */
   readonly pickFile?: (() => void) | undefined;
+  /**
+   * Says something to the author in the status bar.
+   *
+   * An insert that declines to happen has to *say so*: a menu item that silently does nothing is
+   * indistinguishable from a bug, and the one insert that declines — an admonition inside an
+   * admonition — used to be allowed and rendered as a box inside a box that no markdown could
+   * express faithfully.
+   */
+  readonly notify?: ((notice: { readonly kind: "info" | "error"; readonly text: string }) => void) | undefined;
 }
+
+/** The message the nested-admonition refusal shows. Exported so a test does not retype it. */
+export const NESTED_ADMONITION_MESSAGE = "An admonition cannot go inside another admonition.";
 
 export interface InsertAction {
   readonly id: string;
@@ -121,8 +134,16 @@ export const INSERTS: readonly InsertAction[] = [
       label: `Admonition: ${kind}`,
       group: "Blocks",
       keywords: ["callout", "aside", kind],
-      run: ({ editor }) =>
-        void editor
+      run: ({ editor, notify }) => {
+        // Refused rather than silently allowed. A callout inside a callout renders as a tinted
+        // box inside a tinted box with two competing accent edges and two title rows, and there
+        // is no reading of it that is clearer than the two blocks side by side. Everything else
+        // may nest — an admonition inside a tab is a real shape the dialect's pages use.
+        if (insideAdmonition(editor.state)) {
+          notify?.({ kind: "error", text: NESTED_ADMONITION_MESSAGE });
+          return;
+        }
+        editor
           .chain()
           .focus()
           .insertContent({
@@ -130,7 +151,8 @@ export const INSERTS: readonly InsertAction[] = [
             attrs: { kind, title: "", collapsible: false },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Write the note here." }] }],
           })
-          .run(),
+          .run();
+      },
     }),
   ),
   {

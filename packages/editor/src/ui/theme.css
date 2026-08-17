@@ -518,32 +518,178 @@
     padding: 0 var(--pge-2);
   }
 
+  /* Admonitions ------------------------------------------------------------------------------
+   *
+   * The block is the *published* block — same three tokens, same tint, same accent edge, same
+   * glyph as `reading.css` draws — with a tool strip along its top instead of a title row. That
+   * is the whole claim of a WYSIWYG pane, and the old chrome (a browser `<select>`, a bare input
+   * and an unstyled checkbox on a grey bar) broke it twice over: it did not look like the block
+   * it was editing, and it looked different in every host.
+   *
+   * Nothing here is a native control's own appearance. The kind picker is an icon, a label and a
+   * caret we draw, with a real `<select>` stretched transparently over it — the platform keeps
+   * the keyboard behaviour and the accessible name, and the host's control styling never lands. */
   .pge-adm {
-    border: 1px solid var(--pg-line);
-    border-inline-start: 3px solid var(--pg-muted);
-    border-radius: var(--pg-radius);
+    --pg-adm-hue: var(--pg-note);
+    --pg-adm-surface: var(--pg-note-surface);
+    --pg-adm-fg: var(--pg-note-fg);
+    --pg-adm-edge: color-mix(in srgb, var(--pg-adm-hue) 22%, transparent);
+
+    background: var(--pg-adm-surface);
+    border-inline-start: 3px solid var(--pg-adm-hue);
+    border-radius: 0 var(--pg-radius-lg) var(--pg-radius-lg) 0;
     margin: var(--pge-2) 0;
   }
 
-  .pge-adm[data-kind="note"], .pge-adm[data-kind="info"] { border-inline-start-color: var(--pg-note); }
-  .pge-adm[data-kind="tip"], .pge-adm[data-kind="example"] { border-inline-start-color: var(--pg-tip); }
-  .pge-adm[data-kind="warning"] { border-inline-start-color: var(--pg-warning); }
-  .pge-adm[data-kind="danger"] { border-inline-start-color: var(--pg-danger); }
+  .pge-adm[data-kind="tip"] { --pg-adm-hue: var(--pg-tip); --pg-adm-surface: var(--pg-tip-surface); --pg-adm-fg: var(--pg-tip-fg); }
+  .pge-adm[data-kind="info"] { --pg-adm-hue: var(--pg-info); --pg-adm-surface: var(--pg-info-surface); --pg-adm-fg: var(--pg-info-fg); }
+  .pge-adm[data-kind="warning"] { --pg-adm-hue: var(--pg-warning); --pg-adm-surface: var(--pg-warning-surface); --pg-adm-fg: var(--pg-warning-fg); }
+  .pge-adm[data-kind="danger"] { --pg-adm-hue: var(--pg-danger); --pg-adm-surface: var(--pg-danger-surface); --pg-adm-fg: var(--pg-danger-fg); }
+  .pge-adm[data-kind="example"] { --pg-adm-hue: var(--pg-example); --pg-adm-surface: var(--pg-example-surface); --pg-adm-fg: var(--pg-example-fg); }
+  .pge-adm[data-kind="quote"] { --pg-adm-hue: var(--pg-quote); --pg-adm-surface: var(--pg-quote-surface); --pg-adm-fg: var(--pg-quote-fg); }
 
   .pge-adm__head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px var(--pge-1);
-    background: var(--pg-bg-raised);
+    gap: 4px;
+    padding: 5px 6px 5px 10px;
+    border-block-end: 1px solid var(--pg-adm-edge);
   }
 
+  /* The kind: an icon and a word, with the select laid invisibly over the whole of it. */
+  .pge-adm__kind {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    padding: 2px 4px 2px 2px;
+    border-radius: var(--pg-radius);
+    color: var(--pg-adm-fg);
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .pge-adm__kind:hover { background: var(--pg-adm-edge); }
+  .pge-adm__glyph { flex: none; color: var(--pg-adm-hue); }
+  .pge-adm__caret { flex: none; color: var(--pg-muted); }
+
+  .pge-adm__picker {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    opacity: 0;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  /* The focus ring belongs on what the eye sees, not on the transparent control that has focus. */
+  .pge-adm__kind:has(.pge-adm__picker:focus-visible) {
+    outline: 2px solid var(--pg-accent);
+    outline-offset: 1px;
+  }
+
+  /* The title reads as part of the block until it is touched, then as a field. */
   .pge-adm__title {
     flex: 1 1 auto;
+    min-inline-size: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--pg-fg);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--pg-radius);
+    padding: 2px 6px;
   }
 
-  .pge-adm__body {
-    padding: 0 var(--pge-2);
+  .pge-adm__title::placeholder { color: var(--pg-muted); font-weight: 400; }
+  .pge-adm__title:hover { border-color: var(--pg-adm-edge); }
+  .pge-adm__title:focus { background: var(--pg-bg); border-color: var(--pg-line); }
+
+  /* `collapsible` is `???` instead of `!!!` — a state, so a switch rather than a checkbox. */
+  .pge-adm__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    font: inherit;
+    font-size: 0.8em;
+    color: var(--pg-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--pg-radius);
+    padding: 3px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .pge-adm__toggle:hover { background: var(--pg-adm-edge); }
+
+  .pge-adm__track {
+    position: relative;
+    flex: none;
+    inline-size: 24px;
+    block-size: 14px;
+    border-radius: 999px;
+    background: var(--pg-line-strong);
+    transition: background-color 0.12s ease;
+  }
+
+  .pge-adm__thumb {
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+    inline-size: 10px;
+    block-size: 10px;
+    border-radius: 50%;
+    background: var(--pg-bg);
+    transition: transform 0.12s ease;
+  }
+
+  .pge-adm__toggle[aria-checked="true"] { color: var(--pg-adm-fg); }
+  .pge-adm__toggle[aria-checked="true"] .pge-adm__track { background: var(--pg-adm-hue); }
+  .pge-adm__toggle[aria-checked="true"] .pge-adm__thumb { transform: translateX(10px); }
+
+  .pge-adm__body { padding: 4px var(--pge-2) 10px; }
+  .pge-adm__body > :first-child { margin-block-start: 0; }
+  .pge-adm__body > :last-child { margin-block-end: 0; }
+
+  /* The remove control every block node view carries -------------------------------------------
+   *
+   * Quiet by default and revealed on hover or focus-within, so a document full of figures is not
+   * a document full of bins — but always in the tab order, because "hover to discover" is not an
+   * affordance a keyboard has. `opacity` rather than `display`, so the strip does not reflow the
+   * moment the pointer crosses it. */
+  .pge-block__remove {
+    flex: none;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+  }
+
+  .pge-adm:hover .pge-block__remove,
+  .pge-adm:focus-within .pge-block__remove,
+  .pge-card:hover .pge-block__remove,
+  .pge-card:focus-within .pge-block__remove,
+  .pge-tabs:hover .pge-block__remove,
+  .pge-tabs:focus-within .pge-block__remove,
+  .pge-block__remove:focus-visible {
+    opacity: 1;
+  }
+
+  .pge-block__remove:hover:not(:disabled) { color: var(--pg-danger); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pge-block__remove,
+    .pge-adm__track,
+    .pge-adm__thumb {
+      transition: none;
+    }
   }
 
   .pge-card {

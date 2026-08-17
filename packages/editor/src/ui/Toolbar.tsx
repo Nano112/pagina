@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { ArticleStore } from "../store/index.js";
 import { ColorButton } from "./ColorPicker.js";
-import { useFigureBuilder, usePagePath } from "./context.js";
+import { useFigureBuilder, useNotify, usePagePath } from "./context.js";
 import { INSERTS, type InsertContext } from "./inserts.js";
 
 const ADMONITION_KINDS = ["note", "tip", "info", "warning", "danger", "example", "quote"] as const;
@@ -105,6 +105,7 @@ function runInsert(id: string, ctx: InsertContext): void {
 export function Toolbar({ editor, store, onPickFile }: ToolbarProps): ReactNode {
   const pagePath = usePagePath();
   const openBuilder = useFigureBuilder();
+  const notify = useNotify();
   const state = useEditorState<ToolbarState>({
     editor,
     selector: ({ editor: e }): ToolbarState => {
@@ -135,6 +136,7 @@ export function Toolbar({ editor, store, onPickFile }: ToolbarProps): ReactNode 
     store,
     pagePath,
     ...(openBuilder === undefined ? {} : { openBuilder }),
+    ...(notify === undefined ? {} : { notify }),
     pickFile: onPickFile,
   };
 

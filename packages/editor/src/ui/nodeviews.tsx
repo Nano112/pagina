@@ -13,9 +13,11 @@ import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps } from "@tipt
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plus, X } from "lucide-react";
 import { useArticleStore } from "./useStore.js";
+import { RemoveBlock, useBlockChrome } from "./nodes/chrome.js";
 
 export { FigureKgView } from "./nodes/FigureKgView.js";
 export { ModelViewerView } from "./nodes/ModelViewerView.js";
+export { AdmonitionView, ADMONITION_ICONS, ADMONITION_KIND_NAMES } from "./nodes/AdmonitionView.js";
 
 /** Keystrokes inside a node view's form belong to the form, not to the editor's shortcut map. */
 const swallowKeys = (event: KeyboardEvent): void => {
@@ -42,6 +44,7 @@ const label = (node: ProseMirrorNode, index: number): string => {
  * decide whether another node view's DOM exists.
  */
 export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNode {
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
   const [active, setActive] = useState(0);
   const [renaming, setRenaming] = useState<number | undefined>(undefined);
   const panels = useRef<HTMLDivElement>(null);
@@ -150,7 +153,14 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
 
   return (
     <NodeViewWrapper className="pge-tabs" data-pge-tabs="">
-      <div className="pge-tabs__strip" contentEditable={false} role="tablist" ref={strip} onKeyDown={onStripKey}>
+      <div
+        className="pge-tabs__strip"
+        contentEditable={false}
+        role="tablist"
+        ref={strip}
+        onKeyDown={onStripKey}
+        {...chromeProps}
+      >
         {Array.from({ length: count }, (_, i) =>
           renaming === i ? (
             <input
@@ -200,6 +210,7 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
         >
           <X size={14} aria-hidden="true" />
         </button>
+        <RemoveBlock thing="tab group" onRemove={remove} />
       </div>
       <div className="pge-tabs__panels" ref={panels}>
         <NodeViewContent />
@@ -217,55 +228,13 @@ export function TabView(): ReactNode {
   );
 }
 
-const KINDS = ["note", "tip", "info", "warning", "danger", "example", "quote"] as const;
-
-/** `!!! kind "Title"` / `??? kind "Title"`. */
-export function AdmonitionView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
-  const kind = typeof node.attrs["kind"] === "string" ? node.attrs["kind"] : "note";
-  const title = typeof node.attrs["title"] === "string" ? node.attrs["title"] : "";
-  const collapsible = node.attrs["collapsible"] === true;
-  return (
-    <NodeViewWrapper className="pge-adm" data-kind={kind}>
-      <div className="pge-adm__head" contentEditable={false} onKeyDown={swallowKeys}>
-        <select
-          className="pge-select pge-select--sm"
-          value={KINDS.includes(kind as (typeof KINDS)[number]) ? kind : "note"}
-          onChange={(e) => updateAttributes({ kind: e.target.value })}
-          aria-label="Admonition kind"
-        >
-          {KINDS.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
-        <input
-          className="pge-input pge-adm__title"
-          value={title}
-          placeholder="Title (optional)"
-          onChange={(e) => updateAttributes({ title: e.target.value })}
-          aria-label="Admonition title"
-        />
-        <label className="pge-check">
-          <input
-            type="checkbox"
-            checked={collapsible}
-            onChange={(e) => updateAttributes({ collapsible: e.target.checked })}
-          />
-          collapsible
-        </label>
-      </div>
-      <NodeViewContent className="pge-adm__body" />
-    </NodeViewWrapper>
-  );
-}
-
 /**
  * `--8<-- "path:section"`. The include is resolved at render time, not here, so the node view shows
  * the reference plus a read-only peek at the file it points at — enough to tell a typo from a hit.
  */
-export function SnippetView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
+export function SnippetView({ node, editor, getPos, updateAttributes }: ReactNodeViewProps): ReactNode {
   const store = useArticleStore();
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
   const ref = typeof node.attrs["ref"] === "string" ? node.attrs["ref"] : "";
   const [peek, setPeek] = useState<string>("");
 
@@ -291,7 +260,7 @@ export function SnippetView({ node, updateAttributes }: ReactNodeViewProps): Rea
 
   return (
     <NodeViewWrapper className="pge-card pge-snippet" contentEditable={false} onKeyDown={swallowKeys}>
-      <div className="pge-card__head">
+      <div className="pge-card__head" {...chromeProps}>
         <span className="pge-card__badge">snippet</span>
         <input
           className="pge-input"
@@ -300,6 +269,7 @@ export function SnippetView({ node, updateAttributes }: ReactNodeViewProps): Rea
           onChange={(e) => updateAttributes({ ref: e.target.value })}
           aria-label="Snippet reference"
         />
+        <RemoveBlock thing="snippet" onRemove={remove} />
       </div>
       {peek === "" ? (
         <p className="pge-card__note">Resolved when the page is rendered.</p>
@@ -311,11 +281,18 @@ export function SnippetView({ node, updateAttributes }: ReactNodeViewProps): Rea
 }
 
 /** `<figure markdown="span">` around an image: source, caption, width. */
-export function FigureImageView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
+export function FigureImageView({ node, editor, getPos, updateAttributes }: ReactNodeViewProps): ReactNode {
   const attr = (key: string): string => (typeof node.attrs[key] === "string" ? (node.attrs[key] as string) : "");
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
   const src = attr("src");
   return (
     <NodeViewWrapper className="pge-card pge-figimg" contentEditable={false} onKeyDown={swallowKeys}>
+      <div className="pge-card__head" {...chromeProps}>
+        <span className="pge-card__badge">image</span>
+        <span className="pge-card__title">{src === "" ? "(no source)" : src}</span>
+        <span className="pge-card__spacer" />
+        <RemoveBlock thing="image figure" onRemove={remove} />
+      </div>
       {src === "" ? <div className="pge-figimg__empty">No image source</div> : <img src={src} alt={attr("alt")} />}
       <div className="pge-card__fields">
         <label className="pge-field">
@@ -345,12 +322,15 @@ export function FigureImageView({ node, updateAttributes }: ReactNodeViewProps):
 }
 
 /** Raw HTML the dialect has no node for: edited as text, kept byte-for-byte. */
-export function HtmlBlockView({ node, updateAttributes }: ReactNodeViewProps): ReactNode {
+export function HtmlBlockView({ node, editor, getPos, updateAttributes }: ReactNodeViewProps): ReactNode {
   const html = typeof node.attrs["html"] === "string" ? node.attrs["html"] : "";
+  const { remove, chromeProps } = useBlockChrome(editor, getPos, node);
   return (
     <NodeViewWrapper className="pge-card pge-html" contentEditable={false} onKeyDown={swallowKeys}>
-      <div className="pge-card__head">
+      <div className="pge-card__head" {...chromeProps}>
         <span className="pge-card__badge">html</span>
+        <span className="pge-card__spacer" />
+        <RemoveBlock thing="HTML block" onRemove={remove} />
       </div>
       <textarea
         className="pge-textarea"

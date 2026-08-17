@@ -8,6 +8,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Color, TextStyle } from "@tiptap/extension-text-style";
 import { Admonition, FigureImage, FigureKg, HtmlBlock, ModelViewer, Snippet, Tab, Tabs } from "./nodes.js";
+import { BlockControls } from "./block-controls.js";
 
 /**
  * Headings carry the id the *author wrote* (`## Title {#custom}`), never the one core's anchors
@@ -143,6 +144,9 @@ export function editorExtensions(): Extensions {
     FigureImage,
     ModelViewer,
     HtmlBlock,
+    // Adds no node and no attribute — only the keymap that lets every block above be left and
+    // deleted. It is here rather than in the UI so one list defines the document's behaviour.
+    BlockControls,
     // Last: mark rank follows this order, and a code span has to be the innermost mark.
     InlineCode,
   ];

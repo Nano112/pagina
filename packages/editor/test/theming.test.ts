@@ -102,12 +102,31 @@ describe("the editor stylesheet", () => {
     }
   });
 
-  it("consumes only tokens the shell's contract defines", () => {
-    const defined = new Set(
+  it("consumes only tokens the shell's contract defines, or ones it defines itself", () => {
+    const contract = new Set(
       [...layerBody(tokensCss, "pagina.tokens").matchAll(/(?:^|[{;\s])(--pg-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!),
     );
+    // `--pg-adm-*` is the admonition's *local* indirection — one block sets the three, every rule
+    // in the block reads them, and `reading.css` does the identical thing for the published page.
+    // It is not a second palette: each one resolves to a contract token or to another local.
+    const local = new Set([...tool.matchAll(/(?:^|[{;\s])(--pg-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
     for (const m of tool.matchAll(/var\((--pg-[a-z0-9-]+)/g)) {
-      expect(defined.has(m[1]!), `${m[1]} is used but not defined`).toBe(true);
+      expect(contract.has(m[1]!) || local.has(m[1]!), `${m[1]} is used but not defined`).toBe(true);
+    }
+    for (const name of local) expect(name, "a local may only be an admonition indirection").toMatch(/^--pg-adm-/);
+  });
+
+  /**
+   * The editor draws the *same* admonition the page publishes, from the same three tokens.
+   *
+   * The old node view was a grey bar with a browser `<select>` on it; nothing about it tracked
+   * the kind but a border colour, and two of the seven kinds had no colour of their own at all.
+   */
+  it("draws every admonition kind from the shell's per-kind tokens", () => {
+    for (const kind of ["note", "tip", "info", "warning", "danger", "example", "quote"]) {
+      for (const suffix of ["", "-surface", "-fg"]) {
+        expect(tool, `--pg-${kind}${suffix} reaches the editor`).toContain(`var(--pg-${kind}${suffix})`);
+      }
     }
   });
 });

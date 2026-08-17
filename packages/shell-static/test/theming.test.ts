@@ -181,6 +181,28 @@ describe("the token contract", () => {
     expect(rules).not.toMatch(/font-family:(?!\s*var\()/);
   });
 
+  /**
+   * The seven admonition kinds, three tokens each, light *and* dark.
+   *
+   * Before this there were four hues for seven kinds — `info` borrowed `note`'s and `example`
+   * borrowed `tip`'s — and no ground or ink of their own at all, so a host could not retint a
+   * callout without overriding a rule, which is the one thing the contract promises it never has
+   * to do. The reading layer must reach every one of them, or the token is decorative.
+   */
+  it("gives every admonition kind a hue, a surface and an ink, in both schemes", () => {
+    const dark = definedTokens(`[data-theme="dark"]${layerBody(tokensCss, "pagina.tokens")!.split('[data-theme="dark"]')[1]!}`);
+    const rules = layerBody(readingCss, "pagina.reading")!;
+    const documented = new Set(docs.match(/`--pg-[a-z0-9-]+`/g)?.map((s) => s.slice(1, -1)) ?? []);
+    for (const kind of ["note", "tip", "info", "warning", "danger", "example", "quote"]) {
+      for (const name of [`--pg-${kind}`, `--pg-${kind}-surface`, `--pg-${kind}-fg`]) {
+        expect(light.has(name), `${name} has a light default`).toBe(true);
+        expect(dark.has(name), `${name} has a dark default`).toBe(true);
+        expect(documented.has(name), `${name} is in the theming table`).toBe(true);
+        expect(rules, `${name} is actually drawn with`).toContain(`var(${name})`);
+      }
+    }
+  });
+
   it("defines the same tokens for dark as for light, colours only", () => {
     const dark = definedTokens(`[data-theme="dark"]${layerBody(tokensCss, "pagina.tokens")!.split('[data-theme="dark"]')[1]!}`);
     for (const name of dark.keys()) expect(light.has(name)).toBe(true);

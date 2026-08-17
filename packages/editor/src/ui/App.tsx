@@ -25,8 +25,8 @@ import { StatusBar, type StatusNotice } from "./StatusBar.js";
 import { Toolbar } from "./Toolbar.js";
 import { StoreProvider } from "./useStore.js";
 import {
-  ConfigProvider, DEFAULT_MODEL_VIEWER_URL, FigureBuilderProvider, PagePathProvider,
-  type FigureBuilderRequest,
+  ConfigProvider, DEFAULT_MODEL_VIEWER_URL, FigureBuilderProvider, NoticeProvider, PagePathProvider,
+  type EditorNotice, type FigureBuilderRequest,
 } from "./context.js";
 import { uploadAndInsert } from "./uploads.js";
 
@@ -51,7 +51,8 @@ export function App({ store, page, onReady, modelViewerUrl = DEFAULT_MODEL_VIEWE
   const [showPreview, setShowPreview] = useState(true);
   const [split, setSplit] = useState(0.42);
   const [builder, setBuilder] = useState<FigureBuilderRequest | undefined>(undefined);
-  const [upload, setUpload] = useState<StatusNotice | undefined>(undefined);
+  /** The shell's line in the status bar: an upload in flight, or a command that declined to run. */
+  const [said, setSaid] = useState<StatusNotice | undefined>(undefined);
   const panes = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { editor, save, serializeError } = usePageEditor(store, path);
@@ -90,13 +91,13 @@ export function App({ store, page, onReady, modelViewerUrl = DEFAULT_MODEL_VIEWE
   const takeFiles = useCallback(
     (files: readonly File[]): void => {
       if (editor === null || files.length === 0) return;
-      setUpload({ kind: "info", text: files.length === 1 ? `Uploading ${files[0]!.name}…` : `Uploading ${files.length} files…` });
+      setSaid({ kind: "info", text: files.length === 1 ? `Uploading ${files[0]!.name}…` : `Uploading ${files.length} files…` });
       void (async () => {
         try {
           for (const file of files) await uploadAndInsert(editor, store, file, path);
-          setUpload({ kind: "info", text: files.length === 1 ? `Uploaded ${files[0]!.name}` : `Uploaded ${files.length} files` });
+          setSaid({ kind: "info", text: files.length === 1 ? `Uploaded ${files[0]!.name}` : `Uploaded ${files.length} files` });
         } catch (e) {
-          setUpload({ kind: "error", text: `Upload failed: ${e instanceof Error ? e.message : String(e)}` });
+          setSaid({ kind: "error", text: `Upload failed: ${e instanceof Error ? e.message : String(e)}` });
         }
       })();
     },
@@ -122,16 +123,18 @@ export function App({ store, page, onReady, modelViewerUrl = DEFAULT_MODEL_VIEWE
 
   const pickFile = useCallback(() => fileInput.current?.click(), []);
   const openBuilder = useCallback((request: FigureBuilderRequest) => setBuilder(request), []);
+  const notify = useCallback((notice: EditorNotice) => setSaid(notice), []);
 
   // A failed serialize outranks an upload note: one is a warning, the other is work not being saved.
   const notice: StatusNotice | undefined =
-    serializeError === undefined ? upload : { kind: "error", text: `Couldn't serialize this page — ${serializeError}` };
+    serializeError === undefined ? said : { kind: "error", text: `Couldn't serialize this page — ${serializeError}` };
 
   return (
     <StoreProvider value={store}>
       <ConfigProvider value={{ modelViewerUrl }}>
         <PagePathProvider value={path}>
           <FigureBuilderProvider value={openBuilder}>
+            <NoticeProvider value={notify}>
             <div className="pge-app" data-preview={showPreview ? "" : undefined}>
               <div className="pge-bar">
                 <Toolbar editor={editor} store={store} onPickFile={pickFile} />
@@ -188,6 +191,7 @@ export function App({ store, page, onReady, modelViewerUrl = DEFAULT_MODEL_VIEWE
                 <FigureBuilder store={store} request={builder} onClose={() => setBuilder(undefined)} />
               )}
             </div>
+            </NoticeProvider>
           </FigureBuilderProvider>
         </PagePathProvider>
       </ConfigProvider>

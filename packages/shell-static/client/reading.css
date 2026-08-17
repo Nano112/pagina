@@ -76,16 +76,62 @@
   .pg-tabs [role="tabpanel"][hidden] { display: none; }
   .pg-tabs [role="tabpanel"] { padding-top: 0.9rem; }
 
-  /* Admonitions -------------------------------------------------------------------------------- */
+  /* Admonitions --------------------------------------------------------------------------------
+   *
+   * One block, three tokens, seven kinds. Each kind sets `--pg-adm-*` once and every rule below
+   * reads those — so a host adds a kind, or retints one, without touching a selector, and the
+   * editor's node view (`theme.css`) can point the same three at the same values and get the
+   * same block.
+   *
+   * The kind is carried by a glyph and a label, not only by a hue: a 3px stripe in a colour is
+   * indistinguishable at a skim and invisible to anyone who cannot separate the hues, which is
+   * how `danger` and `note` came to look like the same block. */
   .pg-admonition {
-    border-left: 3px solid var(--pg-note); background: var(--pg-bg-raised);
-    border-radius: 0 var(--pg-radius) var(--pg-radius) 0; padding: 0.75rem 1rem; margin: 1.25rem 0;
+    --pg-adm-hue: var(--pg-note);
+    --pg-adm-surface: var(--pg-note-surface);
+    --pg-adm-fg: var(--pg-note-fg);
+
+    background: var(--pg-adm-surface);
+    border-inline-start: 3px solid var(--pg-adm-hue);
+    border-radius: 0 var(--pg-radius-lg) var(--pg-radius-lg) 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1.5rem 0;
+    color: var(--pg-fg);
   }
-  .pg-admonition__title { font-weight: 600; margin-bottom: 0.25rem; }
-  .pg-admonition--note { border-color: var(--pg-note); }
-  .pg-admonition--tip { border-color: var(--pg-tip); }
-  .pg-admonition--warning { border-color: var(--pg-warning); }
-  .pg-admonition--danger { border-color: var(--pg-danger); }
+  .pg-admonition--tip { --pg-adm-hue: var(--pg-tip); --pg-adm-surface: var(--pg-tip-surface); --pg-adm-fg: var(--pg-tip-fg); }
+  .pg-admonition--info { --pg-adm-hue: var(--pg-info); --pg-adm-surface: var(--pg-info-surface); --pg-adm-fg: var(--pg-info-fg); }
+  .pg-admonition--warning { --pg-adm-hue: var(--pg-warning); --pg-adm-surface: var(--pg-warning-surface); --pg-adm-fg: var(--pg-warning-fg); }
+  .pg-admonition--danger { --pg-adm-hue: var(--pg-danger); --pg-adm-surface: var(--pg-danger-surface); --pg-adm-fg: var(--pg-danger-fg); }
+  .pg-admonition--example { --pg-adm-hue: var(--pg-example); --pg-adm-surface: var(--pg-example-surface); --pg-adm-fg: var(--pg-example-fg); }
+  .pg-admonition--quote { --pg-adm-hue: var(--pg-quote); --pg-adm-surface: var(--pg-quote-surface); --pg-adm-fg: var(--pg-quote-fg); }
+
+  .pg-admonition__title {
+    display: flex; align-items: center; gap: 0.5rem;
+    margin: 0 0 0.6rem; padding: 0;
+    color: var(--pg-adm-fg); font-weight: 600; line-height: 1.3;
+  }
+  .pg-admonition--untitled .pg-admonition__title { margin-block-end: 0.35rem; }
+  .pg-admonition__icon { flex: none; inline-size: 1.15em; block-size: 1.15em; color: var(--pg-adm-hue); }
+  .pg-admonition__label { min-inline-size: 0; }
+
+  /* The body's first and last blocks must not push the padding out to double. */
+  .pg-admonition > :last-child { margin-block-end: 0; }
+  .pg-admonition > .pg-admonition__title + * { margin-block-start: 0; }
+
+  /* Collapsibles. The default disclosure triangle is replaced rather than hidden: a raw `▶` next
+     to an icon and a label reads as a rendering accident, which is what `??? tip` looked like. */
+  .pg-admonition--collapsible > summary { cursor: pointer; list-style: none; }
+  .pg-admonition--collapsible > summary::-webkit-details-marker { display: none; }
+  .pg-admonition--collapsible > summary::marker { content: ""; }
+  .pg-admonition__chevron {
+    flex: none; inline-size: 1.1em; block-size: 1.1em; margin-inline-start: auto;
+    color: var(--pg-adm-hue); transition: transform 0.15s ease;
+  }
+  .pg-admonition--collapsible[open] > summary .pg-admonition__chevron { transform: rotate(90deg); }
+  .pg-admonition--collapsible:not([open]) > summary { margin-block-end: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .pg-admonition__chevron { transition: none; }
+  }
 
   /* Code-copy button ---------------------------------------------------------------------------- */
   .pg-copy {

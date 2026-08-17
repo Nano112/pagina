@@ -41,10 +41,27 @@ rest keep their defaults.
 | `--pg-font-mono` | system mono stack | — | Code type |
 | `--pg-font-display` | `var(--pg-font)` | — | Headings and the site title, so you can give them their own face |
 | `--pg-measure` | `72ch` | — | Width of the content column |
-| `--pg-note` | `#3b5bdb` | `#7c9bff` | `note` / `info` admonition hue |
-| `--pg-tip` | `#0f9d58` | `#3ddc84` | `tip` / `example` admonition hue |
+| `--pg-note` | `#3b5bdb` | `#7c9bff` | `note` admonition hue: accent edge and glyph |
+| `--pg-note-surface` | `#eef1fd` | `#1b2130` | `note` admonition ground |
+| `--pg-note-fg` | `#2b3f9e` | `#a8bcff` | `note` admonition title text |
+| `--pg-tip` | `#0f9d58` | `#3ddc84` | `tip` admonition hue |
+| `--pg-tip-surface` | `#e9f7f0` | `#16241d` | `tip` admonition ground |
+| `--pg-tip-fg` | `#0a6b3d` | `#6ee7a8` | `tip` admonition title text |
+| `--pg-info` | `#0b7285` | `#4dc4d9` | `info` admonition hue |
+| `--pg-info-surface` | `#e6f4f7` | `#14242a` | `info` admonition ground |
+| `--pg-info-fg` | `#0a5a6b` | `#7fd8e8` | `info` admonition title text |
 | `--pg-warning` | `#b7791f` | `#e0b34c` | `warning` admonition hue |
+| `--pg-warning-surface` | `#fdf3e3` | `#2a2317` | `warning` admonition ground |
+| `--pg-warning-fg` | `#8a5a12` | `#edc76e` | `warning` admonition title text |
 | `--pg-danger` | `#d64545` | `#ff7b7b` | `danger` admonition hue, destructive editor controls |
+| `--pg-danger-surface` | `#fdecec` | `#2c1b1c` | `danger` admonition ground |
+| `--pg-danger-fg` | `#a12727` | `#ff9d9d` | `danger` admonition title text |
+| `--pg-example` | `#7048e8` | `#b197fc` | `example` admonition hue |
+| `--pg-example-surface` | `#f1ecfd` | `#221c33` | `example` admonition ground |
+| `--pg-example-fg` | `#5227b8` | `#c9b6ff` | `example` admonition title text |
+| `--pg-quote` | `#6b7280` | `#9aa1ac` | `quote` admonition hue |
+| `--pg-quote-surface` | `#f2f3f5` | `#1e2027` | `quote` admonition ground |
+| `--pg-quote-fg` | `#4b5159` | `#b6bcc6` | `quote` admonition title text |
 | `--pg-code-bg` | `#f6f7f9` | `#1c1f26` | Inline code and un-highlighted code blocks |
 | `--pg-shiki-bg` | `#ffffff` | `#1c1f26` | Highlighted (shiki) code block background |
 
@@ -53,6 +70,34 @@ sets. Tokens with no dark column are scheme-independent.
 
 The editor uses the same contract — there is no second palette. Its own `--pge-*` properties are
 only the tool's geometry (`--pge-1`, `--pge-2`, `--pge-sidebar`, `--pge-split`).
+
+### Admonitions
+
+`note tip info warning danger example quote` — the seven kinds `!!! kind` and `??? kind` accept —
+each own **three** tokens, and every rule pagina draws for a callout reads only those:
+
+| Token | Draws |
+|---|---|
+| `--pg-<kind>` | the accent edge and the kind's glyph |
+| `--pg-<kind>-surface` | the tinted ground the block sits on |
+| `--pg-<kind>-fg` | the title text |
+
+The title text is a token of its own rather than the hue because a hue chosen to read as a 3px
+edge is usually too light to carry text at 4.5:1 on its own tint — `--pg-tip`'s green is 3.1:1 on
+white. Retint a kind by defining its three:
+
+```css
+:root {
+  --pg-danger: var(--color-red);
+  --pg-danger-surface: var(--color-red-50);
+  --pg-danger-fg: var(--color-red-700);
+}
+```
+
+A kind pagina does not know (`!!! spoiler`) still renders, with `note`'s glyph and hue and a
+`pg-admonition--spoiler` class of its own — so a host teaches its stylesheet the new kind by
+setting `--pg-adm-hue`, `--pg-adm-surface` and `--pg-adm-fg` on that class, which is the same
+three-property shape as everything above.
 
 ## The four escape hatches, in order
 
