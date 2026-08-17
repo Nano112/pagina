@@ -230,7 +230,26 @@ async function renderAdmonitions() {
   return renderMarkdown(createMarkdown(), source).html;
 }
 
+/**
+ * The **built** site page, unchanged, wearing the host's dark palette.
+ *
+ * Not a hand-written approximation of what the shell emits: the file `buildStatic` wrote, read off
+ * disk, with `data-theme="dark"` and the host's token block injected into its head. So the cover
+ * header, the SEO tags and the layer order under test are the artefact's own, and the only thing
+ * the host contributes is the twenty custom properties it is supposed to contribute.
+ */
+async function siteUnderHostTheme(rel) {
+  const html = await readFile(resolve(SITE, rel), "utf8");
+  // The reset goes **before** the page's own `<link>`, which is where a host's preflight actually
+  // sits — and where the layer-order guarantee is measured: `@layer base` declared first must
+  // still lose to pagina's layers.
+  return html
+    .replace('<html lang="en" data-theme="light"', '<html lang="en" data-theme="dark"')
+    .replace("<head>", `<head>\n${RESET}\n${HOST_THEME}`);
+}
+
 const HOST_PAGES = {
+  "/site-dark": () => siteUnderHostTheme("index.html"),
   "/host-reset": () => resetHostPage(["editor.css"]),
   "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
   "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),

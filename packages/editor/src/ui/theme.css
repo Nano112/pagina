@@ -180,6 +180,105 @@
     font-size: 0.85em;
   }
 
+  /* Selects, menus and the caret --------------------------------------------------------------
+   *
+   * A native `<select>` paints itself in the *operating system's* chrome: a light macOS pill,
+   * unchanged by any token, sitting in a dark host's toolbar. `appearance: none` removes the paint
+   * — and the disclosure arrow with it — so the caret becomes markup (`.pge-select-wrap__caret`)
+   * and takes its colour from `--pg-muted` like every other piece of chrome here.
+   *
+   * `color-scheme` is the other half. It is the only property that reaches the popup list, which
+   * the platform draws and no stylesheet can touch; inheriting the page's scheme is what stops a
+   * dark host from opening a white menu. It is set on the whole app, not just the select, because
+   * every native widget the editor contains has the same problem.
+   */
+  .pge-app {
+    color-scheme: light;
+  }
+
+  [data-theme="dark"] .pge-app,
+  .pge-app[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  .pge-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-inline-end: 24px;
+  }
+
+  .pge-select--sm {
+    padding-inline-end: 20px;
+  }
+
+  .pge-select-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-inline-size: 0;
+  }
+
+  .pge-select-wrap__caret {
+    position: absolute;
+    inset-inline-end: 6px;
+    color: var(--pg-muted);
+    pointer-events: none;
+  }
+
+  .pge-select-wrap[data-small] .pge-select-wrap__caret {
+    inset-inline-end: 5px;
+  }
+
+  .pge-select:hover {
+    border-color: var(--pg-line-strong);
+  }
+
+  /* A command menu: a toolbar button that opens a list, not a form field pretending to be one. */
+  .pge-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .pge-menu__button {
+    gap: 1px;
+  }
+
+  .pge-menu__caret {
+    color: var(--pg-muted);
+  }
+
+  .pge-menu__list {
+    position: absolute;
+    inset-block-start: calc(100% + 4px);
+    inset-inline-start: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 9rem;
+    padding: 4px;
+    border: 1px solid var(--pg-line);
+    border-radius: var(--pg-radius);
+    background: var(--pg-bg-raised);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  }
+
+  .pge-menu__item {
+    appearance: none;
+    border: 0;
+    border-radius: calc(var(--pg-radius) - 2px);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
+
+  .pge-menu__item:hover,
+  .pge-menu__item:focus-visible {
+    background: var(--pg-bg-sunken);
+  }
+
   .pge-check {
     display: inline-flex;
     align-items: center;
@@ -307,11 +406,19 @@
   }
 
   .pge-sidebar__head {
+    display: flex;
+    align-items: center;
+    gap: var(--pge-1);
     padding: 4px 6px;
   }
 
   .pge-sidebar__title {
     font-weight: 600;
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .pge-tree {
@@ -1149,6 +1256,94 @@
     display: grid;
     grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
     min-block-size: 0;
+  }
+
+  /* Article settings ---------------------------------------------------------------------------
+   * One column of fields rather than the builder's form/preview split, and a panel sized to what
+   * it holds — a settings dialog stretched to the figure builder's 1100×760 would be four fields
+   * adrift in a window.
+   */
+  .pge-modal__panel--narrow {
+    inline-size: min(520px, 100%);
+    block-size: auto;
+    max-block-size: min(680px, 100%);
+  }
+
+  .pge-settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pge-2);
+    padding: var(--pge-2);
+    overflow-y: auto;
+  }
+
+  .pge-settings .pge-field {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+
+  .pge-settings .pge-field__label {
+    font-size: 0.8em;
+    color: var(--pg-muted);
+  }
+
+  /* The description is prose, not source: the monospace face every other textarea here wants
+   * makes a sentence look like a config value. */
+  .pge-settings .pge-textarea {
+    font-family: var(--pg-font);
+    font-size: 1em;
+  }
+
+  .pge-modal__panel--narrow .pge-modal__foot {
+    justify-content: flex-end;
+  }
+
+  .pge-settings__error {
+    margin: 0;
+    color: var(--pg-danger);
+    font-size: 0.85em;
+  }
+
+  /* The cover: a real preview at the aspect ratio the published page uses, so what an author
+   * approves here is what a link preview will crop to. */
+  .pge-cover-pick {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--pge-1);
+  }
+
+  .pge-cover-pick__img,
+  .pge-cover-pick__empty {
+    inline-size: 200px;
+    aspect-ratio: 2 / 1;
+    border: 1px solid var(--pg-line);
+    border-radius: var(--pg-radius);
+    background: var(--pg-bg-sunken);
+  }
+
+  .pge-cover-pick__img {
+    object-fit: cover;
+    display: block;
+  }
+
+  .pge-cover-pick__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--pg-muted);
+    font-size: 0.85em;
+    border-style: dashed;
+  }
+
+  .pge-cover-pick__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .pge-builder__form {

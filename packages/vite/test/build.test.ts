@@ -11,6 +11,22 @@ const fixture = new URL("../../core/test/fixture/", import.meta.url).pathname;
 /** The real shell's client entry, for the CSS-emission assertions below. */
 const shellClient = new URL("../../shell-static/client/pagina.ts", import.meta.url).pathname;
 
+/**
+ * A throwaway copy of the fixture whose `article.yaml` has been edited.
+ *
+ * The fixture reaches *outside* its own folder for a snippet (`roots: [".", "../outside"]`), so a
+ * copy that is not given a sibling `outside/` fails the build on a missing snippet rather than on
+ * whatever the test is actually about.
+ */
+async function variant(edit: (yaml: string) => string): Promise<string> {
+  const parent = await mkdtemp(join(tmpdir(), "pagina-variant-"));
+  const folder = join(parent, "fixture");
+  await cp(fixture, folder, { recursive: true });
+  await cp(new URL("../../core/test/outside/", import.meta.url).pathname, join(parent, "outside"), { recursive: true });
+  await writeFile(join(folder, "article.yaml"), edit(await readFile(join(folder, "article.yaml"), "utf8")));
+  return folder;
+}
+
 describe("buildStatic", () => {
   it("emits pages, copies assets, pre-renders figures, writes manifest and runtime", async () => {
     const outDir = await mkdtemp(join(tmpdir(), "pagina-build-"));
@@ -43,6 +59,51 @@ describe("buildStatic", () => {
     const client = await readFile(join(outDir, "_pagina/pagina.js"), "utf8");
     expect(client.length).toBeGreaterThan(0);
     expect(/from\s*"kineglyph"/.test(client), client).toBe(true);
+  }, 60_000);
+
+  it("writes sitemap.xml and robots.txt for a standalone static site", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-seo-"));
+    const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true });
+    expect(r.files).toContain("sitemap.xml");
+    expect(r.files).toContain("robots.txt");
+    // The fixture declares `site_url`, so the sitemap is absolute and complete.
+    const xml = await readFile(join(outDir, "sitemap.xml"), "utf8");
+    expect(xml).toContain("<loc>https://fixture.example/</loc>");
+    expect(xml).toContain("<loc>https://fixture.example/guide/tabs/</loc>");
+    const robots = await readFile(join(outDir, "robots.txt"), "utf8");
+    expect(robots).toContain("Sitemap: https://fixture.example/sitemap.xml");
+    // The cover was copied by the ordinary asset pass, which is the whole point of that rule.
+    expect((await stat(join(outDir, "media/cover.svg"))).isFile()).toBe(true);
+  }, 60_000);
+
+  it("skips the sitemap and warns rather than writing a relative one", async () => {
+    const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example\n", ""));
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-nosite-"));
+    const r = await buildStatic({ folder, outDir, shell: stubShell, strict: true });
+    expect(existsSync(join(outDir, "sitemap.xml"))).toBe(false);
+    expect(r.diagnostics.map((d) => d.code)).toContain("sitemap-skipped");
+    const robots = await readFile(join(outDir, "robots.txt"), "utf8");
+    expect(robots).not.toContain("Sitemap");
+    expect(robots).not.toContain("undefined");
+  }, 60_000);
+
+  it("lets --site-url override the folder, and honours base in both files", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-siteurl-"));
+    await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
+    const xml = await readFile(join(outDir, "sitemap.xml"), "utf8");
+    expect(xml).toContain("<loc>https://host.example/docs/</loc>");
+    expect(xml).not.toContain("fixture.example");
+    expect(await readFile(join(outDir, "robots.txt"), "utf8")).toContain("https://host.example/docs/sitemap.xml");
+  }, 60_000);
+
+  it("disallows everything for a draft, and writes no sitemap", async () => {
+    const folder = await variant((yaml) => yaml.replace("status: published", "status: draft"));
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-draft-"));
+    await buildStatic({ folder, outDir, shell: staticShell, strict: true });
+    expect(existsSync(join(outDir, "sitemap.xml"))).toBe(false);
+    expect(await readFile(join(outDir, "robots.txt"), "utf8")).toBe("User-agent: *\nDisallow: /\n");
+    // …and the switch holds on the page itself, not only in robots.txt.
+    expect(await readFile(join(outDir, "index.html"), "utf8")).toContain('<meta name="robots" content="noindex, nofollow">');
   }, 60_000);
 
   it("puts base in every emitted URL but never in the output paths", async () => {

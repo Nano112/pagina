@@ -1,4 +1,4 @@
-import type { NavNode, RenderedArticle, ThemeLevel } from "@pagina/core";
+import { pageSeo, renderSeoHtml, type NavNode, type RenderedArticle, type ThemeLevel } from "@pagina/core";
 
 /** Context a page render pass gets. The five required fields mirror `@pagina/core`'s
  * `ShellContext` exactly; `kineglyphThemeUrl` is computed by `staticShell` internally (see
@@ -21,6 +21,8 @@ export interface ShellCtx {
   edit?: boolean;
   /** Overrides {@link DEFAULT_MODEL_VIEWER_URL} for pages that embed a `<model-viewer>`. */
   modelViewerUrl?: string;
+  /** Absolute site origin, for canonical/`og:url`/`og:image`. Absent, those tags are omitted. */
+  siteUrl?: string;
 }
 
 /**
@@ -103,11 +105,19 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   const header = ctx.chrome === false
     ? ""
     : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>`;
+  // The cover, where it earns its place: above the article, under the breadcrumbs, on any page
+  // that resolved one (its own, or the article's). A host that supplies its own hero ignores it.
+  const cover = meta.cover === undefined
+    ? ""
+    : `<figure class="pg-cover"><img class="pg-cover__img" src="${esc(meta.cover)}" alt="" loading="eager" decoding="async"></figure>`;
+  // Every tag pagina emits for this page — title, description, robots, OpenGraph, Twitter,
+  // canonical and the JSON-LD `Article` — already escaped for the context each one lands in.
+  const seo = renderSeoHtml(pageSeo(article.manifest, href, { base: ctx.base, ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }) }));
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(page.title)} · ${esc(a.title)}</title>
+${seo}
 <script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
 ${stylesheetHtml(ctx)}
@@ -116,7 +126,7 @@ ${stylesheetHtml(ctx)}
 ${header}
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
-<main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav><article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>
+<main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${cover}<article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>
 ${tocHtml}
 </div>
 <script type="module" src="${esc(ctx.clientUrl)}"></script>${modelViewer}

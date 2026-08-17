@@ -43,6 +43,10 @@ export interface ShellContext {
   /** Where a shell loads Google's `<model-viewer>` element from, for pages that embed one.
    *  Absent means "the shell's own default"; a site that self-hosts the element sets it. */
   readonly modelViewerUrl?: string;
+  /** Absolute origin the site is served from, for `link rel=canonical`, `og:url` and `og:image`.
+   *  Absent — and absent from `article.yaml` too — those tags are omitted rather than emitted
+   *  relative, and the build warns. */
+  readonly siteUrl?: string;
 }
 
 /** A page shell: turns a rendered article into files (`out path` → contents). */

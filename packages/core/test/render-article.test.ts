@@ -74,6 +74,138 @@ describe("renderArticle", () => {
     await expect(renderArticle({ fs, strict: true })).rejects.toBeInstanceOf(PaginaBuildError);
   });
 
+  it("carries the article's metadata, cover resolved to a site URL", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    expect(r.manifest.article).toMatchObject({
+      cover: "/media/cover.svg",
+      description: "A fixture article, used by pagina's own tests.",
+      author: "Fixture Author",
+      siteUrl: "https://fixture.example",
+    });
+    // The cover is an ordinary asset: nothing special copies it, the asset pass already does.
+    expect(r.manifest.assets).toContain("media/cover.svg");
+    const sub = await renderArticle({ fs: nodeFs(fixture), strict: true, base: "/docs/" });
+    expect(sub.manifest.article.cover).toBe("/docs/media/cover.svg");
+  });
+
+  it("gives every page the article's metadata, resolved", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    for (const meta of Object.values(r.manifest.pages)) {
+      expect(meta.cover).toBe("/media/cover.svg");
+      expect(meta.description).toBe("A fixture article, used by pagina's own tests.");
+      expect(meta.author).toBe("Fixture Author");
+      expect(meta.noindex).toBeUndefined();         // the fixture is published
+    }
+  });
+
+  it("lets a page's front matter override the article, field by field", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md"
+        ? `---\ntitle: Overridden\ndescription: The page's own.\ncover: media/static.svg\nauthor: Someone Else\nnoindex: true\ntags: [own]\n---\n# X\n`
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(r.manifest.pages["/"]).toMatchObject({
+      title: "Overridden",
+      description: "The page's own.",
+      cover: "/media/static.svg",
+      author: "Someone Else",
+      noindex: true,
+      tags: ["own"],
+    });
+    // …and a page that overrode nothing still has the article's values.
+    expect(r.manifest.pages["/guide/tabs/"]).toMatchObject({ cover: "/media/cover.svg", author: "Fixture Author" });
+  });
+
+  it("resolves a page's cover against that page, not against the folder", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "guide/tabs.md" ? `---\ncover: ../media/static.svg\n---\n# T\n` : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: false });
+    expect(r.manifest.pages["/guide/tabs/"]!.cover).toBe("/media/static.svg");
+  });
+
+  it("passes an absolute cover URL through untouched", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "article.yaml"
+        ? (await base.read(p)).replace("cover: media/cover.svg", "cover: https://cdn.example/hero.png")
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(r.manifest.article.cover).toBe("https://cdn.example/hero.png");
+  });
+
+  it("falls back to the first paragraph when neither page nor article has a description", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => p === "article.yaml"
+        ? (await base.read(p)).replace("description: A fixture article, used by pagina's own tests.\n", "")
+        : p === "index.md" ? `# X\n\nThe opening paragraph, which is the last resort.\n` : base.read(p),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(r.manifest.pages["/"]!.description).toBe("The opening paragraph, which is the last resort.");
+  });
+
+  it("truncates a long description on a word boundary before it reaches the manifest", async () => {
+    const base = nodeFs(fixture);
+    const long = `${"alpha ".repeat(60)}omega`;
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "article.yaml"
+        ? (await base.read(p)).replace("A fixture article, used by pagina's own tests.", long.trim())
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    const d = r.manifest.pages["/"]!.description!;
+    expect(d.length).toBeLessThanOrEqual(160);
+    expect(d.endsWith("…")).toBe(true);
+    expect(d).not.toMatch(/al…$/);
+  });
+
+  it("errors on a cover that does not exist, and emits no URL for it", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "article.yaml"
+        ? (await base.read(p)).replace("media/cover.svg", "media/gone.png")
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: false });
+    const missing = r.diagnostics.filter((d) => d.code === "cover-missing");
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toMatchObject({ severity: "error", message: expect.stringContaining("media/gone.png") });
+    // Silence, not a broken URL: an `og:image` pointing at a 404 is worse than none.
+    expect(r.manifest.article.cover).toBeUndefined();
+    expect(r.manifest.pages["/"]!.cover).toBeUndefined();
+    await expect(renderArticle({ fs, strict: true })).rejects.toBeInstanceOf(PaginaBuildError);
+  });
+
+  it("errors on a page cover that does not exist, naming the page", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "guide/tabs.md" ? `---\ncover: nope.png\n---\n# T\n` : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: false });
+    expect(r.diagnostics.filter((d) => d.code === "cover-missing")[0]).toMatchObject({ page: "guide/tabs.md" });
+    // The article's cover still stands in for the page, so the page is not left bare.
+    expect(r.manifest.pages["/guide/tabs/"]!.cover).toBe("/media/cover.svg");
+  });
+
+  it("marks every page of a draft article noindex", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "article.yaml" ? (await base.read(p)).replace("status: published", "status: draft") : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(Object.values(r.manifest.pages).every((m) => m.noindex === true)).toBe(true);
+  });
+
+  it("lets the builder override the folder's site_url", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true, siteUrl: "https://host.example" });
+    expect(r.manifest.article.siteUrl).toBe("https://host.example");
+  });
+
   it("flags a same-page anchor to a missing heading, and not one to a real heading", async () => {
     const base = nodeFs(fixture);
     const fs: ContentFs = { ...base,

@@ -9,11 +9,11 @@
  * offers, so the two can never drift apart. What is defined here is which of them are worth a
  * permanent button.
  */
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useEditorState, type Editor } from "@tiptap/react";
 import {
-  Baseline, Bold, Code, Highlighter, Image, Italic, Link2, List, ListOrdered, Minus, Quote, Redo2,
-  Scissors, Shapes, Sparkles, Strikethrough, Table, Undo2, Box,
+  Baseline, Bold, ChevronDown, Code, Highlighter, Image, Italic, Link2, List, ListOrdered, Minus,
+  MessageSquareWarning, Quote, Redo2, Scissors, Shapes, Sparkles, Strikethrough, Table, Undo2, Box,
 } from "lucide-react";
 import type { ArticleStore } from "../store/index.js";
 import { ColorButton } from "./ColorPicker.js";
@@ -56,6 +56,113 @@ function ToolButton({ onClick, title, children, active = false, disabled = false
 }
 
 const ICON = { size: 16, "aria-hidden": true } as const;
+
+/**
+ * A `<select>` in pagina's own clothes.
+ *
+ * A native select paints itself in the *operating system's* chrome — a light macOS pill on a dark
+ * host page, which is the same complaint that got the admonition node view redesigned, one surface
+ * over. `appearance: none` removes the paint but takes the disclosure arrow with it, so the caret
+ * has to be markup: hence this wrapper, which is the "markup change" a token-coloured caret costs.
+ *
+ * It stays a real `<select>`. The popup list is still the platform's — that part cannot be styled
+ * without reimplementing a listbox — but `color-scheme` follows the theme, so it opens dark on a
+ * dark page, and everything the author sees while the menu is closed is pagina's.
+ */
+function Select({ label, value, onChange, children, small = false }: {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly children: ReactNode;
+  readonly small?: boolean;
+}): ReactNode {
+  return (
+    <span className="pge-select-wrap" data-small={small ? "" : undefined}>
+      <select
+        className={small ? "pge-select pge-select--sm" : "pge-select"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        title={label}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pge-select-wrap__caret" size={small ? 12 : 14} aria-hidden="true" />
+    </span>
+  );
+}
+
+/**
+ * A toolbar button that opens a small menu of commands.
+ *
+ * The admonition inserts used to be a `<select>`, which was wrong twice over: it looked like an OS
+ * control, and it *was* an OS control — a form field pretending to be a command menu, complete
+ * with the "reset my own value after every choice" hack that gives away the pretence. This is a
+ * button and a menu, styled from tokens, and it closes on Escape, on an outside click and on a
+ * choice.
+ */
+function MenuButton({ title, icon, items, onPick }: {
+  readonly title: string;
+  readonly icon: ReactNode;
+  readonly items: readonly { readonly id: string; readonly label: string }[];
+  readonly onPick: (id: string) => void;
+}): ReactNode {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent): void => {
+      if (root.current?.contains(e.target as Node) !== true) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <span className="pge-menu" ref={root}>
+      <button
+        type="button"
+        className="pge-tool pge-menu__button"
+        title={title}
+        aria-label={title}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {icon}
+        <ChevronDown className="pge-menu__caret" size={12} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="pge-menu__list" role="menu" aria-label={title}>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              className="pge-menu__item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpen(false);
+                onPick(item.id);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </span>
+  );
+}
 
 export interface ToolbarProps {
   readonly editor: Editor | null;
@@ -155,20 +262,14 @@ export function Toolbar({ editor, store, onPickFile }: ToolbarProps): ReactNode 
 
   return (
     <div className="pge-toolbar" role="toolbar" aria-label="Formatting">
-      <select
-        className="pge-select"
-        value={state.block}
-        onChange={(e) => setBlock(e.target.value)}
-        aria-label="Block type"
-        title="Block type"
-      >
+      <Select label="Block type" value={state.block} onChange={setBlock}>
         <option value="paragraph">Paragraph</option>
         <option value="h1">Heading 1</option>
         <option value="h2">Heading 2</option>
         <option value="h3">Heading 3</option>
         <option value="h4">Heading 4</option>
         <option value="codeBlock">Code block</option>
-      </select>
+      </Select>
 
       <span className="pge-toolbar__sep" />
 
@@ -228,23 +329,12 @@ export function Toolbar({ editor, store, onPickFile }: ToolbarProps): ReactNode 
 
       <span className="pge-toolbar__sep" />
 
-      <select
-        className="pge-select"
-        value=""
-        title="Insert an admonition"
-        onChange={(e) => {
-          if (e.target.value !== "") runInsert(`admonition-${e.target.value}`, ctx);
-          e.target.value = "";
-        }}
-        aria-label="Insert admonition"
-      >
-        <option value="">Admonition…</option>
-        {ADMONITION_KINDS.map((k) => (
-          <option key={k} value={k}>
-            {k}
-          </option>
-        ))}
-      </select>
+      <MenuButton
+        title="Insert admonition"
+        icon={<MessageSquareWarning {...ICON} />}
+        items={ADMONITION_KINDS.map((k) => ({ id: k, label: `${k[0]!.toUpperCase()}${k.slice(1)}` }))}
+        onPick={(kind) => runInsert(`admonition-${kind}`, ctx)}
+      />
       <ToolButton title="Tabs" onClick={() => runInsert("tabs", ctx)}>
         <Shapes {...ICON} />
       </ToolButton>

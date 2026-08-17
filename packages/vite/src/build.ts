@@ -3,7 +3,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, parseArticleConfig, renderArticle, robotsTxt, sitemapXml, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
@@ -23,6 +23,14 @@ export interface BuildOptions {
   readonly theme?: ThemeLevel;
   /** Render pagina's own header row. Default `true`; `false` when a host supplies chrome. */
   readonly chrome?: boolean;
+  /**
+   * Absolute origin the built site will be served from, overriding `article.yaml`'s `site_url`.
+   *
+   * Without one — here or in the folder — `link rel=canonical`, `og:url` and `og:image` are
+   * omitted and no `sitemap.xml` is written, because a relative canonical indexes nothing and a
+   * relative `og:image` is a guaranteed 404 on every consumer's origin. The build warns per page.
+   */
+  readonly siteUrl?: string;
 }
 
 async function write(outDir: string, rel: string, data: string | Uint8Array): Promise<void> {
@@ -96,7 +104,7 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
   const base = o.base ?? "/";
   const strict = o.strict ?? true;
   const fs = new NodeContentFs(o.folder);
-  const article = await renderArticle({ fs, strict, base, ...(o.md === undefined ? {} : { md: o.md }) });
+  const article = await renderArticle({ fs, strict, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) });
   await mkdir(o.outDir, { recursive: true });
   const files: string[] = [];
 
@@ -125,11 +133,30 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
     base, ...urls, dev: false,
     ...(o.theme === undefined ? {} : { theme: o.theme }),
     ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
+    ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
   });
   for (const [rel, data] of Object.entries(pages)) {
     await write(o.outDir, rel, data);
     files.push(rel);
   }
+  // The two files a standalone static site needs and a hosted one does not: a host that mounts
+  // pagina inside its own site serves its own robots and folds these pages into its own sitemap.
+  const seoOpts = { base, ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) };
+  const sitemap = sitemapXml(article.manifest, seoOpts);
+  if (sitemap === undefined) {
+    diagnostics.push({
+      severity: "warning",
+      code: "sitemap-skipped",
+      message: article.manifest.article.status === "published"
+        ? "no site_url is configured, so no sitemap.xml was written; set `site_url` in article.yaml or pass --site-url"
+        : "the article is a draft, so no sitemap.xml was written and robots.txt disallows everything",
+    });
+  } else {
+    await write(o.outDir, "sitemap.xml", sitemap);
+    files.push("sitemap.xml");
+  }
+  await write(o.outDir, "robots.txt", robotsTxt(article.manifest, seoOpts));
+  files.push("robots.txt");
   await write(o.outDir, "_pagina/manifest.json", JSON.stringify(article.manifest, null, 2));
   files.push("_pagina/manifest.json");
   return { files, diagnostics };

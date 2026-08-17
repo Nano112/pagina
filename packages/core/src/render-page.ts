@@ -4,6 +4,8 @@ import { createMarkdown, renderMarkdown } from "./markdown.js";
 import { expandSnippets } from "./plugins/snippets.js";
 import { extractFigures } from "./figures.js";
 import { hrefOf, resolveRelative, rewriteLinks } from "./links.js";
+import { parseFrontMatter } from "./front-matter.js";
+import { firstParagraph } from "./seo.js";
 
 export interface RenderPageOptions {
   readonly fs: ContentFs; readonly config: ArticleConfig; readonly path: string;
@@ -11,14 +13,15 @@ export interface RenderPageOptions {
 }
 export function pageSlug(href: string): string { return href === "/" ? "index" : href.replace(/^\/|\/$/g, "").replace(/\//g, "-"); }
 
-const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
-
 export async function renderPage(o: RenderPageOptions): Promise<{ page: RenderedPage; diagnostics: Diagnostic[] }> {
   const base = o.base ?? "/";
   const themes = o.themes ?? ["light", "dark"];
   const md = o.md ?? createMarkdown();
-  const source = (await o.fs.read(o.path)).replace(FRONT_MATTER, "");
-  const snip = await expandSnippets(source, { fs: o.fs, roots: o.config.snippets.roots, pagePath: o.path });
+  // Front matter is read, never rewritten: the block is stripped from the body before parsing and
+  // the values are carried on `page.frontMatter`, where `renderArticle` applies them over the
+  // article's own metadata.
+  const front = parseFrontMatter(await o.fs.read(o.path), o.path);
+  const snip = await expandSnippets(front.body, { fs: o.fs, roots: o.config.snippets.roots, pagePath: o.path });
   const rendered = renderMarkdown(md, snip.text);
   const href = hrefOf(o.path);
   const slug = pageSlug(href);
@@ -27,8 +30,13 @@ export async function renderPage(o: RenderPageOptions): Promise<{ page: Rendered
   // data-scene attributes were rewritten too; refresh figure refs so scene URLs are site-absolute
   const figures = figs.figures.map((f) => f.kind === "module" && f.scene !== undefined && !f.scene.startsWith("/") && !/^[a-z]+:/i.test(f.scene)
     ? { ...f, scene: `${base.replace(/\/$/, "")}/${resolveRelative(o.path, f.scene)}` } : f);
+  const excerpt = firstParagraph(rendered.html);
   return {
-    page: { path: o.path, href, title: rendered.title || o.path, html: linked.html, headings: rendered.headings, figures, links: linked.links },
-    diagnostics: [...snip.diagnostics, ...figs.diagnostics.map((d) => ({ ...d, page: o.path })), ...linked.diagnostics],
+    page: {
+      path: o.path, href, title: front.meta.title ?? (rendered.title || o.path), html: linked.html,
+      headings: rendered.headings, figures, links: linked.links, frontMatter: front.meta,
+      ...(excerpt === undefined ? {} : { excerpt }),
+    },
+    diagnostics: [...front.diagnostics, ...snip.diagnostics, ...figs.diagnostics.map((d) => ({ ...d, page: o.path })), ...linked.diagnostics],
   };
 }

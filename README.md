@@ -66,6 +66,12 @@ title: Nucleation
 form: docs                 # the only form today
 status: published          # draft | published
 tags: [minecraft, schematics]
+cover: media/hero.png      # optional; relative to this folder, or an absolute URL
+description: One sentence, for search results and link previews.
+author: Ada Lovelace
+site_url: https://docs.example.com   # needed for canonical / og:url / og:image / sitemap.xml
+published: 2026-08-17      # optional ISO dates
+updated: 2026-08-17
 kineglyph:
   theme: theme/kineglyph.mjs   # optional; defaults to Kineglyph's default theme
   width: 960                   # pre-render layout width
@@ -88,6 +94,59 @@ Rules:
 - Dotfiles and `node_modules/` are not content: they are skipped by the renderer and by the
   editor's file listing. `.pagina/` in particular is the editor's own output (`rendered/`,
   `published.json`) — add it to `.gitignore`; nothing writes into it except `publish`.
+
+### Metadata, covers and SEO
+
+Six of the keys above are metadata rather than structure, and any page may override them in YAML
+front matter:
+
+```markdown
+---
+title: A different name for this page
+description: What this page in particular is about.
+cover: ../media/other.png   # relative to *this page*, unlike article.yaml's
+author: Grace Hopper
+published: 2026-08-17
+updated: 2026-08-18
+noindex: true               # keep this page out of the sitemap and ask crawlers to skip it
+tags: [one, two]
+---
+```
+
+Front matter is **read, never rewritten**: the editor keeps the block byte-for-byte, so key order
+and comments survive editing. Unknown keys are ignored.
+
+The renderer resolves all of it once, into the manifest, so a consumer never re-derives anything:
+
+| `manifest.article` | |
+|---|---|
+| `slug`, `title`, `form`, `status`, `visibility`, `category`, `tags` | as before |
+| `cover` | **site URL** of the article cover (`/media/hero.png`, or `/docs/media/hero.png` under `--base /docs/`), or the absolute URL the author gave. Absent when there is none |
+| `description`, `author`, `siteUrl`, `published`, `updated` | as written in `article.yaml` (`site_url` → `siteUrl`) |
+
+| `manifest.pages[href]` | |
+|---|---|
+| `title`, `headings`, `breadcrumbs`, `prev`, `next` | as before |
+| `description` | **resolved**: page front matter → `article.yaml` → the page's first paragraph, whitespace collapsed and truncated to 160 characters on a word boundary |
+| `cover` | **resolved** site URL: page front matter → `article.yaml` |
+| `author`, `published`, `updated`, `tags` | resolved the same way |
+| `noindex` | `true` for a page that asked for it and for **every** page of a `status: draft` article; absent otherwise |
+
+A cover that does not resolve to a file in the folder is a build **error** naming the page, and the
+value is dropped rather than emitted — an `og:image` pointing at a 404 is worse than none.
+
+`@pagina/core` exports the emitters over that manifest: `pageSeo(manifest, href, { siteUrl, base })`
+returns `{ title, description, canonical, image, noindex, meta[], jsonLd, diagnostics }`, and
+`renderSeoHtml(seo)` turns it into `<head>` markup — `<title>`, the `<meta>` set (description,
+robots, `og:*`, `article:*`, `twitter:*`), `<link rel=canonical>` and a JSON-LD `Article`. The
+static shell emits that directly; a host that has its own meta stacks reads the manifest fields and
+pushes them into those instead. `sitemapXml` and `robotsTxt` are the site-level pair, written into
+a `pagina build` output.
+
+**Without a site URL** — neither `site_url` nor `--site-url` — `canonical`, `og:url`, `og:image`,
+`twitter:image` and `sitemap.xml` are **omitted** and the build warns per page. They are never
+emitted relative: a relative canonical indexes nothing and a relative `og:image` is a guaranteed
+404 on every consumer's origin. Everything that is meaningful without an origin is still emitted.
 
 ### Markdown dialect
 
@@ -137,8 +196,8 @@ hatch for fully custom, non-pre-renderable interactivity.
 ## CLI
 
 ```
-pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome]
-pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome]
+pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL]
+pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL]
 ```
 
 - Port precedence: `--port` > `PORT` env > `4321`. Blank or non-numeric values are ignored.
@@ -149,6 +208,9 @@ pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--n
 - `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
 - `--theme full|tokens|none` picks how much pagina CSS a page links and `--no-chrome` drops
   pagina's own header row — see [Theming](#theming).
+- `--site-url https://example.com` overrides `article.yaml`'s `site_url`, for a folder several
+  hosts publish. `build` also writes `sitemap.xml` and `robots.txt` at the output root; a draft
+  article gets `Disallow: /` and no sitemap.
 - `--edit` turns on the in-browser editor: `/__edit/` (and `/__edit/<page href>`) serves the
   editor, every page grows an "Edit this page" link, and the article folder is exposed for
   reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package

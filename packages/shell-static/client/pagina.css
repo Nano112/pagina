@@ -76,6 +76,23 @@
   .pg-crumbs a:hover { color: var(--pg-accent); }
   .pg-crumbs__sep { margin: 0 0.35rem; }
 
+  /* Cover ------------------------------------------------------------------------------------------
+   * The article's (or the page's) cover image, above the content and below the breadcrumbs. It is
+   * the same image `og:image` points at, so what a reader sees on the page and what a link preview
+   * shows are one source. `alt=""` on purpose: it is decorative here — the headline immediately
+   * below it carries the meaning, and describing it twice is noise in a screen reader.
+   *
+   * Constrained to the reading measure rather than the full column so it does not tower over the
+   * text it introduces, and given an explicit aspect ratio so the page does not reflow when it
+   * lands. A host that brings its own hero drops `.pg-cover` and loses nothing else.
+   */
+  .pg-cover { margin: 0 0 1.5rem; max-width: var(--pg-measure); }
+  .pg-cover__img {
+    display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover;
+    border-radius: var(--pg-radius-lg); border: 1px solid var(--pg-line);
+    background: var(--pg-bg-raised);
+  }
+
   /* Pager ------------------------------------------------------------------------------------------ */
   .pg-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; }
   .pg-pager__link {

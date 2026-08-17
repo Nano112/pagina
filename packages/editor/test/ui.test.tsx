@@ -206,14 +206,14 @@ describe("mountEditor", () => {
 
   it("inserts an admonition from the toolbar, and it serializes as one", async () => {
     await mount();
-    const select = [...host.querySelectorAll("select")].find(
-      (s) => s.getAttribute("aria-label") === "Insert admonition",
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Insert admonition"]');
+    expect(button).not.toBeNull();
+    await act(async () => button!.click());
+    const item = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+      (b) => b.textContent === "Note",
     );
-    expect(select).toBeDefined();
-    await act(async () => {
-      select!.value = "note";
-      select!.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    expect(item, "the admonition menu has no Note").toBeDefined();
+    await act(async () => item!.click());
     await settle();
 
     expect(handle.store.files.get("index.md")?.text ?? "").toContain("!!! note");

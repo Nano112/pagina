@@ -17,6 +17,33 @@ describe("parseArticleConfig", () => {
   it("defaults snippets.roots to ['.']", () => {
     expect(parseArticleConfig(`slug: a\ntitle: A\nform: docs\nnav: []`).snippets.roots).toEqual(["."]);
   });
+  it("reads the metadata fields, `site_url` under its snake_case key", () => {
+    const cfg = parseArticleConfig(yaml);
+    expect(cfg.cover).toBe("media/cover.svg");
+    expect(cfg.description).toBe("A fixture article, used by pagina's own tests.");
+    expect(cfg.author).toBe("Fixture Author");
+    expect(cfg.siteUrl).toBe("https://fixture.example");
+  });
+  it("leaves absent metadata absent rather than empty", () => {
+    const cfg = parseArticleConfig(`slug: a\ntitle: A\nnav: []`);
+    expect(cfg.cover).toBeUndefined();
+    expect(cfg.description).toBeUndefined();
+    expect(cfg.author).toBeUndefined();
+    expect(cfg.siteUrl).toBeUndefined();
+    expect(cfg.published).toBeUndefined();
+  });
+  it("takes a date quoted or unquoted, and always yields a string", () => {
+    // `article:published_time` wants one shape, whatever the author wrote and whichever schema
+    // `yaml` happens to resolve it under.
+    expect(parseArticleConfig(`slug: a\ntitle: A\npublished: 2026-08-17\nnav: []`).published).toBe("2026-08-17");
+    expect(parseArticleConfig(`slug: a\ntitle: A\nupdated: "2026-08-17"\nnav: []`).updated).toBe("2026-08-17");
+    expect(typeof parseArticleConfig(`slug: a\ntitle: A\npublished: 2026-08-17T09:30:00Z\nnav: []`).published).toBe("string");
+  });
+  it("rejects a metadata field of the wrong type, naming it", () => {
+    expect(() => parseArticleConfig(`slug: a\ntitle: A\ncover: 3\nnav: []`)).toThrow(/cover/);
+    expect(() => parseArticleConfig(`slug: a\ntitle: A\nsite_url: []\nnav: []`)).toThrow(/site_url/);
+    expect(() => parseArticleConfig(`slug: a\ntitle: A\npublished: []\nnav: []`)).toThrow(/published/);
+  });
   it("rejects missing slug and unknown form with field names", () => {
     expect(() => parseArticleConfig(`title: A\nform: docs\nnav: []`)).toThrow(/slug/);
     expect(() => parseArticleConfig(`slug: a\ntitle: A\nform: post\nnav: []`)).toThrow(/form/);

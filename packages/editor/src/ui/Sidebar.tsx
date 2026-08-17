@@ -12,10 +12,11 @@
  */
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { NavEntry } from "@pagina/core";
-import { FilePlus2, FolderPlus, Trash2, Upload } from "lucide-react";
+import { ChevronDown, FilePlus2, FolderPlus, Settings, Trash2, Upload } from "lucide-react";
 import { ARTICLE_YAML, type ArticleStore } from "../store/index.js";
 import { useStoreRevision } from "./useStore.js";
-import { addNavEntry, navSections, removeNavEntry } from "./nav-yaml.js";
+import { addNavEntry, navSections, removeNavEntry } from "./article-yaml.js";
+import { ArticleSettings } from "./ArticleSettings.js";
 import { slugify } from "./paths.js";
 
 const isMarkdown = (path: string): boolean => path.endsWith(".md");
@@ -101,14 +102,17 @@ function NewPageForm({
       </label>
       <label className="pge-field">
         <span>Section</span>
-        <select className="pge-select pge-select--sm" value={section} onChange={(e) => setSection(e.target.value)}>
-          <option value="">Top level</option>
-          {sections.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
+        <span className="pge-select-wrap" data-small="">
+          <select className="pge-select pge-select--sm" value={section} onChange={(e) => setSection(e.target.value)}>
+            <option value="">Top level</option>
+            {sections.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pge-select-wrap__caret" size={12} aria-hidden="true" />
+        </span>
       </label>
       <div className="pge-newpage__actions">
         <button type="button" className="pge-btn pge-btn--sm" onClick={onCancel}>
@@ -134,6 +138,7 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
   const [dropping, setDropping] = useState(false);
   const [busy, setBusy] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
+  const [settings, setSettings] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const files = store.list();
   const articleText = store.files.get(ARTICLE_YAML)?.text ?? "";
@@ -201,7 +206,18 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
     >
       <div className="pge-sidebar__head">
         <span className="pge-sidebar__title">{store.article?.title ?? "Loading…"}</span>
+        <button
+          type="button"
+          className="pge-icon"
+          title="Article settings"
+          aria-label="Article settings"
+          onClick={() => setSettings(true)}
+        >
+          <Settings size={14} aria-hidden="true" />
+        </button>
       </div>
+
+      {settings ? <ArticleSettings store={store} onClose={() => setSettings(false)} /> : null}
 
       <PagesTree entries={store.nav} current={current} onOpen={onOpen} />
 

@@ -126,6 +126,26 @@ after this one.
 `,
   ),
   synthetic(
+    "front matter carrying page metadata, comments and all",
+    `---
+# Which page this is, and how it should look when it is shared.
+title: Overridden
+description: A one-line summary that is read but never rewritten.
+cover: ../media/hero.png
+author: 'Ada Lovelace'
+published: 2026-08-17
+noindex: true
+tags:
+  - one   # a comment on a list item
+  - two
+---
+
+# Real heading
+
+The body, which the renderer sees and the front matter block, which it does not.
+`,
+  ),
+  synthetic(
     "inline marks",
     `Text with **bold**, *italic*, ~~strike~~, \`code\`, a [link](target.md), a
 [titled link](target.md "Tooltip"), a [button](target.md){ .pg-button .pg-button--primary },

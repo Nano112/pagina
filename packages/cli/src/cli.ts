@@ -5,10 +5,10 @@ import { buildStatic, createDevServer, type ThemeLevel } from "@pagina/vite";
 import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { PaginaBuildError } from "@pagina/core";
 
-const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome]";
+const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com]";
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -21,6 +21,7 @@ try {
       "no-strict": { type: "boolean" },
       theme: { type: "string" },
       "no-chrome": { type: "boolean" },
+      "site-url": { type: "string" },
     },
   }));
 } catch {
@@ -43,6 +44,19 @@ if (values.theme !== undefined && !["full", "tokens", "none"].includes(values.th
   console.error(USAGE);
   process.exit(2);
 }
+// `--site-url` is what makes `link rel=canonical`, `og:url`, `og:image` and `sitemap.xml`
+// possible; `article.yaml`'s `site_url` is the fallback, and with neither those are omitted and
+// the build says so per page. Validated here so a typo is a usage error, not a broken tag.
+if (values["site-url"] !== undefined) {
+  try {
+    new URL(values["site-url"]);
+  } catch {
+    console.error(`--site-url must be an absolute URL (got "${values["site-url"]}")`);
+    process.exit(2);
+  }
+}
+const seo = values["site-url"] === undefined ? {} : { siteUrl: values["site-url"] };
+
 const theming = {
   ...(values.theme === undefined ? {} : { theme: values.theme as ThemeLevel }),
   ...(values["no-chrome"] === true ? { chrome: false } : {}),
@@ -60,7 +74,7 @@ if (cmd === "dev") {
   // `--edit` makes the folder writable over HTTP for anyone who can reach the port, so it stays
   // opt-in per run and inherits the server's loopback-only default bind.
   const server = await createDevServer({
-    folder, shell: staticShell, base, md, port, ...theming,
+    folder, shell: staticShell, base, md, port, ...theming, ...seo,
     ...(host === undefined ? {} : { host }),
     ...(values.edit === true ? { edit: true } : {}),
   });
@@ -77,6 +91,7 @@ if (cmd === "dev") {
       shell: staticShell,
       md,
       ...theming,
+      ...seo,
     });
     for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);
     console.log(`pagina: wrote ${r.files.length} files`);

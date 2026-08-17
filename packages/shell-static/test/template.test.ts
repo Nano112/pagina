@@ -10,8 +10,8 @@ const article: RenderedArticle = {
     pages: { "/": { title: "Home", headings: [], breadcrumbs: [{ title: "Home", href: "/" }], next: "/g/page/" }, "/g/page/": { title: "Page", headings: [{ id: "a", text: "A", level: 2 }], breadcrumbs: [{ title: "G" }, { title: "Page", href: "/g/page/" }], prev: "/" } },
     figures: {}, assets: [],
   },
-  pages: { "/": { path: "index.md", href: "/", title: "Home", html: "<p>hi</p>", headings: [], figures: [], links: [] },
-           "/g/page/": { path: "g/page.md", href: "/g/page/", title: "Page", html: "<h2 id=\"a\">A</h2>", headings: [{ id: "a", text: "A", level: 2 }], figures: [], links: [] } },
+  pages: { "/": { path: "index.md", href: "/", title: "Home", html: "<p>hi</p>", headings: [], figures: [], links: [], frontMatter: {} },
+           "/g/page/": { path: "g/page.md", href: "/g/page/", title: "Page", html: "<h2 id=\"a\">A</h2>", headings: [{ id: "a", text: "A", level: 2 }], figures: [], links: [], frontMatter: {} } },
 };
 const ctx = { base: "/", dev: false, clientUrl: "/_pagina/pagina.js", cssUrl: "/_pagina/pagina.css", kineglyphRuntimeUrl: "/_pagina/kineglyph.js" };
 
@@ -33,7 +33,7 @@ const nastyArticle: RenderedArticle = {
   pages: {
     "/": {
       path: "index.md", href: "/", title: nastyTitle, html: "<p>hi</p>",
-      headings: [{ id: "h", text: nastyTitle, level: 2 }], figures: [], links: [],
+      headings: [{ id: "h", text: nastyTitle, level: 2 }], figures: [], links: [], frontMatter: {},
     },
   },
 };
@@ -121,6 +121,76 @@ describe("theme levels and chrome", () => {
     expect(html).toContain(`class="pg-nav"`);
     expect(html).toContain(`class="pg-toc"`);
     expect(html).toContain(`class="pg-pager"`);
+  });
+});
+
+describe("SEO metadata and the cover", () => {
+  /** The same article, with the metadata a real folder carries. */
+  const withMeta: RenderedArticle = {
+    ...article,
+    manifest: {
+      ...article.manifest,
+      article: { ...article.manifest.article, siteUrl: "https://docs.example", author: "Ada", description: "The site." },
+      pages: {
+        ...article.manifest.pages,
+        "/g/page/": {
+          ...article.manifest.pages["/g/page/"]!,
+          description: "A page.", cover: "/media/hero.png", author: "Ada",
+          published: "2026-01-01", updated: "2026-02-02", tags: ["one"],
+        },
+      },
+    },
+  };
+
+  it("puts pagina's metadata in the head of the page it belongs to", () => {
+    const html = renderPageHtml(withMeta, "/g/page/", ctx);
+    expect(html).toContain(`<title>Page · T Docs</title>`);
+    expect(html).toContain(`<meta name="description" content="A page.">`);
+    expect(html).toContain(`<meta property="og:type" content="article">`);
+    expect(html).toContain(`<meta property="og:url" content="https://docs.example/g/page/">`);
+    expect(html).toContain(`<meta property="og:image" content="https://docs.example/media/hero.png">`);
+    expect(html).toContain(`<meta property="article:published_time" content="2026-01-01">`);
+    expect(html).toContain(`<meta property="article:tag" content="one">`);
+    expect(html).toContain(`<meta name="twitter:card" content="summary_large_image">`);
+    expect(html).toContain(`<link rel="canonical" href="https://docs.example/g/page/">`);
+    expect(html).toContain(`application/ld+json`);
+  });
+
+  it("renders the cover above the content, and only when there is one", () => {
+    const html = renderPageHtml(withMeta, "/g/page/", ctx);
+    expect(html).toContain(`<figure class="pg-cover"><img class="pg-cover__img" src="/media/hero.png"`);
+    expect(html.indexOf("pg-cover")).toBeLessThan(html.indexOf(`class="pg-content"`));
+    expect(renderPageHtml(withMeta, "/", ctx)).not.toContain("pg-cover");
+  });
+
+  it("takes the site URL from the manifest when the builder did not pass one", () => {
+    // A folder that declares `site_url` is complete on its own; a builder flag overrides it.
+    expect(renderPageHtml(withMeta, "/", ctx)).toContain(`href="https://docs.example/"`);
+    expect(renderPageHtml(withMeta, "/", { ...ctx, siteUrl: "https://other.example" }))
+      .toContain(`href="https://other.example/"`);
+  });
+
+  it("omits the origin-dependent tags entirely when there is no site URL", () => {
+    const html = renderPageHtml(article, "/g/page/", ctx);
+    expect(html).not.toContain("canonical");
+    expect(html).not.toContain("og:url");
+    expect(html).not.toContain("undefined");
+  });
+
+  it("escapes an attack in the metadata without letting it reach the document", () => {
+    const attack = `</script><script>alert(1)</script>" onload="alert(2)`;
+    const nasty: RenderedArticle = {
+      ...withMeta,
+      manifest: {
+        ...withMeta.manifest,
+        pages: { ...withMeta.manifest.pages, "/g/page/": { ...withMeta.manifest.pages["/g/page/"]!, description: attack } },
+      },
+    };
+    const html = renderPageHtml(nasty, "/g/page/", ctx);
+    // The page has exactly its own scripts: the theme bootstrap, the import map, the JSON-LD
+    // block and the client module. Nothing the description carried became a fifth.
+    expect(html.match(/<script/gi)).toHaveLength(4);
+    expect(html).not.toContain("<script>alert(1)");
   });
 });
 

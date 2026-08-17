@@ -31,6 +31,9 @@ export interface DevServerOptions {
   readonly theme?: ThemeLevel;
   /** Render pagina's own header row. Default `true`; `false` when a host supplies chrome. */
   readonly chrome?: boolean;
+  /** Absolute origin the site will be served from, overriding `article.yaml`'s `site_url`. Only
+   *  affects the SEO tags — the dev server itself is always loopback. */
+  readonly siteUrl?: string;
 }
 
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
@@ -130,7 +133,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
         let themes: Promise<{ themes: KineglyphThemes; width?: number }> | undefined;
         const figCache = new Map<string, { theme: string; svg: string }[]>();
         const getArticle = (): Promise<RenderedArticle> =>
-          (article ??= renderArticle({ fs: contentFs, strict: false, base, ...(o.md === undefined ? {} : { md: o.md }) }));
+          (article ??= renderArticle({ fs: contentFs, strict: false, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) }));
         const getThemes = (): Promise<{ themes: KineglyphThemes; width?: number }> =>
           (themes ??= (async () => {
             const cfg = parseArticleConfig(await contentFs.read("article.yaml"));
@@ -254,6 +257,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
                 ...(o.theme === undefined ? {} : { theme: o.theme }),
                 ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
+                ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
               });
               const rel = href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`;
               const html = await s.transformIndexHtml(path, String(pages[rel] ?? ""));

@@ -10,7 +10,14 @@ export const staticShell: Shell = {
   clientEntry: fileURLToPath(new URL("../client/pagina.ts", import.meta.url)),
   async render(article: RenderedArticle, ctx: ShellContext) {
     const kgTheme = article.manifest.article.kineglyph?.theme;
-    const full: ShellCtx = { ...ctx, ...(kgTheme === undefined ? {} : { kineglyphThemeUrl: `${ctx.base.replace(/\/$/, "")}/${kgTheme}` }) };
+    // The manifest's own `site_url` is the fallback, so a folder that declares one is complete
+    // without the builder having to be told again.
+    const siteUrl = ctx.siteUrl ?? article.manifest.article.siteUrl;
+    const full: ShellCtx = {
+      ...ctx,
+      ...(kgTheme === undefined ? {} : { kineglyphThemeUrl: `${ctx.base.replace(/\/$/, "")}/${kgTheme}` }),
+      ...(siteUrl === undefined ? {} : { siteUrl }),
+    };
     return Object.fromEntries(
       Object.keys(article.pages).map((href) => [
         href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`,

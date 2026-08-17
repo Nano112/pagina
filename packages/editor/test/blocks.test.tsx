@@ -422,15 +422,16 @@ describe("a block in the middle of the document", () => {
 });
 
 describe("an admonition inside an admonition", () => {
+  /** The toolbar's admonition menu: open the button, then choose a kind. */
   const insertAdmonition = async (): Promise<void> => {
-    const select = [...host.querySelectorAll("select")].find(
-      (s) => s.getAttribute("aria-label") === "Insert admonition",
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Insert admonition"]');
+    if (button === null) throw new Error("no admonition insert control");
+    await act(async () => button.click());
+    const item = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+      (b) => b.textContent === "Tip",
     );
-    if (select === undefined) throw new Error("no admonition insert control");
-    await act(async () => {
-      select.value = "tip";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    if (item === undefined) throw new Error("the admonition menu has no Tip");
+    await act(async () => item.click());
   };
 
   it("is refused, and the refusal is said out loud", async () => {

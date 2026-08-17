@@ -3,6 +3,12 @@ title: Fixture Docs
 form: docs
 status: published
 tags: [test]
+# Metadata: the cover is a path relative to this folder, and the description is the fallback for
+# every page that does not carry one of its own.
+cover: media/cover.svg
+description: A fixture article, used by pagina's own tests.
+author: Fixture Author
+site_url: https://fixture.example
 snippets:
   roots: [".", "../outside"]
 nav:

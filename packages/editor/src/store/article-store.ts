@@ -468,7 +468,7 @@ export class ArticleStore {
    * it would leave the UI describing a file that no longer exists. A *failed* parse is not one of
    * those moments: half-typed YAML is the normal state of a file being edited, and the last config
    * that did parse is a better answer than none at all — the editor's own YAML writes go through
-   * `nav-yaml.ts` and are always well-formed.
+   * `article-yaml.ts` and are always well-formed.
    */
   #reparseArticle(text: string): void {
     try {
