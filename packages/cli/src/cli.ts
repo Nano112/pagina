@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { buildStatic, createDevServer } from "@pagina/vite";
+import { buildStatic, createDevServer, type ThemeLevel } from "@pagina/vite";
 import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { PaginaBuildError } from "@pagina/core";
 
-const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict]";
+const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome]";
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -19,6 +19,8 @@ try {
       host: { type: "string" },
       edit: { type: "boolean" },
       "no-strict": { type: "boolean" },
+      theme: { type: "string" },
+      "no-chrome": { type: "boolean" },
     },
   }));
 } catch {
@@ -34,6 +36,18 @@ const folder = resolve(folderArg);
 const base = values.base ?? "/";
 const md = await createHighlightedMarkdown();
 
+// Theming (see `docs/theming.md`): `--theme` picks how much pagina CSS the pages link, and
+// `--no-chrome` drops pagina's own header row for a host that supplies one. Both are omitted
+// from the options object when unset, so the shell keeps its own defaults.
+if (values.theme !== undefined && !["full", "tokens", "none"].includes(values.theme)) {
+  console.error(USAGE);
+  process.exit(2);
+}
+const theming = {
+  ...(values.theme === undefined ? {} : { theme: values.theme as ThemeLevel }),
+  ...(values["no-chrome"] === true ? { chrome: false } : {}),
+};
+
 // Port precedence: `--port` flag > `PORT` env var > 4321, ignoring blank/non-numeric values
 // (e.g. `PORT=""`). `gerry run`/`gerry dev` injects the sticky port it granted as the `PORT`
 // env var, so a plain `pagina dev <folder>` run under gerry picks it up without needing the flag.
@@ -46,7 +60,7 @@ if (cmd === "dev") {
   // `--edit` makes the folder writable over HTTP for anyone who can reach the port, so it stays
   // opt-in per run and inherits the server's loopback-only default bind.
   const server = await createDevServer({
-    folder, shell: staticShell, base, md, port,
+    folder, shell: staticShell, base, md, port, ...theming,
     ...(host === undefined ? {} : { host }),
     ...(values.edit === true ? { edit: true } : {}),
   });
@@ -62,6 +76,7 @@ if (cmd === "dev") {
       strict: values["no-strict"] !== true,
       shell: staticShell,
       md,
+      ...theming,
     });
     for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);
     console.log(`pagina: wrote ${r.files.length} files`);

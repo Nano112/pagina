@@ -8,11 +8,34 @@ import type { RenderedArticle } from "./types.js";
  * contract without taking a dependency on the Vite-based builder that happens to call it.
  * `@pagina/vite` re-exports both types for compatibility.
  */
+/**
+ * How much of pagina's own CSS a page carries.
+ *
+ * - `"full"` — the whole stylesheet: tokens, the reading layer and the chrome layer. The default.
+ * - `"tokens"` — the token contract plus the minimal reset only, for a host that wants pagina's
+ *   structure and `--pg-*` variables but styles the content column itself.
+ * - `"none"` — no pagina stylesheet at all; the markup and its `pg-*` class names are the
+ *   entire contract.
+ *
+ * All three emit identical HTML: this picks the stylesheet, never the structure. `chrome` is the
+ * separate axis (see {@link ShellContext.chrome}).
+ */
+export type ThemeLevel = "full" | "tokens" | "none";
+
 export interface ShellContext {
   readonly base: string;
   readonly kineglyphRuntimeUrl: string;
   readonly clientUrl: string;
   readonly cssUrl: string;
+  /** URL of the tokens-only sheet, used when {@link theme} is `"tokens"`. Absent means the
+   *  shell derives it from {@link cssUrl}. */
+  readonly tokensCssUrl?: string;
+  /** How much pagina CSS to link. Defaults to `"full"`. */
+  readonly theme?: ThemeLevel;
+  /** Render pagina's own site header (brand row + theme toggle). Defaults to `true`; a host
+   *  that supplies its own header sets `false`. The sidebar, TOC and pager belong to the
+   *  article, not to the host chrome, and are unaffected. */
+  readonly chrome?: boolean;
   readonly dev: boolean;
   /** The dev server is running with `--edit`, so a shell may offer an "Edit this page" link
    *  into `/__edit/<href>`. Absent (or false) everywhere else, including every static build. */

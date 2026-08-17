@@ -1,15 +1,16 @@
+import { existsSync } from "node:fs";
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type Shell } from "@pagina/core";
+import { PaginaBuildError, parseArticleConfig, renderArticle, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
 
 // `Shell`/`ShellContext` are defined in `@pagina/core` so a shell package can type itself
 // against the contract without depending on this builder; re-exported here for compatibility.
-export type { Shell, ShellContext } from "@pagina/core";
+export type { Shell, ShellContext, ThemeLevel } from "@pagina/core";
 
 export interface BuildOptions {
   readonly folder: string;
@@ -18,6 +19,10 @@ export interface BuildOptions {
   readonly strict?: boolean;
   readonly shell: Shell;
   readonly md?: MarkdownIt;
+  /** How much pagina CSS the pages link: `"full"` (default), `"tokens"` or `"none"`. */
+  readonly theme?: ThemeLevel;
+  /** Render pagina's own header row. Default `true`; `false` when a host supplies chrome. */
+  readonly chrome?: boolean;
 }
 
 async function write(outDir: string, rel: string, data: string | Uint8Array): Promise<void> {
@@ -41,7 +46,7 @@ export async function bundleClient(
   outDir: string,
   base: string,
   clientEntry: string,
-): Promise<{ clientUrl: string; cssUrl: string; kineglyphRuntimeUrl: string }> {
+): Promise<{ clientUrl: string; cssUrl: string; tokensCssUrl?: string; kineglyphRuntimeUrl: string }> {
   const tmpEntry = join(outDir, KINEGLYPH_ENTRY);
   await write(outDir, KINEGLYPH_ENTRY, `export * from "@kineglyph/web/bundle";\n`);
   try {
@@ -66,8 +71,19 @@ export async function bundleClient(
   } finally {
     await rm(tmpEntry, { force: true });
   }
+  // The tokens-only sheet is the *same file* the full sheet `@import`s, copied verbatim rather
+  // than re-derived, so `theme: "tokens"` can never drift from `theme: "full"`. A third-party
+  // shell without one simply doesn't get the tokens level.
+  const tokensSrc = resolve(clientEntry, "../tokens.css");
+  const hasTokens = existsSync(tokensSrc);
+  if (hasTokens) await cp(tokensSrc, join(outDir, "_pagina/pagina.tokens.css"));
   const b = base.replace(/\/$/, "");
-  return { clientUrl: `${b}/_pagina/pagina.js`, cssUrl: `${b}/_pagina/pagina.css`, kineglyphRuntimeUrl: `${b}/_pagina/kineglyph.js` };
+  return {
+    clientUrl: `${b}/_pagina/pagina.js`,
+    cssUrl: `${b}/_pagina/pagina.css`,
+    ...(hasTokens ? { tokensCssUrl: `${b}/_pagina/pagina.tokens.css` } : {}),
+    kineglyphRuntimeUrl: `${b}/_pagina/kineglyph.js`,
+  };
 }
 
 /**
@@ -105,7 +121,11 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
     files.push(asset);
   }
   const urls = await bundleClient(o.outDir, base, o.shell.clientEntry);
-  const pages = await o.shell.render(article, { base, ...urls, dev: false });
+  const pages = await o.shell.render(article, {
+    base, ...urls, dev: false,
+    ...(o.theme === undefined ? {} : { theme: o.theme }),
+    ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
+  });
   for (const [rel, data] of Object.entries(pages)) {
     await write(o.outDir, rel, data);
     files.push(rel);

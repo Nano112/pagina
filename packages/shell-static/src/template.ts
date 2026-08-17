@@ -1,4 +1,4 @@
-import type { NavNode, RenderedArticle } from "@pagina/core";
+import type { NavNode, RenderedArticle, ThemeLevel } from "@pagina/core";
 
 /** Context a page render pass gets. The five required fields mirror `@pagina/core`'s
  * `ShellContext` exactly; `kineglyphThemeUrl` is computed by `staticShell` internally (see
@@ -8,6 +8,13 @@ export interface ShellCtx {
   dev: boolean;
   clientUrl: string;
   cssUrl: string;
+  /** The tokens-only sheet, linked instead of `cssUrl` when `theme` is `"tokens"`. Omitted, it
+   *  is derived from `cssUrl` (see {@link tokensUrl}). */
+  tokensCssUrl?: string;
+  /** How much pagina CSS to link: `"full"` (default), `"tokens"`, or `"none"`. */
+  theme?: ThemeLevel;
+  /** Render pagina's own header row. Default `true`; `false` for a host with its own chrome. */
+  chrome?: boolean;
   kineglyphRuntimeUrl: string;
   kineglyphThemeUrl?: string;
   /** `pagina dev --edit`: add an "Edit this page" link into the editor. Never set in a build. */
@@ -32,6 +39,21 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]!);
  *  value must be JSON-escaped (not HTML-escaped) and only `</script` needs neutralising. */
 const escInScriptJson = (s: string) => JSON.stringify(s).slice(1, -1).replace(/<\/script/gi, "<\\/script");
 const withBase = (base: string, href: string) => `${base.replace(/\/$/, "")}${href}`;
+
+/**
+ * Where the tokens-only sheet lives. A builder that emits one says so explicitly; otherwise it
+ * sits next to the full sheet under the name `bundleClient` gives it, which is the layout every
+ * pagina build produces.
+ */
+const tokensUrl = (ctx: ShellCtx): string =>
+  ctx.tokensCssUrl ?? ctx.cssUrl.replace(/pagina\.css(?=$|[?#])/, "pagina.tokens.css");
+
+/** The `<link>` (if any) for pagina's own CSS at this theme level. */
+function stylesheetHtml(ctx: ShellCtx): string {
+  const theme = ctx.theme ?? "full";
+  if (theme === "none") return "";
+  return `<link rel="stylesheet" href="${esc(theme === "tokens" ? tokensUrl(ctx) : ctx.cssUrl)}">`;
+}
 
 function navHtml(nodes: readonly NavNode[], current: string, base: string, depth = 0): string {
   return `<ul class="pg-nav__list pg-nav__list--${depth}">${nodes
@@ -76,6 +98,11 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   const modelViewer = page.html.includes("<model-viewer")
     ? `<script type="module" src="${esc(ctx.modelViewerUrl ?? DEFAULT_MODEL_VIEWER_URL)}"></script>`
     : "";
+  // A host that brings its own header takes the brand row and the theme toggle with it; the
+  // sidebar, TOC and pager stay, because they are the article's own navigation.
+  const header = ctx.chrome === false
+    ? ""
+    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>`;
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
 <head>
@@ -83,10 +110,10 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <title>${esc(page.title)} · ${esc(a.title)}</title>
 <script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
-<link rel="stylesheet" href="${esc(ctx.cssUrl)}">
+${stylesheetHtml(ctx)}
 </head>
 <body>
-<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>
+${header}
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav><article class="pg-content">${page.html}</article><nav class="pg-pager">${prev}${next}</nav></main>

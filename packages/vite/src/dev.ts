@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { parseArticleConfig, renderArticle, type RenderedArticle, type Shell } from "@pagina/core";
+import { parseArticleConfig, renderArticle, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes } from "./prerender.js";
@@ -27,6 +27,10 @@ export interface DevServerOptions {
   /** Serve the editor: the HTTP contract at `/__pagina/edit` and the host page at `/__edit/`.
    *  Off by default — it makes the folder writable over HTTP, so it is opt-in per run. */
   readonly edit?: boolean;
+  /** How much pagina CSS the pages link: `"full"` (default), `"tokens"` or `"none"`. */
+  readonly theme?: ThemeLevel;
+  /** Render pagina's own header row. Default `true`; `false` when a host supplies chrome. */
+  readonly chrome?: boolean;
 }
 
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
@@ -246,7 +250,10 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 edit: o.edit === true,
                 clientUrl: `/@fs${o.shell.clientEntry}`,
                 cssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
+                tokensCssUrl: `/@fs${resolve(o.shell.clientEntry, "../tokens.css")}`,
                 kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
+                ...(o.theme === undefined ? {} : { theme: o.theme }),
+                ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
               });
               const rel = href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`;
               const html = await s.transformIndexHtml(path, String(pages[rel] ?? ""));

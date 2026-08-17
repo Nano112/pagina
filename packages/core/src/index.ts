@@ -1,5 +1,5 @@
 export * from "./types.js";
-export type { Shell, ShellContext } from "./shell.js";
+export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
 export { parseArticleConfig } from "./config.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets } from "./plugins/snippets.js";
