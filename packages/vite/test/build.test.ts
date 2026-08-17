@@ -53,7 +53,14 @@ describe("buildStatic", () => {
       await readFile(join(outDir, "_pagina/figures/guide-figures/inline-demo.light.svg"), "utf8"),
     ).toContain("Inline");
     const html = await readFile(join(outDir, "guide/figures/index.html"), "utf8");
-    expect(html).toContain(`srcset="/_pagina/figures/guide-figures/kg-guide-figures-1.dark.svg"`);
+    // The figure is *in* the page, not linked from it. That is what lets the host's CSS and a
+    // screen reader reach it, and it is why the SVG carries no XML declaration here.
+    expect(html).toContain(`style="--kg-w:960;--kg-h:152"><div class="kg-frame" data-kg-static data-kg-frame="kg-guide-figures-1"><svg`);
+    expect(html).toContain(`id="kg-guide-figures-1-light" class="kg-scene"`);
+    expect(html).not.toContain("<?xml");
+    expect(html).not.toContain("kg-export-background");
+    // Colour is the page's to decide; the value it was drawn with is only the fallback.
+    expect(html).toContain(`fill="var(--kg-color-text, `);
     expect(html).toContain(`"kineglyph":"/_pagina/kineglyph.js"`);
     // The client bundle keeps `kineglyph` as a bare import for the page's import map.
     const client = await readFile(join(outDir, "_pagina/pagina.js"), "utf8");
@@ -111,7 +118,7 @@ describe("buildStatic", () => {
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/Nucleation/" });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const html = await readFile(join(outDir, "guide/figures/index.html"), "utf8");
-    expect(html).toContain(`srcset="/Nucleation/_pagina/figures/guide-figures/kg-guide-figures-1.dark.svg"`);
+    expect(html).toContain(`data-scene="/Nucleation/scenes/demo.mjs"`);
     expect(html).toContain(`"kineglyph":"/Nucleation/_pagina/kineglyph.js"`);
     // outDir is the directory served *at* base, so base must not appear inside it.
     const figs = await readdir(join(outDir, "_pagina/figures/guide-figures"));

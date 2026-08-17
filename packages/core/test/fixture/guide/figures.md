@@ -2,7 +2,7 @@
 
 ## First
 
-<figure class="kg" data-scene="../scenes/demo.mjs"></figure>
+<figure class="kg" data-scene="../scenes/demo.mjs"><figcaption>Publishing, end to end. Colour comes from the page; everything else was decided when the figure was drawn.</figcaption></figure>
 
 ## Second
 

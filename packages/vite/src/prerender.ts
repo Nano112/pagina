@@ -44,8 +44,13 @@ function toFolderRelative(url: string, base: string): string {
 }
 
 export interface PrerenderedFigures {
-  /** Figure id → one SVG per theme. Only figures that rendered successfully appear. */
-  readonly figures: Map<string, { theme: string; svg: string }[]>;
+  /**
+   * Figure id → one entry per theme. Only figures that rendered successfully appear.
+   *
+   * `svg` is the standalone document written to `_pagina/figures/…`; `inlineSvg` is the same
+   * frame as an HTML fragment, which is what goes into the page.
+   */
+  readonly figures: Map<string, { theme: string; svg: string; inlineSvg: string }[]>;
   readonly diagnostics: Diagnostic[];
 }
 
@@ -64,7 +69,7 @@ export async function prerenderFigures(
   width = 960,
   base = "/",
 ): Promise<PrerenderedFigures> {
-  const figures = new Map<string, { theme: string; svg: string }[]>();
+  const figures = new Map<string, { theme: string; svg: string; inlineSvg: string }[]>();
   const diagnostics: Diagnostic[] = [];
   const themeList = [{ name: "light", tokens: themes.light }, { name: "dark", tokens: themes.dark }];
   for (const page of Object.values(article.pages)) {
@@ -81,8 +86,11 @@ export async function prerenderFigures(
           source = await readFile(abs, "utf8");
           baseUrl = pathToFileURL(abs).href;
         }
+        // `@kineglyph/export` appends the theme name, so the SVG's root id is `${fig.id}-light`.
+        // That matters now the SVG is inlined: its ids share a namespace with the `<figure>` that
+        // holds it, and `fig.id` is already taken by the figure element.
         const results = await prerender(source, { themes: themeList, width, baseUrl, idPrefix: fig.id });
-        figures.set(fig.id, results.map((r) => ({ theme: r.theme, svg: r.svg })));
+        figures.set(fig.id, results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg })));
       } catch (error) {
         diagnostics.push({
           severity: "error",

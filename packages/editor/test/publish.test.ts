@@ -20,6 +20,9 @@ const DARK = { name: "dark-tokens" };
 
 vi.mock("kineglyph", () => ({
   defaultTheme: { name: "default-tokens" },
+  // The host's real font, read off the page the editor is running in.
+  documentFontFamily: () => "Figtree, sans-serif",
+  withFontFamily: (theme: { name: string }, family: string) => ({ ...theme, family }),
   // The scene is carried through resolve → seek → render so the assertions can see which theme
   // and which width each SVG was produced with.
   resolveFigure: (figure: { id: string; broken?: boolean }, options: { width: number; theme: { name: string } }) => ({
@@ -30,8 +33,8 @@ vi.mock("kineglyph", () => ({
     diagnostics: figure.broken === true ? [{ severity: "error", code: "bad-scene", message: "no" }] : [],
   }),
   seekTimeline: (scene: Record<string, unknown>, time: number) => ({ ...scene, time }),
-  renderSvg: (frame: { id: string; width: number; theme: { name: string }; time: number }, options: { idPrefix: string }) =>
-    `<svg data-id="${frame.id}" data-width="${String(frame.width)}" data-theme="${frame.theme.name}" data-time="${String(frame.time)}" data-prefix="${options.idPrefix}"/>`,
+  renderSvg: (frame: { id: string; width: number; theme: { name: string; family?: string }; time: number }, options: { idPrefix: string }) =>
+    `<svg viewBox="0 0 960 240" data-id="${frame.id}" data-width="${String(frame.width)}" data-theme="${frame.theme.name}" data-font="${frame.theme.family ?? ""}" data-time="${String(frame.time)}" data-prefix="${options.idPrefix}"><desc>d</desc></svg>`,
   // The preview and node views reach for these; nothing here mounts anything.
   mountAll: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
@@ -116,9 +119,35 @@ describe("publishArticle", () => {
     // The inline figure's own module text, not the file's.
     expect(payload.figures["two"]!["light"]).toContain(`data-id="inline-two"`);
 
+    // Laid out in the host's own font, which is the one thing publishing from a browser can know
+    // and a build cannot: the editor is running inside the page the output has to look like.
+    expect(one["light"]).toContain(`data-font="Figtree, sans-serif"`);
+
     // The rest of the payload is unchanged: manifest plus one HTML string per page.
     expect(payload.pages["/"]).toContain("Publishing");
     expect(payload.manifest.figures["one"]).toMatchObject({ kind: "module" });
+  });
+
+  it("carries the figures inside the published pages, not as links to them", async () => {
+    const { store, backend } = await storeOver();
+    await publishArticle(store);
+
+    // An `<img>` is a document boundary: no host CSS and no accessibility tree crosses it. The
+    // page ships the SVG itself, and its natural size, so the host can theme it and reserve it.
+    const html = (backend.published as PublishPayload).pages["/"]!;
+    expect(html).toContain(`style="--kg-w:960;--kg-h:240"`);
+    expect(html).toContain(`<div class="kg-frame" data-kg-static data-kg-frame="one"><svg`);
+    expect(html).toContain(`data-prefix="one-light"`);
+    expect(html).not.toContain("<img");
+
+    // A figure that did not render keeps an empty frame and hydrates client-side.
+    expect(html).toContain(`data-kg-frame="two"><svg`);
+  });
+
+  it("warns about a figure with no description rather than shipping a silent diagram", async () => {
+    const { store } = await storeOver();
+    await publishArticle(store);
+    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("no description"));
   });
 
   it("uses the article's kineglyph width and theme module", async () => {

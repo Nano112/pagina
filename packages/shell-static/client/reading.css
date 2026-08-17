@@ -50,8 +50,16 @@
     margin: 1.25rem 0; padding: 0 0 0 1rem;
     border-left: 3px solid var(--pg-line-strong); color: var(--pg-muted);
   }
+  /* Wide content scrolls, it does not shrink -------------------------------------------------
+   *
+   * A block whose contents cannot reflow — a long code line, a diagram measured once at publish
+   * time — is given its own scroll box rather than being squeezed into the column. `pre` has
+   * worked this way from the start; figures join the same rule rather than growing a second
+   * mechanism, because "wide thing, scrolls sideways" should read as one idea. */
+  .pg-content pre, .pg-content .kg-frame { overflow: auto; overscroll-behavior-x: contain; }
+
   .pg-content pre {
-    position: relative; overflow: auto; background: var(--pg-code-bg);
+    position: relative; background: var(--pg-code-bg);
     border: 1px solid var(--pg-line); border-radius: var(--pg-radius-lg); padding: 0.9rem 1rem;
   }
   .pg-content :not(pre) > code {
@@ -141,9 +149,53 @@
   }
   .pg-copy:hover { color: var(--pg-fg); }
 
-  /* Kineglyph figures --------------------------------------------------------------------------- */
-  figure.kg { margin: 1.5rem 0; }
-  figure.kg [data-kg-stage] { min-height: 8rem; }
+  /* Kineglyph figures ----------------------------------------------------------------------------
+   *
+   * A figure arrives as *inline* SVG, not an `<img>`. That is the difference that makes the rest of
+   * this block possible: an image is a separate document, so no colour, no font and no accessible
+   * name ever crossed into it. Inlined, the diagram is part of the page — it takes the host's
+   * `--kg-color-*` (mapped from `--pg-*` in `tokens.css`), and its own `role="img"`/`<title>`/
+   * `<desc>` reach a screen reader directly.
+   *
+   * `--kg-w`/`--kg-h` are the figure's natural size, written onto the `<figure>` at publish time.
+   * The defaults here only keep the rules valid for a figure that has not been rendered yet. */
+  figure.kg {
+    --kg-w: 960; --kg-h: 540;
+    display: flex; flex-direction: column; gap: 0.6rem; margin: 1.5rem 0;
+    /* So the reservation below can be written in terms of the figure's own width. */
+    container-type: inline-size;
+  }
+  .pg-content .kg-frame { max-width: 100%; }
+  .kg-frame > svg {
+    display: block; width: 100%; height: auto;
+    /*
+     * A diagram is laid out once, at a fixed width, and scaled to fit after that — so shrinking it
+     * to a phone shrinks the type with it, and 16px lands at 6px. Below the point where the type
+     * stops being readable the figure keeps its size and the frame scrolls instead.
+     *
+     * The floor is a *scale* of the figure's own width rather than a fixed width, so it means the
+     * same thing to every figure: a 400-wide one never scrolls, a 960-wide one starts scrolling
+     * below 672px. Deliberately not `min(100%, …)` — a percentage resolves against the frame, so
+     * the floor would collapse to the frame's width and could never be crossed.
+     */
+    min-width: calc(var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
+  }
+  /*
+   * The live stage holds back the space the pre-rendered figure was occupying, so swapping one
+   * for the other does not pull the page up under the reader.
+   *
+   * A `min-height` and not an `aspect-ratio`: the stage carries the runtime's own chrome — a
+   * readout, a transport — below the drawing, and a fixed ratio would clip all of it. This is the
+   * floor the drawing needs, in the figure's own width, which is what `cqw` buys.
+   *
+   * `mountAll` appends the stage last, after any caption the author wrote, so the caption is
+   * ordered back to the bottom rather than the markup being fought over.
+   */
+  figure.kg [data-kg-stage] { min-height: max(8rem, calc(100cqw * var(--kg-h) / var(--kg-w))); }
+  figure.kg > figcaption {
+    order: 1; color: var(--pg-muted); font-size: 0.875rem; line-height: 1.5;
+  }
+  /* Still supported: a figure authored as a plain image, and the pre-inlining `<picture>`. */
   picture.kg-static img { width: 100%; height: auto; display: block; }
 
   /* Shiki dual-theme hookup: shiki emits inline `color`/`background-color` plus

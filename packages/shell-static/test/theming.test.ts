@@ -173,6 +173,38 @@ describe("the token contract", () => {
     }
   });
 
+  /**
+   * Figures are the one place pagina publishes a vocabulary it does not own: `--kg-color-*` is
+   * Kineglyph's, and `tokens.css` only maps `--pg-*` onto it. The mapping is what makes a host
+   * that themed pagina find its diagrams themed too, so it is worth the same drift guard the
+   * `--pg-*` table gets — in both directions.
+   */
+  const kgDefined = [...stripComments(tokensCss).matchAll(/(--kg-color-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!);
+  const kgDocumented = [...docs.matchAll(/^\| `(--kg-color-[a-z0-9-]+)`[^|]*\|/gm)].map((m) => m[1]!);
+
+  it("maps and documents the same set of figure colour roles", () => {
+    expect(kgDefined.length).toBeGreaterThan(15);
+    for (const name of kgDefined) {
+      // `chart1 … chart6` are documented as one row, so allow the range row to stand for them.
+      const documented = kgDocumented.includes(name) || (/^--kg-color-chart[1-6]$/.test(name) && kgDocumented.includes("--kg-color-chart1"));
+      expect(documented, `${name} is mapped but undocumented`).toBe(true);
+    }
+    for (const name of kgDocumented) expect(kgDefined, `${name} is documented but never mapped`).toContain(name);
+  });
+
+  it("maps every figure role onto a token rather than a literal", () => {
+    // A literal here would be a second palette to keep in step with the first, and it would not
+    // follow `[data-theme="dark"]` — which is the whole reason the mapping exists.
+    for (const m of stripComments(tokensCss).matchAll(/--kg-color-[a-z0-9-]+\s*:\s*([^;]+);/g))
+      expect(m[1]!.trim(), m[0]).toMatch(/^var\(--pg-[a-z0-9-]+\)$/);
+  });
+
+  it("leaves type and geometry out of the figure contract", () => {
+    // Geometry is decided when a figure is rendered — its text is measured once and frozen with
+    // `textLength` — so offering a host a font or a radius here would break the picture.
+    expect(stripComments(tokensCss)).not.toMatch(/--kg-(font|radius)/);
+  });
+
   it("uses tokens rather than literals for colour, type and radius", () => {
     const rules = [layerBody(readingCss, "pagina.reading")!, layerBody(paginaCss, "pagina.chrome")!].join("\n");
     // Shadows and the pill toggle are geometry, not palette; nothing here may name a colour.

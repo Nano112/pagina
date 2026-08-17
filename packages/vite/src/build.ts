@@ -3,7 +3,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, parseArticleConfig, renderArticle, robotsTxt, sitemapXml, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, inlineArticleFigures, parseArticleConfig, renderArticle, robotsTxt, sitemapXml, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
@@ -123,13 +123,18 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
   }
   // Every figure was attempted first, so this reports all of them, not just the first.
   if (strict && prerendered.diagnostics.some((d) => d.severity === "error")) throw new PaginaBuildError(diagnostics);
+  // Inline the figures into the pages before the shell renders them. That is what makes a diagram
+  // part of the document instead of a subresource: an `<img>` is a separate document, and no host
+  // CSS — nor any screen reader — crosses that boundary.
+  const inlined = inlineArticleFigures(article, (id) => prerendered.figures.get(id)?.[0]?.inlineSvg);
+  diagnostics.push(...inlined.diagnostics);
   for (const asset of article.manifest.assets) {
     await mkdir(dirname(join(o.outDir, asset)), { recursive: true });
     await cp(resolve(o.folder, asset), join(o.outDir, asset));
     files.push(asset);
   }
   const urls = await bundleClient(o.outDir, base, o.shell.clientEntry);
-  const pages = await o.shell.render(article, {
+  const pages = await o.shell.render(inlined.article, {
     base, ...urls, dev: false,
     ...(o.theme === undefined ? {} : { theme: o.theme }),
     ...(o.chrome === undefined ? {} : { chrome: o.chrome }),

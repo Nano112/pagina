@@ -11,7 +11,7 @@ export class PaginaBuildError extends Error {
   }
 }
 export interface RenderArticleOptions {
-  readonly fs: ContentFs; readonly strict?: boolean; readonly base?: string; readonly md?: MarkdownIt; readonly themes?: readonly string[];
+  readonly fs: ContentFs; readonly strict?: boolean; readonly base?: string; readonly md?: MarkdownIt;
   /** Overrides `article.yaml`'s `site_url` — a folder that several hosts publish needs one origin
    *  per host, and the folder cannot know them. */
   readonly siteUrl?: string;
@@ -76,7 +76,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
   const navPages = new Set(present.map((f) => f.page));
   const pages: Record<string, RenderedPage> = {};
   for (const f of present) {
-    const r = await renderPage({ fs: o.fs, config, path: f.page, navPages, ...(o.md === undefined ? {} : { md: o.md }), ...(o.base === undefined ? {} : { base: o.base }), ...(o.themes === undefined ? {} : { themes: o.themes }) });
+    const r = await renderPage({ fs: o.fs, config, path: f.page, navPages, ...(o.md === undefined ? {} : { md: o.md }), ...(o.base === undefined ? {} : { base: o.base }) });
     pages[r.page.href] = r.page;
     diagnostics.push(...r.diagnostics);
   }

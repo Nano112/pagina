@@ -64,12 +64,68 @@ rest keep their defaults.
 | `--pg-quote-fg` | `#4b5159` | `#b6bcc6` | `quote` admonition title text |
 | `--pg-code-bg` | `#f6f7f9` | `#1c1f26` | Inline code and un-highlighted code blocks |
 | `--pg-shiki-bg` | `#ffffff` | `#1c1f26` | Highlighted (shiki) code block background |
+| `--pg-figure-min-scale` | `0.7` | — | How far a Kineglyph figure may scale down before it scrolls instead |
 
 Dark values apply under `[data-theme="dark"]` on the root element, which pagina's theme toggle
 sets. Tokens with no dark column are scheme-independent.
 
 The editor uses the same contract — there is no second palette. Its own `--pge-*` properties are
 only the tool's geometry (`--pge-1`, `--pge-2`, `--pge-sidebar`, `--pge-split`).
+
+### Kineglyph figures
+
+A published figure is **inline SVG**, not an `<img>`, and every paint in it is written as
+`var(--kg-color-<role>, <the colour it was drawn with>)`. So a figure takes its palette from the
+page the way everything else does — and it does so in the reader's current theme, without a second
+rendering and without a per-host prerender.
+
+Nothing is required of a host. `tokens.css` already points each role at the `--pg-*` that means the
+same thing, so **a host that mapped pagina's tokens has themed its diagrams too**:
+
+| Figure token | Defaults to | Paints |
+|---|---|---|
+| `--kg-color-canvas` | `var(--pg-bg-raised)` | The figure's own background plane |
+| `--kg-color-surface` | `var(--pg-bg)` | Node and card fills |
+| `--kg-color-surface-raised` | `var(--pg-bg)` | Fills above the surface (raised, floating, glass) |
+| `--kg-color-surface-muted` | `var(--pg-bg-sunken)` | Recessed fills (inset) |
+| `--kg-color-border` | `var(--pg-line)` | Node and card outlines |
+| `--kg-color-text` | `var(--pg-fg)` | Labels and body text |
+| `--kg-color-text-muted` | `var(--pg-muted)` | Captions, secondary text, edge labels |
+| `--kg-color-accent` | `var(--pg-accent)` | Icons, motifs, focus rings, highlighted edges |
+| `--kg-color-accent-contrast` | `var(--pg-accent-fg)` | Text and marks drawn *on* the accent |
+| `--kg-color-connector` | `var(--pg-line-strong)` | Edges, arrowheads, packets |
+| `--kg-color-info` | `var(--pg-note)` | The `info` tone |
+| `--kg-color-success` | `var(--pg-tip)` | The `success` tone |
+| `--kg-color-warning` | `var(--pg-warning)` | The `warning` tone |
+| `--kg-color-danger` | `var(--pg-danger)` | The `danger` tone |
+| `--kg-color-chart1` … `--kg-color-chart6` | accent, note, warning, tip, danger, example | Quantitative series, in order |
+| `--kg-color-chart-positive` | `var(--pg-tip)` | A gain |
+| `--kg-color-chart-negative` | `var(--pg-danger)` | A loss |
+| `--kg-color-chart-neutral` | `var(--pg-quote)` | A baseline |
+
+Set any of them directly to give diagrams a palette of their own:
+
+```css
+:root { --kg-color-accent: var(--color-magenta); --kg-color-canvas: transparent; }
+```
+
+The pairings match the swatches the Figure Builder shows an author, so the tone picked in the
+editor is the colour the published figure carries.
+
+**Colour is the whole contract.** Type and geometry are decided when a figure is rendered, not when
+it is read: SVG cannot wrap or reflow text, so each box is measured once against the text it will
+hold and the result is frozen with `textLength`. Re-fonting a figure from CSS would pull its text
+out of the boxes built for it, so `--kg-font-family` and `--kg-radius-*` are pinned on the figure
+and are not offered here. Publishing from the editor reads the host's *real* font off the page and
+lays the figure out in it, which is the supported way to get your own type into a diagram.
+
+Left undefined entirely — a host on `theme: "none"`, say — a figure still paints exactly the
+colours it was drawn with. The tokens re-tint; they are never required.
+
+A figure wider than the column **scrolls rather than shrinks**, the same treatment `pre` gets,
+because a diagram scaled to a phone takes its 16px type down to 6px with it.
+`--pg-figure-min-scale` is the floor: below `0.7` of its natural width a figure keeps its size and
+its frame scrolls sideways.
 
 ### Admonitions
 

@@ -14,8 +14,15 @@
  * client-side, which is exactly what the page falls back to.
  */
 // Bare specifier on purpose — see `kineglyph.ts`.
-import { defaultTheme, renderSvg, resolveFigure, seekTimeline } from "kineglyph";
-import type { RenderedArticle } from "@pagina/core";
+import {
+  defaultTheme,
+  documentFontFamily,
+  renderSvg,
+  resolveFigure,
+  seekTimeline,
+  withFontFamily,
+} from "kineglyph";
+import { inlineArticleFigures, type RenderedArticle } from "@pagina/core";
 import type { ArticleStore } from "../store/index.js";
 import { evaluateModule, evaluateSceneModule } from "./kineglyph.js";
 
@@ -54,6 +61,25 @@ export async function loadFigureThemes(store: ArticleStore): Promise<FigureTheme
     console.warn(`pagina: the theme module ${rel} did not load, using the default theme — ${messageOf(error)}`);
     return { light: defaultTheme, dark: defaultTheme };
   }
+}
+
+/**
+ * The two themes, re-fonted to whatever the host is actually rendering prose in.
+ *
+ * This is the one thing publishing from a browser can do that a build cannot: the editor is running
+ * *inside* the page its output will look like, so the host's font is loaded and measurable rather
+ * than guessed. A figure laid out against Kineglyph's default lands in an article set in something
+ * else and reads as a foreign object — right up to the type, which is the most obvious tell.
+ *
+ * It is deliberately applied before `resolveFigure`, not after: text in an exported SVG is measured
+ * once and the boxes are sized to the result, so the family has to be settled while the geometry is
+ * still being decided. (The metrics themselves are family-independent by design, so this changes
+ * what is drawn without moving a box — see Kineglyph's `withFontFamily`.)
+ */
+function themesInHostFont(themes: FigureThemes, element?: Element): FigureThemes {
+  const family = documentFontFamily(element);
+  if (family === undefined) return themes;
+  return { light: withFontFamily(themes.light, family), dark: withFontFamily(themes.dark, family) };
 }
 
 /** Site-absolute URL (which includes `base`) → folder-relative path, as `@pagina/vite` does it. */
@@ -119,8 +145,19 @@ async function sceneSource(store: ArticleStore, path: string): Promise<string> {
  */
 export async function publishArticle(store: ArticleStore): Promise<{ publishedAt: string }> {
   const article = await store.renderAll();
-  const themes = await loadFigureThemes(store);
+  // Measured on the prose column when there is one, so a host that fonts its articles differently
+  // from its chrome gets the font its *articles* use.
+  const measured = globalThis.document?.querySelector(".pg-content") ?? undefined;
+  const themes = themesInHostFont(await loadFigureThemes(store), measured);
   const width = store.article?.kineglyph?.width ?? DEFAULT_FIGURE_WIDTH;
   const figures = await renderArticleFigures(store, article, themes, width);
-  return await store.publish(figures, article);
+  // The published pages carry their figures inline. The per-theme SVGs still go up beside them —
+  // they are standalone assets — but the page no longer points at one, because an `<img>` is a
+  // document boundary and a diagram that a host cannot theme or a reader cannot hear is not one.
+  const inlined = inlineArticleFigures(article, (id) => {
+    const svgs = figures[id];
+    return svgs === undefined ? undefined : Object.values(svgs)[0];
+  });
+  for (const diagnostic of inlined.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
+  return await store.publish(figures, inlined.article);
 }

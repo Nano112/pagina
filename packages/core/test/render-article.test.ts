@@ -44,7 +44,9 @@ describe("renderArticle", () => {
     expect(root.manifest.figures["inline-demo"]!.staticBase).toBe("/_pagina/figures/guide-figures/inline-demo");
     const sub = await renderArticle({ fs: nodeFs(fixture), strict: true, base: "/Nucleation/" });
     expect(sub.manifest.figures["inline-demo"]!.staticBase).toBe("/Nucleation/_pagina/figures/guide-figures/inline-demo");
-    expect(sub.pages["/guide/figures/"]!.html).toContain(`srcset="/Nucleation/_pagina/figures/guide-figures/kg-guide-figures-1.dark.svg"`);
+    // The page itself no longer names that path: the figure is inlined into the HTML after it is
+    // rendered, and `staticBase` is where the standalone SVG files land beside it.
+    expect(sub.pages["/guide/figures/"]!.html).toContain(`<div class="kg-frame" data-kg-static data-kg-frame="kg-guide-figures-1"></div>`);
   });
 
   it("fails strictly on a nav entry without a file, a dead link, and a bad anchor", async () => {

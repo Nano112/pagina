@@ -10,13 +10,12 @@ import { readingMinutes } from "./reading-time.js";
 
 export interface RenderPageOptions {
   readonly fs: ContentFs; readonly config: ArticleConfig; readonly path: string;
-  readonly navPages: ReadonlySet<string>; readonly md?: MarkdownIt; readonly base?: string; readonly themes?: readonly string[];
+  readonly navPages: ReadonlySet<string>; readonly md?: MarkdownIt; readonly base?: string;
 }
 export function pageSlug(href: string): string { return href === "/" ? "index" : href.replace(/^\/|\/$/g, "").replace(/\//g, "-"); }
 
 export async function renderPage(o: RenderPageOptions): Promise<{ page: RenderedPage; diagnostics: Diagnostic[] }> {
   const base = o.base ?? "/";
-  const themes = o.themes ?? ["light", "dark"];
   const md = o.md ?? createMarkdown();
   // Front matter is read, never rewritten: the block is stripped from the body before parsing and
   // the values are carried on `page.frontMatter`, where `renderArticle` applies them over the
@@ -26,13 +25,13 @@ export async function renderPage(o: RenderPageOptions): Promise<{ page: Rendered
   const rendered = renderMarkdown(md, snip.text);
   const href = hrefOf(o.path);
   const slug = pageSlug(href);
-  const figs = extractFigures(rendered.html, { pageSlug: slug, themes, staticBaseUrl: (id) => `${base.replace(/\/$/, "")}/_pagina/figures/${slug}/${id}` });
+  const figs = extractFigures(rendered.html, { pageSlug: slug });
   const linked = rewriteLinks(figs.html, { pagePath: o.path, navPages: o.navPages, assetPrefix: base, base });
   // data-scene attributes were rewritten too; refresh figure refs so scene URLs are site-absolute
   const figures = figs.figures.map((f) => f.kind === "module" && f.scene !== undefined && !f.scene.startsWith("/") && !/^[a-z]+:/i.test(f.scene)
     ? { ...f, scene: `${base.replace(/\/$/, "")}/${resolveRelative(o.path, f.scene)}` } : f);
   const excerpt = firstParagraph(rendered.html);
-  // Counted on `rendered.html` — before figures became `<picture>` elements and before links were
+  // Counted on `rendered.html` — before figures grow their frames and before links were
   // rewritten — because none of that changes a word of prose, and the earlier the count runs the
   // fewer generated attributes there are for a tag-stripper to trip over.
   const minutes = readingMinutes(rendered.html);

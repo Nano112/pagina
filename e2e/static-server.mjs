@@ -257,6 +257,9 @@ const HOST_PAGES = {
   "/host-reset": () => resetHostPage(["editor.css"]),
   "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
   "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),
+  // The figures page, built, in the host's magenta-and-Figtree palette — the proof that a host
+  // which mapped `--pg-*` gets its diagrams re-tinted too, having defined no `--kg-*` at all.
+  "/site-figures-dark": () => siteUnderHostTheme("guide/figures/index.html"),
   "/admonitions/published": async () => publishedPage(await renderAdmonitions(), "light"),
   "/admonitions/published-dark": async () => publishedPage(await renderAdmonitions(), "dark"),
   "/admonitions/editing": () => editorPage("light"),

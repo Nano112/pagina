@@ -77,6 +77,52 @@
     /* Code surfaces */
     --pg-code-bg: #f6f7f9;
     --pg-shiki-bg: #ffffff;
+
+    /*
+     * Kineglyph figures.
+     *
+     * A rendered figure writes every paint as `var(--kg-color-<role>, <the colour it was drawn
+     * with>)`, so it inherits its palette from the page instead of carrying one. Pointing each
+     * role at the `--pg-*` that already means the same thing is what makes a host's theme reach
+     * its diagrams: map pagina's tokens once and the figures come with them, in light and dark,
+     * with no re-render and no per-host prerender.
+     *
+     * These are only the defaults. A host that wants finer control over its diagrams than over
+     * its prose sets `--kg-color-*` directly — see `docs/theming.md`. Left undefined entirely,
+     * a figure still paints exactly what it was drawn with.
+     *
+     * Only colour is mapped. Type and geometry are decided when a figure is rendered, because
+     * SVG cannot reflow text, so `--kg-font-family` and `--kg-radius-*` are not offered here.
+     *
+     * Tone pairings match the Figure Builder's swatches (`FigureBuilder.tsx`), so the colour an
+     * author picks in the editor is the colour the published figure shows.
+     */
+    --kg-color-canvas: var(--pg-bg-raised);
+    --kg-color-surface: var(--pg-bg);
+    --kg-color-surface-raised: var(--pg-bg);
+    --kg-color-surface-muted: var(--pg-bg-sunken);
+    --kg-color-border: var(--pg-line);
+    --kg-color-text: var(--pg-fg);
+    --kg-color-text-muted: var(--pg-muted);
+    --kg-color-accent: var(--pg-accent);
+    --kg-color-accent-contrast: var(--pg-accent-fg);
+    --kg-color-connector: var(--pg-line-strong);
+    --kg-color-info: var(--pg-note);
+    --kg-color-success: var(--pg-tip);
+    --kg-color-warning: var(--pg-warning);
+    --kg-color-danger: var(--pg-danger);
+    --kg-color-chart1: var(--pg-accent);
+    --kg-color-chart2: var(--pg-note);
+    --kg-color-chart3: var(--pg-warning);
+    --kg-color-chart4: var(--pg-tip);
+    --kg-color-chart5: var(--pg-danger);
+    --kg-color-chart6: var(--pg-example);
+    --kg-color-chart-positive: var(--pg-tip);
+    --kg-color-chart-negative: var(--pg-danger);
+    --kg-color-chart-neutral: var(--pg-quote);
+
+    /* How far a figure may scale down before it scrolls instead. See `reading.css`. */
+    --pg-figure-min-scale: 0.7;
   }
 
   /* Dark redefines colours only: geometry, type and measure are scheme-independent. */
