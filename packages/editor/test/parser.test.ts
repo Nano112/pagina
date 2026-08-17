@@ -64,9 +64,12 @@ describe("parseMarkdown — fixture pages", () => {
 
   it("parses guide/figures.md into the three kinds of Kineglyph figure", () => {
     const { doc } = parseMarkdown(fixture("guide/figures.md"));
-    expect(outline(doc)).toEqual(["heading", "heading", "figureKg", "heading", "figureKg", "figureKg"]);
+    expect(outline(doc)).toEqual([
+      "heading", "heading", "figureKg", "heading", "figureKg", "figureKg",
+      "heading", "figureKg", "heading", "figureKg",
+    ]);
 
-    const [module, inline, still] = ofType(doc, "figureKg");
+    const [module, inline, still, instrument, explicit] = ofType(doc, "figureKg");
     expect(module!.attrs).toMatchObject({ kind: "module", scene: "../scenes/demo.mjs", source: null, id: null });
     expect(inline!.attrs["kind"]).toBe("inline");
     expect(inline!.attrs["id"]).toBe("inline-demo");
@@ -74,6 +77,9 @@ describe("parseMarkdown — fixture pages", () => {
     expect(still!.attrs).toMatchObject({ kind: "static", static: "../media/static.svg" });
     // The `<img>` inside the static figure is not modelled by an attribute, so it is kept verbatim.
     expect(JSON.parse(String(still!.attrs["extraAttrs"]))[INNER_HTML_KEY]).toBe('<img src="../media/static.svg" alt="static">');
+    // The two chrome states the fixture now carries: opted in, and explicitly asked for.
+    expect(instrument!.attrs).toMatchObject({ id: "instrument-demo", instrument: "true", controls: null });
+    expect(explicit!.attrs).toMatchObject({ id: "chrome-demo", controls: "true", readout: "true", instrument: null });
   });
 });
 

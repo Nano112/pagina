@@ -13,5 +13,15 @@
     "id": "second",
     "text": "Second",
     "level": 2
+  },
+  {
+    "id": "opted-in",
+    "text": "Opted in",
+    "level": 2
+  },
+  {
+    "id": "asked-for-chrome",
+    "text": "Asked for chrome",
+    "level": 2
   }
 ]

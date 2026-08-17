@@ -64,6 +64,36 @@ type legible — the same treatment wide tables and code blocks already get, so 
 
 **No layout shift.** The live stage reserves the prerendered figure's aspect ratio before hydration.
 
+**A figure in prose is a picture** *(added 2026-08-17, task K2)*. The first pass shipped the
+runtime's default chrome on every published figure: an INSPECT readout and a Play/Restart/TIMELINE
+strip, whether or not there was anything behind either. On a still three-box diagram in an article
+that is a debug harness wrapped around a picture, and it was the whole of the ~100px the figure grew
+on hydration. The default is now quiet and the instrument is opted into per figure with
+`data-instrument="true"`.
+
+The rule has two halves and both must hold:
+
+| Half | Who owns it | What it asks |
+|---|---|---|
+| the editorial one | pagina (`client/figure-chrome.ts`) | did the author ask for an instrument? |
+| the honest one | Kineglyph (`ChromeSetting`'s `"auto"`) | does the scene have anything behind it? |
+
+So Kineglyph gains a knob rather than an opinion: `controls`/`readout`/`machineControls` become
+`boolean | "auto"`, `"auto"` meaning "draw it only if the resolved scene justifies it" — a timeline
+with a duration, a node that is inspectable, a declared machine. Its own default stays `true`.
+pagina supplies the opinion, because "a figure between two paragraphs is a picture" is a statement
+about articles, not about figures.
+
+**Hydration is measured, not asserted** *(K2)*. Once the chrome matched, three defaults were still
+moving the figure, and all three were chrome-era furniture: the shell's border, the stage's 120px
+minimum height, and — the largest — the runtime re-resolving the scene at the column width, so the
+diagram silently rearranged itself and got taller the moment JavaScript landed. A quiet figure is
+therefore mounted at the width its geometry was decided at, which makes the live drawing the same
+drawing and extends "scroll, don't shrink" to readers who have JavaScript (before this, a phone
+with JavaScript on got the 0.41-scale 6px type the pre-rendered frame exists to avoid). The
+before/after heights are compared in the `bundle` Playwright project across two loads of one URL,
+with a one-pixel tolerance.
+
 ## Out of scope
 
 A first-class `figure_kg` markdown block (figures are raw `<figure class="kg">` HTML matched by regex

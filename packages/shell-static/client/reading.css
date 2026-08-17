@@ -161,8 +161,24 @@
    * The defaults here only keep the rules valid for a figure that has not been rendered yet. */
   figure.kg {
     --kg-w: 960; --kg-h: 540;
-    display: flex; flex-direction: column; gap: 0.6rem; margin: 1.5rem 0;
-    /* So the reservation below can be written in terms of the figure's own width. */
+    /*
+     * The width the drawing is really painted at, and the height that follows from it.
+     *
+     * Stated once, because two things read it — the pre-rendered frame, as the `min-width` that
+     * makes it scroll rather than shrink, and the live stage, as the height it holds back before
+     * the runtime lands. Written out twice they could disagree, and a disagreement here is a
+     * figure that changes size the moment JavaScript arrives.
+     */
+    --kg-drawn-w: max(100cqw, var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
+    --kg-drawn-h: calc(var(--kg-drawn-w) * var(--kg-h) / var(--kg-w));
+    display: flex; flex-direction: column;
+    /*
+     * More air above and below the figure than between the figure and its caption. That
+     * difference is the whole of it: it makes the drawing and its caption read as one object
+     * placed in the prose, rather than as two stacked blocks that happen to be adjacent.
+     */
+    gap: 0.5rem; margin: 2rem 0;
+    /* So the sizes above can be written in terms of the figure's own width. */
     container-type: inline-size;
   }
   .pg-content .kg-frame { max-width: 100%; }
@@ -178,22 +194,45 @@
      * below 672px. Deliberately not `min(100%, …)` — a percentage resolves against the frame, so
      * the floor would collapse to the frame's width and could never be crossed.
      */
-    min-width: calc(var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
+    min-width: var(--kg-drawn-w);
   }
   /*
-   * The live stage holds back the space the pre-rendered figure was occupying, so swapping one
-   * for the other does not pull the page up under the reader.
+   * The live stage holds back exactly the space the pre-rendered frame was occupying, so swapping
+   * one for the other does not move the page under the reader.
    *
-   * A `min-height` and not an `aspect-ratio`: the stage carries the runtime's own chrome — a
-   * readout, a transport — below the drawing, and a fixed ratio would clip all of it. This is the
-   * floor the drawing needs, in the figure's own width, which is what `cqw` buys.
+   * This used to carry an `8rem` floor, for chrome the runtime added that the frame had none of.
+   * A figure in prose has no chrome now (see `client/figure-chrome.ts`), so the honest reservation
+   * is the drawing's own height and nothing more — the floor would only have made a short, wide
+   * figure grow on hydration in the other direction.
    *
    * `mountAll` appends the stage last, after any caption the author wrote, so the caption is
    * ordered back to the bottom rather than the markup being fought over.
    */
-  figure.kg [data-kg-stage] { min-height: max(8rem, calc(100cqw * var(--kg-h) / var(--kg-w))); }
+  figure.kg [data-kg-stage] { min-height: var(--kg-drawn-h); }
+  /*
+   * The live drawing keeps the frame's floor as well as its geometry.
+   *
+   * A quiet figure is mounted at its natural width (see `client/figure-chrome.ts`), so the live
+   * SVG is the same picture as the pre-rendered one and this is the same `min-width` the frame
+   * carries — the two scale and scroll identically, and swapping one for the other is invisible.
+   *
+   * Scoped to a chromeless figure because an opted-in one is deliberately responsive: it re-lays
+   * out to the column, so a floor written for a 960-wide layout would make it scroll for nothing.
+   */
+  figure.kg .kg-figure:not(:has(.kg-figure__controls, .kg-figure__readout, .kg-figure__machine)) svg {
+    min-width: var(--kg-drawn-w);
+  }
   figure.kg > figcaption {
-    order: 1; color: var(--pg-muted); font-size: 0.875rem; line-height: 1.5;
+    order: 1;
+    /*
+     * A caption, not a short paragraph: subordinate in size and colour, tighter than body text,
+     * and held to a narrower measure so it reads as an aside to the picture even when the figure
+     * itself is wider than the prose. `pretty` keeps a one-word last line off the end of it.
+     */
+    max-width: 60ch;
+    color: var(--pg-muted);
+    font-size: 0.8125rem; line-height: 1.55;
+    text-wrap: pretty;
   }
   /* Still supported: a figure authored as a plain image, and the pre-inlining `<picture>`. */
   picture.kg-static img { width: 100%; height: auto; display: block; }

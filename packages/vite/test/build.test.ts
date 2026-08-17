@@ -44,8 +44,12 @@ describe("buildStatic", () => {
       expect((await stat(join(outDir, f))).isFile(), f).toBe(true);
     const figs = await readdir(join(outDir, "_pagina/figures/guide-figures"));
     expect(figs.sort()).toEqual([
+      "chrome-demo.dark.svg",
+      "chrome-demo.light.svg",
       "inline-demo.dark.svg",
       "inline-demo.light.svg",
+      "instrument-demo.dark.svg",
+      "instrument-demo.light.svg",
       "kg-guide-figures-1.dark.svg",
       "kg-guide-figures-1.light.svg",
     ]);
@@ -123,8 +127,12 @@ describe("buildStatic", () => {
     // outDir is the directory served *at* base, so base must not appear inside it.
     const figs = await readdir(join(outDir, "_pagina/figures/guide-figures"));
     expect(figs.sort()).toEqual([
+      "chrome-demo.dark.svg",
+      "chrome-demo.light.svg",
       "inline-demo.dark.svg",
       "inline-demo.light.svg",
+      "instrument-demo.dark.svg",
+      "instrument-demo.light.svg",
       "kg-guide-figures-1.dark.svg",
       "kg-guide-figures-1.light.svg",
     ]);
@@ -141,9 +149,11 @@ describe("buildStatic", () => {
     const outDir = await mkdtemp(join(tmpdir(), "pagina-broken-out-"));
     const r = await buildStatic({ folder, outDir, shell: stubShell, strict: false });
     const broken = r.diagnostics.filter((d) => d.code === "figure-prerender");
-    expect(broken).toHaveLength(1);
-    expect(broken[0]).toMatchObject({ severity: "error", page: "guide/figures.md" });
-    expect(broken[0]!.message).toContain("kg-guide-figures-1");
+    // One diagnostic per figure that referenced the broken module — the page has three, which is
+    // the point: a build tells the author about every figure it could not draw, not just the first.
+    expect(broken).toHaveLength(3);
+    for (const d of broken) expect(d).toMatchObject({ severity: "error", page: "guide/figures.md" });
+    expect(broken.map((d) => d.message).join("\n")).toContain("kg-guide-figures-1");
     // the healthy figure on the same page still rendered
     expect((await readdir(join(outDir, "_pagina/figures/guide-figures"))).sort())
       .toEqual(["inline-demo.dark.svg", "inline-demo.light.svg"]);

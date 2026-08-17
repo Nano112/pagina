@@ -20,12 +20,12 @@ const figure = (attrs: Record<string, string> = {}): HTMLElement => {
 
 describe("a figure that asks for nothing", () => {
   it("is a picture: no readout, no transport", () => {
-    expect(figureChrome(figure())).toEqual({ controls: false, readout: false });
+    expect(figureChrome(figure())).toEqual({ controls: false, readout: false, machineControls: "auto" });
   });
 
   it("is quiet whatever else it carries", () => {
     const el = figure({ "data-scene": "/scenes/demo.mjs", id: "kg-guide-1", "data-theme": "dark" });
-    expect(figureChrome(el)).toEqual({ controls: false, readout: false });
+    expect(figureChrome(el)).toEqual({ controls: false, readout: false, machineControls: "auto" });
   });
 });
 
@@ -38,6 +38,7 @@ describe('a figure that opts in with data-instrument="true"', () => {
     expect(figureChrome(figure({ "data-instrument": "true" }))).toEqual({
       controls: "auto",
       readout: "auto",
+      machineControls: "auto",
     });
   });
 
@@ -46,6 +47,7 @@ describe('a figure that opts in with data-instrument="true"', () => {
       expect(figureChrome(figure({ "data-instrument": value }))).toEqual({
         controls: false,
         readout: false,
+        machineControls: "auto",
       });
   });
 });
@@ -54,17 +56,18 @@ describe("a figure that was explicit stays exactly as it was", () => {
   it("declines to have an opinion about a key the author already wrote", () => {
     // An absent key is pagina *not answering*, which leaves Kineglyph's own `data-controls`
     // parsing standing. Returning `false` here instead would silently overwrite the author.
-    expect(figureChrome(figure({ "data-controls": "false", "data-readout": "false" }))).toEqual({});
-    expect(figureChrome(figure({ "data-controls": "true", "data-readout": "true" }))).toEqual({});
+    const only = { machineControls: "auto" };
+    expect(figureChrome(figure({ "data-controls": "false", "data-readout": "false" }))).toEqual(only);
+    expect(figureChrome(figure({ "data-controls": "true", "data-readout": "true" }))).toEqual(only);
   });
 
   it("answers only the half that was left open", () => {
-    expect(figureChrome(figure({ "data-controls": "true" }))).toEqual({ readout: false });
-    expect(figureChrome(figure({ "data-readout": "false" }))).toEqual({ controls: false });
+    expect(figureChrome(figure({ "data-controls": "true" }))).toEqual({ readout: false, machineControls: "auto" });
+    expect(figureChrome(figure({ "data-readout": "false" }))).toEqual({ controls: false, machineControls: "auto" });
   });
 
   it("lets an explicit attribute win over data-instrument", () => {
     const el = figure({ "data-instrument": "true", "data-controls": "false" });
-    expect(figureChrome(el)).toEqual({ readout: "auto" });
+    expect(figureChrome(el)).toEqual({ readout: "auto", machineControls: "auto" });
   });
 });

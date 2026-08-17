@@ -37,6 +37,17 @@
 export interface FigureChrome {
   readonly controls?: boolean | "auto";
   readonly readout?: boolean | "auto";
+  readonly machineControls?: boolean | "auto";
+  readonly width?: number;
+}
+
+/**
+ * The width a figure's geometry was decided at, from the `--kg-w` stamped on it at publish time.
+ * `undefined` for a figure that has not been pre-rendered — in dev, or before a build has run.
+ */
+function naturalWidth(element: HTMLElement): number | undefined {
+  const raw = Number.parseFloat(element.style.getPropertyValue("--kg-w"));
+  return Number.isFinite(raw) && raw > 0 ? raw : undefined;
 }
 
 /**
@@ -51,8 +62,41 @@ export function figureChrome(element: HTMLElement): FigureChrome {
   // `data-instrument` is the author's word for "this figure is worth poking at". Anything other
   // than "true" (including the attribute being absent) leaves the figure quiet.
   const wanted = element.dataset.instrument === "true" ? "auto" : false;
-  const chrome: { controls?: boolean | "auto"; readout?: boolean | "auto" } = {};
+  const chrome: {
+    controls?: boolean | "auto";
+    readout?: boolean | "auto";
+    machineControls?: boolean | "auto";
+    width?: number;
+  } = {
+    /*
+     * Always deferred, never forced. The machine bar is content-gated in the runtime anyway (it
+     * hides itself when the scene declares no controls), so `"auto"` changes nothing a reader can
+     * see — it only stops an empty `<div>` being created for a scene with no machine. That matters
+     * because the stylesheet asks `:has(… .kg-figure__machine)` whether this figure has chrome, and
+     * an always-present empty bar would answer yes for every figure on the site.
+     */
+    machineControls: "auto",
+  };
   if (element.dataset.controls === undefined) chrome.controls = wanted;
   if (element.dataset.readout === undefined) chrome.readout = wanted;
+  /*
+   * A quiet figure is mounted at the width its geometry was decided at, so the live drawing is
+   * the *same* drawing the reader was already looking at rather than a re-layout of it.
+   *
+   * Left to measure its container, the runtime re-resolves the scene at the column width: boxes
+   * narrow, labels wrap, and the diagram silently rearranges itself — and gets taller — the
+   * moment JavaScript lands. That is the last of the hydration jump once the chrome is gone. It
+   * also drags the runtime back into the failure the pre-rendered frame was fixed for: at 390px a
+   * re-laid-out figure is scaled to 0.41 and its 16px type lands at 6px, while the frame beside it
+   * scrolls at 0.7. Fixing the width makes the live figure keep the frame's scroll-don't-shrink
+   * behaviour, which is what `--pg-figure-min-scale` has meant all along.
+   *
+   * An opted-in figure keeps the responsive layout: it is a thing to be driven, its chrome
+   * already reflows, and nobody reading it is mid-sentence.
+   */
+  if (wanted === false) {
+    const width = naturalWidth(element);
+    if (width !== undefined) chrome.width = width;
+  }
   return chrome;
 }

@@ -79,11 +79,27 @@ describe("pagina dev --edit", () => {
     api = `${origin}/__pagina/edit`;
   }, 60_000);
 
+  /**
+   * Shutting a Vite dev server down is two slow things, and this suite has been intermittently red
+   * because of both — a failed file whose thirty assertions all passed, which is the least useful
+   * kind of failure.
+   *
+   * 1. `server.close()` waits on the HTTP server, and an HTTP server waits on every connection
+   *    still open — including the event stream the SSE test subscribed to. Aborting that fetch
+   *    closes the *client* half; the server's half lives until its socket is destroyed, which can
+   *    take the whole keep-alive timeout. Destroying the sockets first removes that wait.
+   * 2. It then closes a file watcher whose tree reaches through the linked Kineglyph checkout, and
+   *    that can take tens of seconds on a machine already busy with the other suites.
+   *
+   * The sockets are gone and the process is about to exit, so a slow watcher must not be able to
+   * fail the run. Hence bounded rather than unbounded: it is a teardown, not an assertion.
+   */
   afterAll(async () => {
-    await server?.close();
+    (server?.httpServer as { closeAllConnections?: () => void } | undefined)?.closeAllConnections?.();
+    await Promise.race([server?.close(), new Promise((resolve) => setTimeout(resolve, 5_000))]);
     if (folder !== undefined) await rm(folder, { recursive: true, force: true });
     if (outside !== undefined) await rm(outside, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it("lists the folder, skipping dotfiles and node_modules", async () => {
     const res = await fetch(`${api}/files`);

@@ -125,7 +125,44 @@ colours it was drawn with. The tokens re-tint; they are never required.
 A figure wider than the column **scrolls rather than shrinks**, the same treatment `pre` gets,
 because a diagram scaled to a phone takes its 16px type down to 6px with it.
 `--pg-figure-min-scale` is the floor: below `0.7` of its natural width a figure keeps its size and
-its frame scrolls sideways.
+its frame scrolls sideways. The live figure obeys the same floor, because a quiet figure is mounted
+at the width its geometry was decided at — the reader gets the picture they were already looking
+at, not a re-layout of it, and nothing moves when the runtime lands.
+
+### A figure in prose is a picture: `data-instrument`
+
+By default a published figure carries **no readout and no transport**. It is a diagram, a frame and
+a caption. An author opts a figure into playback and inspection one figure at a time:
+
+```html
+<figure class="kg" data-scene="scenes/pipeline.mjs" data-instrument="true">
+  <figcaption>Step through the pipeline.</figcaption>
+</figure>
+```
+
+| The figure says | What it gets |
+|---|---|
+| nothing (the default) | the drawing and its caption |
+| `data-instrument="true"` | whatever the scene justifies — see below |
+| `data-controls` / `data-readout` | exactly that, unconditionally |
+
+**Opting in is a request, not an instruction.** Kineglyph decides what a scene can honestly offer:
+a transport only where there is a timeline to drive, a readout only where some part of the diagram
+is inspectable. So `data-instrument="true"` on a still diagram still shows no Play button, because
+a disabled control against a 0.0s track is furniture. The two are decided separately — a scene with
+inspectable parts and no timeline gets a readout and no transport.
+
+`data-controls`/`data-readout` remain the escape hatch and always win, so a figure authored before
+this default existed renders exactly as it did. The set that changes appearance is the set that
+never said anything, which is the set this is for. The Figure Builder writes the attribute from the
+figure card's **Interactive** toggle, and the editor's preview shows the chrome the published page
+will have.
+
+The chrome, when it is there, takes the same tokens the diagram does: the runtime's shell colours
+are references into `--kg-color-*`, its buttons show a visible focus outline (not only a ring, so
+forced-colours mode keeps it), and its hover transitions are dropped under `prefers-reduced-motion`.
+A figure with no chrome is drawn without the shell's box entirely — around a bare diagram that box
+is a second frame over a picture that already paints its own canvas.
 
 ### Admonitions
 

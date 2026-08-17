@@ -218,3 +218,146 @@ test.describe("the same figure on a phone", () => {
     await page.screenshot({ path: `${SHOTS}phone.png`, fullPage: false });
   });
 });
+
+/* ------------------------------------------------------------------------------------------- *
+ * Quiet by default, and what "quiet" is worth.
+ * ------------------------------------------------------------------------------------------- */
+
+/** The three figures the fixture carries, one per chrome state. */
+const QUIET = FIGURE; // said nothing → a picture
+const OPTED_IN = "figure.kg#instrument-demo"; // data-instrument="true"
+const AS_BEFORE = "figure.kg#chrome-demo"; // data-controls/readout="true" → what every figure was
+
+const chromeOf = async (page: Page, selector: string): Promise<Record<string, number>> => ({
+  readout: await page.locator(`${selector} .kg-figure__readout`).count(),
+  controls: await page.locator(`${selector} .kg-figure__controls`).count(),
+});
+
+test.describe("a figure in prose is a picture", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+  });
+
+  test("wears no readout and no transport when the author asked for neither", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await settled(page);
+
+    expect(await chromeOf(page, QUIET)).toEqual({ readout: 0, controls: 0 });
+    // The drawing is untouched — this is about the furniture, not the picture.
+    await expect(page.locator(`${QUIET} [data-kg-stage] svg`)).toBeVisible();
+    // …and with no chrome to hold together, the runtime's own box is gone too, so the figure
+    // does not gain a border it never had in its pre-rendered form.
+    const bordered = await page.locator(`${QUIET} .kg-figure`).evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(bordered).toBe("0px");
+  });
+
+  test("gives an opted-in figure what its scene justifies, and a scene-less bar to nobody", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await settled(page);
+
+    // `data-instrument="true"` on a scene that animates *and* has inspectable boxes: both.
+    expect(await chromeOf(page, OPTED_IN)).toEqual({ readout: 1, controls: 1 });
+    // The transport is live, not a disabled ornament — the complaint that started this.
+    await expect(page.locator(`${OPTED_IN} .kg-figure__controls button`).first()).toBeEnabled();
+  });
+
+  test("leaves a figure that explicitly asked for chrome exactly as it was", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await settled(page);
+    expect(await chromeOf(page, AS_BEFORE)).toEqual({ readout: 1, controls: 1 });
+  });
+
+  test("the quiet figure is markedly shorter than the same figure with the instrument", async ({ page }) => {
+    await page.goto(PUBLISHED);
+    await settled(page);
+
+    const height = async (sel: string): Promise<number> =>
+      await page.locator(sel).evaluate((el) => el.getBoundingClientRect().height);
+    const [quiet, loud] = [await height(QUIET), await height(OPTED_IN)];
+    // Same scene, same caption length class: the whole difference is the chrome. It was ~100px
+    // of readout and transport on every figure on every page.
+    expect(loud - quiet).toBeGreaterThan(80);
+  });
+});
+
+test.describe("hydration does not resize the figure", () => {
+  /**
+   * The measurement the last round left open.
+   *
+   * The pre-rendered frame and the live stage are two different renderings of one diagram, and
+   * the reader sees the first replaced by the second. Any height difference between them is the
+   * page moving under someone mid-sentence. It used to be ~100px, because the runtime added a
+   * readout and a transport that the frame had no equivalent of; with those gone the two should
+   * agree, and this measures rather than assumes it.
+   *
+   * Measured as two loads of the same URL at one viewport — JavaScript off, then on — because
+   * that is exactly what "before and after hydration" means, and it does not race the mount.
+   */
+  const VIEWPORT = { width: 1280, height: 900 };
+
+  const figureHeights = async (page: Page): Promise<Record<string, number>> =>
+    await page.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll("figure.kg")].map((f) => [
+          f.id,
+          Math.round(f.getBoundingClientRect().height * 100) / 100,
+        ]),
+      ),
+    );
+
+  test("the frame and the live stage are the same height, figure for figure", async ({ browser }) => {
+    const staticContext = await browser.newContext({ javaScriptEnabled: false, viewport: VIEWPORT });
+    const staticPage = await staticContext.newPage();
+    await staticPage.goto(PUBLISHED);
+    await expect(staticPage.locator(STATIC)).toBeVisible();
+    const before = await figureHeights(staticPage);
+    await staticContext.close();
+
+    const liveContext = await browser.newContext({ viewport: VIEWPORT });
+    const livePage = await liveContext.newPage();
+    await livePage.goto(PUBLISHED);
+    await settled(livePage);
+    const after = await figureHeights(livePage);
+    await liveContext.close();
+
+    // Printed so a regression reads as numbers rather than as a bare boolean.
+    console.log("[figures] hydration heights", JSON.stringify({ before, after }, null, 1));
+
+    // The quiet figure is the claim: it must not move at all. One pixel of tolerance for
+    // sub-pixel layout rounding between two renderings, and nothing more.
+    expect(Math.abs(after["kg-guide-figures-1"]! - before["kg-guide-figures-1"]!)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after["inline-demo"]! - before["inline-demo"]!)).toBeLessThanOrEqual(1);
+  });
+});
+
+test.describe("what it looks like", () => {
+  /**
+   * The deliverable: the same diagram in the same host theme, three ways, so the change is legible
+   * side by side rather than argued about.
+   *
+   * On the host page — schemat.io-shaped magenta-on-near-black with Figtree — because a figure
+   * that only looks considered in pagina's own palette has not been themed, it has been decorated.
+   */
+  test("quiet, opted in, and as it was — in the host's theme", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/site-figures-dark");
+    await settled(page);
+    await page.waitForFunction(() => document.fonts.ready.then(() => true));
+
+    // A figure in prose: the drawing, its caption, and nothing else.
+    await page.locator(QUIET).screenshot({ path: `${SHOTS}quiet-host.png` });
+    // The same scene, opted into the instrument with `data-instrument="true"`.
+    await page.locator(OPTED_IN).screenshot({ path: `${SHOTS}instrument-host.png` });
+    // And the previous rendering, for comparison: before this change *every* figure looked like
+    // this one, including the two above. It is reachable today only by asking for it explicitly.
+    await page.locator(AS_BEFORE).screenshot({ path: `${SHOTS}previous-rendering-host.png` });
+  });
+
+  test("the quiet figure on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/site-figures-dark");
+    await settled(page);
+    await page.waitForFunction(() => document.fonts.ready.then(() => true));
+    await page.locator(QUIET).screenshot({ path: `${SHOTS}quiet-phone.png` });
+  });
+});

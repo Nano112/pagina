@@ -30,7 +30,7 @@ describe("renderArticle", () => {
     expect(r.pages["/guide/tabs/"]!.html).toContain(`fn main()`);
     expect(r.pages["/guide/tabs/"]!.html).toContain(`href="/"`);
     const figs = r.pages["/guide/figures/"]!.figures;
-    expect(figs.map((f) => f.kind)).toEqual(["module", "inline", "static"]);
+    expect(figs.map((f) => f.kind)).toEqual(["module", "inline", "static", "module", "module"]);
     expect(figs[0]!.scene).toBe("/scenes/demo.mjs");
     expect(r.manifest.figures["inline-demo"]).toMatchObject({ page: "/guide/figures/", kind: "inline" });
     expect(r.manifest.assets).toContain("scenes/demo.mjs");
