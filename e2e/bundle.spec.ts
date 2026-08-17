@@ -37,7 +37,11 @@ test("the published bundle runs in a page that has never heard of Vite", async (
 
   const doc = page.locator(".ProseMirror").first();
   await expect(doc).toBeVisible({ timeout: 30_000 });
+  // The host page sends `page=""`, as Blade does; the editor must fall back to `index.md` rather
+  // than open the path `""` — which the contract answers with its file listing, so the tell is a
+  // document full of JSON.
   await expect(doc).toContainText("Fixture", { timeout: 30_000 });
+  await expect(doc).not.toContainText(`{"files"`);
 
   const sentence = `Typed against the built bundle at ${String(Date.now())}.`;
   await doc.click();

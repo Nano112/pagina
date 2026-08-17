@@ -55,7 +55,10 @@ const page = () => `<!doctype html>
 <body>
 <button type="button" data-publish>Publish</button>
 <span data-publish-status>idle</span>
-<pagina-editor data-editor backend-url="${API}" page="index.md" base="/" theme="light"></pagina-editor>
+<!-- \`page\` is deliberately empty: that is what \`page="{{ $page }}"\` renders for an article
+     opened at its root, and reading it as a value rather than as "unset" made the editor open
+     the path "", which a backend answers with its file listing. -->
+<pagina-editor data-editor backend-url="${API}" page="" base="/" theme="light"></pagina-editor>
 <script type="module">
   import { defineElement } from "/vendor/pagina/editor.js";
   defineElement();

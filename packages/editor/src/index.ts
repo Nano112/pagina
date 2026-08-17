@@ -166,7 +166,20 @@ export class PaginaEditorElement extends HTMLElement {
 
   connectedCallback(): void {
     if (this.#handle !== undefined) return;
-    const attr = (name: string): string | undefined => this.getAttribute(name) ?? undefined;
+    /**
+     * An **empty** attribute means "not set", not "the empty string".
+     *
+     * A host templates these (`page="{{ $page }}"`, `headers="{{ $json }}"`), and a template that
+     * has nothing to say renders `""` rather than omitting the attribute — that is normal Blade,
+     * normal Blade-alikes, and normal JSX. Reading `""` as a value meant `page=""` opened the path
+     * `""`, which the backend answered with its *file listing*, and the author got a JSON dump
+     * where their article should be. Every default below is now reachable the way its documentation
+     * says it is.
+     */
+    const attr = (name: string): string | undefined => {
+      const value = this.getAttribute(name);
+      return value === null || value.trim() === "" ? undefined : value;
+    };
     const theme = attr("theme");
     let headers: Record<string, string> | undefined;
     const raw = attr("headers");
