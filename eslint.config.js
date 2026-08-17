@@ -1,13 +1,16 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**"] },
+  // `e2e/.tmp/` is generated: fixture copies the specs write to, and a *built site* — bundled
+  // third-party JS that has no business in our lint report. Gitignored for the same reason.
+  { ignores: ["**/dist/**", "**/node_modules/**", "e2e/.tmp/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // Plain-JS Node scripts under `e2e/`: the TS configs supply Node's globals everywhere else,
-    // and these files are outside them, so `no-undef` needs the handful they actually use.
-    files: ["e2e/**/*.mjs"],
+    // Plain-JS Node scripts (the e2e host, the shell's CSS build step): the TS configs supply
+    // Node's globals everywhere else, and these files are outside them, so `no-undef` needs the
+    // handful they actually use.
+    files: ["e2e/**/*.mjs", "packages/*/scripts/**/*.mjs"],
     languageOptions: {
       globals: { console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly" },
     },

@@ -94,6 +94,14 @@ For a `<script>` tag rather than a module, use `dist/editor.iife.js`, which defi
 ### Builds and `kineglyph`
 
 `dist/editor.js` (ESM) and `dist/editor.iife.js` bundle React, and share one `dist/editor.css`.
+
+`dist/editor.css` is the only stylesheet the editor needs, under any host. It inlines
+`@pagina/shell-static`'s token *and* reading layers, so the preview pane and the ProseMirror
+document — both `.pg-content` markup — look like the published page even on a host whose CSS
+reset has flattened every heading. It also declares pagina's complete cascade-layer order, so a
+host that links `pagina.css` as well may link the two in either order. See
+[docs/theming.md](../../docs/theming.md#integrating-under-a-host-layout).
+
 **`kineglyph` is deliberately left external**: figures in the preview must hydrate on the *same*
 runtime instance the site's own pages use, so the host page's import map (or bundler alias)
 decides what it resolves to. A host with neither will see figure nodes report
@@ -175,7 +183,8 @@ npm run test:e2e               # Playwright against a real `pagina dev --edit` (
 
 Entry points: `.` (everything), `./model` (schema + markdown parse/serialize, no UI),
 `./store` (the optimistic store + backends, no UI), `./bundle` (`dist/editor.js`),
-`./editor.css`, `./theme.css`.
+`./editor.css` (built, self-contained — link this one), and `./theme.css` (the *source* sheet,
+which `@import`s `@pagina/shell-static`; only useful through a bundler that resolves them).
 
 ## License
 

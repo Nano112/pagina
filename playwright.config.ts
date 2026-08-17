@@ -38,7 +38,10 @@ export default defineConfig({
     },
     {
       name: "bundle",
-      testMatch: /bundle\.spec\.ts/,
+      // `host-theming.spec.ts` belongs here for the same reason: it is about what a *host* gets
+      // from the built stylesheets, and the dev server's import resolution is exactly what hid
+      // the defect it covers.
+      testMatch: /(bundle|host-theming)\.spec\.ts/,
       use: { baseURL: `http://127.0.0.1:${String(STATIC_PORT)}` },
     },
   ],

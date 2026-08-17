@@ -4,75 +4,41 @@
  * Every colour, font and radius is the site's own `--pg-*` token — there is no parallel editor
  * palette — so the editor looks like the site it edits whenever `pagina.css` is on the page, and
  * still looks deliberate when it is not (Laravel, Storybook, a bare host page), because the
- * tokens layer below carries the same neutral defaults. Only genuinely tool-specific values stay
- * `--pge-*`: the 8px grid, the sidebar width and the split ratio.
+ * tokens layer it imports carries the same neutral defaults. Only genuinely tool-specific values
+ * stay `--pge-*`: the 8px grid, the sidebar width and the split ratio.
  *
  * Class prefix is `pge-`; the document surface and the preview keep the site's `.pg-content`
  * typography untouched, because that is the whole point of a WYSIWYG.
  *
- * Two cascade layers, in order: `pagina.tokens` (the contract, shared with the site sheet) and
- * `pagina.editor` (the tool). Layered CSS loses to unlayered CSS at any specificity, so a host
- * restyles the editor with ordinary selectors — see `docs/theming.md`.
+ * ## What this sheet carries, and why it is not just the tool
+ *
+ * `dist/editor.css` is **self-sufficient**: it inlines `@pagina/shell-static`'s tokens *and*
+ * reading layers, so a host that links only the editor's stylesheet still gets a preview pane
+ * and a document surface that look like the published page. That is not a nicety — both are
+ * `.pg-content` markup, and under any host with a CSS reset (Tailwind's preflight, Bootstrap,
+ * anything) an `h1` with no reading layer collapses to body size and the preview stops being a
+ * preview. pagina's own bare shell hid this, because browser defaults filled the gap.
+ *
+ * ## Layer order, and why it cannot depend on load order
+ *
+ * The declaration below names all five pagina layers, in the same order every other pagina
+ * sheet names them. That is what makes the order a property of pagina rather than of the host's
+ * `<link>` sequence: load `pagina.css` first or `editor.css` first, the resulting order is
+ * `reset, tokens, reading, chrome, editor` either way, and the editor's rules win inside the
+ * editor. Before this, `editor.css` declared only two layers, so loading it first put
+ * `pagina.editor` *ahead* of `pagina.reading` and the reading layer won arguments it should
+ * lose — the trap schemat.io worked around by fixing the link order by hand.
+ *
+ * Layered CSS loses to unlayered CSS at any specificity, so a host still restyles the editor
+ * with ordinary selectors — see `docs/theming.md`.
+ *
+ * The two `@import`s are build inputs: Vite inlines them into `dist/editor.css`, which is one
+ * file with one hash and no runtime request. `@import` is legal after a `@layer` statement and
+ * before every other rule, which is exactly where they sit.
  */
-@layer pagina.tokens, pagina.editor;
-
-/* The token contract, kept byte-identical to `@pagina/shell-static`'s `tokens.css` (a test
-   asserts it) so the editor stands alone on a host page that never loads the site sheet.
-   When pagina.css *is* present it defines the same layer with the same values, and a host
-   that maps the tokens with an unlayered rule outranks both. */
-@layer pagina.tokens {
-  :root {
-    /* Surfaces */
-    --pg-bg: #ffffff;
-    --pg-bg-raised: #f6f7f9;
-    --pg-bg-sunken: #eceef2;
-    /* Ink */
-    --pg-fg: #1a1d23;
-    --pg-muted: #6b7280;
-    /* Primary action / links */
-    --pg-accent: #3b5bdb;
-    --pg-accent-fg: #ffffff;
-    /* Rules and borders */
-    --pg-line: #e3e6eb;
-    --pg-line-strong: #c8cdd6;
-    /* Corner rhythm */
-    --pg-radius: 6px;
-    --pg-radius-lg: 10px;
-    /* Type */
-    --pg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    --pg-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    --pg-font-display: var(--pg-font);
-    /* Content column width */
-    --pg-measure: 72ch;
-    /* Admonition hues */
-    --pg-note: #3b5bdb;
-    --pg-tip: #0f9d58;
-    --pg-warning: #b7791f;
-    --pg-danger: #d64545;
-    /* Code surfaces */
-    --pg-code-bg: #f6f7f9;
-    --pg-shiki-bg: #ffffff;
-  }
-
-  /* Dark redefines colours only: geometry, type and measure are scheme-independent. */
-  [data-theme="dark"] {
-    --pg-bg: #14161a;
-    --pg-bg-raised: #1c1f26;
-    --pg-bg-sunken: #0f1115;
-    --pg-fg: #e7e9ee;
-    --pg-muted: #9aa1ac;
-    --pg-accent: #7c9bff;
-    --pg-accent-fg: #0d1117;
-    --pg-line: #2b2f38;
-    --pg-line-strong: #3d434f;
-    --pg-note: #7c9bff;
-    --pg-tip: #3ddc84;
-    --pg-warning: #e0b34c;
-    --pg-danger: #ff7b7b;
-    --pg-code-bg: #1c1f26;
-    --pg-shiki-bg: #1c1f26;
-  }
-}
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
+@import "@pagina/shell-static/client/tokens.css";
+@import "@pagina/shell-static/client/reading.css";
 
 @layer pagina.editor {
   pagina-editor {

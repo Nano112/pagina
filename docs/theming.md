@@ -14,6 +14,10 @@ Four layers of control, from "change nothing" to "keep only the markup":
 | **Reading** | The content column: measure, headings, code, admonitions, tabs, tables, figures | on | override rules, or drop the layer with `theme: "tokens"` |
 | **Chrome** | Header, nav sidebar, TOC, pager, theme toggle, layout grid | on | `chrome: false` drops pagina's header row for yours |
 
+If you are dropping pagina into an application that already has a layout and a CSS reset, read
+[Integrating under a host layout](#integrating-under-a-host-layout) first — it is one page and it
+covers the two things that are not obvious.
+
 ## The token contract
 
 Every token is defined in the `pagina.tokens` layer with the neutral default below, and every
@@ -124,32 +128,128 @@ they are the article's navigation, not the host's.
 Both are available on `buildStatic` and `createDevServer`, and on the CLI as
 `--theme <full|tokens|none>` and `--no-chrome`.
 
-## How the layer trick works
+## Integrating under a host layout
 
-`pagina.css` begins with
+Everything above is about *taste*. This section is about the two things that will otherwise cost
+you an afternoon, and what pagina now guarantees so they don't.
+
+### Link exactly one stylesheet per surface
+
+| What you are rendering | Link | Ships as |
+|---|---|---|
+| Article pages, `theme: "full"` (default) | `pagina.css` | `@pagina/shell-static/dist/pagina.css`, or `_pagina/pagina.css` in a built site |
+| Article pages, `theme: "tokens"` | `pagina.tokens.css` | `@pagina/shell-static/dist/pagina.tokens.css`, or `_pagina/pagina.tokens.css` |
+| Article pages, `theme: "none"` | nothing | — |
+| The editor | `editor.css` | `@pagina/editor/dist/editor.css` |
+
+**One file each, and no more.** Every artefact has its imports inlined at build time, so there is
+no second request to discover and no sibling file to remember to copy. If you are publishing
+pagina's assets into your own `public/` directory (the Laravel package does), copy from `dist/`
+and never from `client/` — `client/*.css` is source, held together by `@import`s that will 404
+next to your copy.
+
+The editor's sheet is **self-sufficient**: it carries the token contract and the reading layer
+itself. A host that links only `editor.css` still gets a preview pane and a document surface that
+match the published page. If you render both an article page and the editor, link both sheets —
+**in any order**. Which comes first cannot change the cascade; see below.
+
+### The CSS-reset trap, and what pagina does about it
+
+Every reset — Tailwind's preflight, Bootstrap's, your own three lines — says something like
 
 ```css
-@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;
+h1, h2, h3 { font-size: inherit; font-weight: inherit; margin: 0; }
+ul, ol { list-style: none; padding: 0; }
 ```
 
-and every rule in the file lives inside one of those four. Two consequences:
+A stylesheet that sets `.pg-content h1 { font-size: 1.9rem }` and lets the *browser* supply the
+weight, the margins and the list markers is only half a stylesheet: under a reset, the half it
+never wrote is simply gone, and an article renders as undifferentiated body text.
+
+pagina's reading layer therefore states every one of those values explicitly, including the ones
+that merely restate a browser default. Nothing changes on a page without a reset; a page with one
+gets the same result. This is checked in a browser, against built files, on a host page that
+loads a preflight-shaped reset before pagina's assets (`e2e/host-theming.spec.ts`).
+
+Two caveats that remain yours:
+
+- A reset is *unlayered* by default in some setups. Unlayered CSS beats layered CSS at any
+  specificity, and pagina's rules are all layered — that asymmetry is the whole escape hatch, so
+  an unlayered `h1 { font-size: inherit }` will flatten pagina's headings and pagina cannot and
+  should not fight it. Put your reset in a layer (Tailwind's preflight already lives in
+  `@layer base`), or scope it away from `.pg-content`.
+- pagina styles the content column, not your page. `body` background, colour and font come from
+  the `pagina.reset` layer, which your own body rules outrank.
+
+### Link order does not matter
+
+Each pagina stylesheet — `pagina.css`, `pagina.tokens.css`, `editor.css` — opens by declaring the
+*complete* layer order:
+
+```css
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
+```
+
+Whichever one the browser sees first fixes that order for all of them, so
+`<link editor.css><link pagina.css>` and `<link pagina.css><link editor.css>` produce identical
+results. (Earlier, `editor.css` named only its own two layers, which meant loading it first
+registered `pagina.editor` *ahead* of `pagina.reading` and the reading layer started winning
+arguments inside the editor. Hosts had to know to order the links by hand. They no longer do.)
+
+Your own layers sort relative to pagina's by whichever sheet declares them first, so if you care,
+declare yours before loading pagina — or leave them unlayered and win outright.
+
+### Cache-bust by content
+
+Stamp each pagina stylesheet with a hash of *that file's* bytes — `pagina.css?v=<sha of
+pagina.css>` — and stop there. That is enough because no pagina artefact imports another one: an
+`@import`ed file has no URL of its own for a cache-buster to stamp, so a tokens-only change would
+leave the importing sheet's hash untouched and every browser would keep the stale copy. pagina
+inlines its imports at build time precisely so you do not have to fold sibling files into your
+own version hash.
+
+## How the layer trick works
+
+Every pagina stylesheet begins with
+
+```css
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
+```
+
+and every rule in every file lives inside one of those five. Two consequences:
 
 1. **Unlayered CSS beats layered CSS, at any specificity.** In the cascade, layer order is
    consulted *before* specificity, and the unlayered "implicit layer" sorts last — i.e. highest.
    Your `.pg-content h2` (specificity 0,1,1) therefore beats pagina's `.pg-content h2` inside
    `pagina.chrome`, and would beat it even if pagina's were `#id .pg-content h2`.
-2. **The declaration line fixes the internal order.** Naming all four up front means
-   `pagina.chrome` wins over `pagina.reading` regardless of where each block appears in the
-   file — and if you want to add to a layer yourself (`@layer pagina.reading { … }`), you land in
-   the right slot.
+2. **The declaration line fixes the order, across files.** Naming all five up front means
+   `pagina.chrome` wins over `pagina.reading` regardless of where each block appears — and,
+   because *every* pagina sheet names the same five, regardless of which sheet a host loads
+   first. `pagina.editor` is in the site sheet's list for exactly that reason, though the site
+   sheet never puts a rule in it. If you want to add to a layer yourself
+   (`@layer pagina.reading { … }`), you land in the right slot.
 
-`tokens.css` is the single source for the reset and tokens layers: `pagina.css` `@import`s it,
-and the build copies the same file to `_pagina/pagina.tokens.css` for `theme: "tokens"`. One
-file, so the two sheets cannot drift. (The alternative — slicing the layers back out of the
-built `pagina.css` — would mean parsing our own output in two places, dev and build, to
-reproduce something we already have on disk.)
+### Sources, and what actually ships
 
-One caveat worth knowing: the production build minifies with lightningcss, which drops the
+`packages/shell-static/client/` holds three source files, and `pagina.css` is composed of the
+other two:
+
+| Source | Layers | Also ships alone as |
+|---|---|---|
+| `tokens.css` | `pagina.reset`, `pagina.tokens` | `pagina.tokens.css` |
+| `reading.css` | `pagina.reading` | `pagina.reading.css` |
+| `pagina.css` | the two above, plus `pagina.chrome` | `pagina.css` |
+
+`@pagina/editor`'s `theme.css` imports the first two, which is what makes `editor.css`
+self-sufficient and what stops the editor's idea of the tokens drifting from the shell's — there
+is no copy to keep in step.
+
+The `@import`s are **build inputs**. Every published artefact has them inlined: the package build
+(`scripts/build-css.mjs`) writes `dist/*.css`, a site build writes `_pagina/pagina.css`, and
+Vite writes `dist/editor.css`. A host never sees an `@import`, and never needs a second request
+or a second hash. See [Cache-bust by content](#cache-bust-by-content).
+
+One caveat worth knowing: the production builds minify with lightningcss, which drops the
 standalone `@layer` declaration when it can prove the order by sorting the layer *blocks* into
-declared order instead. The cascade is identical; the shipped `pagina.tokens.css` is copied
-unminified and keeps the line.
+declared order instead — keeping a bare `@layer pagina.editor;` for a slot it has no block for.
+The cascade is identical. The unminified `dist/*.css` artefacts keep the line verbatim.

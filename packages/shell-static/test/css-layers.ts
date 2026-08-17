@@ -1,11 +1,46 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-/** The four layers `pagina.css` declares, in cascade order. */
-export const PAGINA_LAYERS = ["pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome"] as const;
+/**
+ * The five layers *every* pagina sheet declares, in cascade order.
+ *
+ * `pagina.editor` is in the list even though `@pagina/shell-static` never puts a rule in it:
+ * declaring the same complete order in every sheet is what makes a host's `<link>` order
+ * irrelevant. Drop it from the site sheet and loading `editor.css` first would register
+ * `pagina.editor` ahead of `pagina.reading`.
+ */
+export const PAGINA_LAYERS = [
+  "pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome", "pagina.editor",
+] as const;
 
-export const read = (rel: string): string =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+/** The declaration statement itself, verbatim, as it must appear first in every sheet. */
+export const PAGINA_LAYER_DECLARATION = `@layer ${PAGINA_LAYERS.join(", ")};`;
+
+/**
+ * The cascade order a *built* sheet establishes: layer blocks and slot-reserving declarations in
+ * document order, deduplicated. Minifiers (lightningcss, in both our build paths) are free to
+ * drop the leading declaration when they can prove the order by sorting blocks instead, so the
+ * source's first line and the artefact's shape differ — this reads what the cascade reads.
+ */
+export function effectiveLayerOrder(css: string): string[] {
+  const seen: string[] = [];
+  for (const m of stripComments(css).matchAll(/@layer\s+([a-z.,\s]+?)\s*([;{])/g)) {
+    for (const name of m[1]!.split(",").map((s) => s.trim())) {
+      if (name !== "" && !seen.includes(name)) seen.push(name);
+    }
+  }
+  return seen;
+}
+
+/**
+ * A path relative to *this* file, absolute.
+ *
+ * Resolved here rather than at the call site because the suite runs under jsdom, where the test
+ * module's own `import.meta.url` is an `http:` URL and `fileURLToPath` throws on it.
+ */
+export const filePath = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
+
+export const read = (rel: string): string => readFileSync(filePath(rel), "utf8");
 
 /** Strips comments, so a `@layer` mentioned in prose is never mistaken for a statement. */
 export const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, "");

@@ -1,0 +1,115 @@
+/* @pagina/shell-static — the reading layer -------------------------------------------------
+ *
+ * The content column and nothing else: typography, code, admonitions, tabs, tables, figures.
+ * Everything here is scoped to `.pg-content` or to a `pg-`/`kg-` class the renderer emits, so
+ * the sheet is safe to load on a host page that has its own layout.
+ *
+ * It is a file of its own because *two* surfaces need it and only one of them used to get it:
+ * the published page (via `pagina.css`) and the editor (`@pagina/editor`'s `theme.css`, for both
+ * the preview pane and the ProseMirror document, which are the same `.pg-content` markup). Under
+ * a host with a CSS reset the difference is not subtle — an `h1` with no reading layer is body
+ * size, and the preview stops resembling the page it is previewing.
+ *
+ * The layer-order declaration must stay the first statement: it fixes the order no matter which
+ * pagina sheet a host happens to load first. See `docs/theming.md`.
+ */
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
+
+@layer pagina.reading {
+  a { color: var(--pg-accent); }
+  code, pre, kbd { font-family: var(--pg-font-mono); font-size: 0.875em; }
+
+  /* Content typography ----------------------------------------------------------------------
+   *
+   * Headings and lists state *everything* they need, including the values that happen to match a
+   * browser default (`font-weight: 700`, the heading margins, the list markers and indent).
+   * Leaning on the UA sheet for those was the bug: under a host reset — Tailwind's preflight sets
+   * `font-size: inherit; font-weight: inherit; margin: 0` on every heading and strips list
+   * markers — the UA rule is gone and pagina's rules were only ever half the declaration. The
+   * published page looked fine because pagina's own shell has no reset; the editor's preview,
+   * dropped into a host that has one, rendered an `h1` at body size in book weight.
+   *
+   * Every value below is the one that was previously arriving from the UA sheet, so nothing about
+   * a page without a reset changes. */
+  .pg-content { max-width: var(--pg-measure); }
+  .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
+    font-family: var(--pg-font-display); font-weight: 700; line-height: 1.25; scroll-margin-top: 4rem;
+  }
+  .pg-content h1 { font-size: 1.9rem; margin: 0.67em 0; }
+  .pg-content h2 { font-size: 1.4rem; margin: 2rem 0 0.83em; }
+  .pg-content h3 { font-size: 1.15rem; margin: 1.5rem 0 1em; }
+  .pg-content h4 { margin: 1.33em 0; }
+  .pg-content p, .pg-content ul, .pg-content ol { margin: 0.9rem 0; }
+  .pg-content ul, .pg-content ol { padding-inline-start: 40px; }
+  .pg-content ul { list-style: disc; }
+  .pg-content ul ul { list-style: circle; }
+  .pg-content ul ul ul { list-style: square; }
+  .pg-content ol { list-style: decimal; }
+  .pg-content img { max-width: 100%; }
+  .pg-content blockquote {
+    margin: 1.25rem 0; padding: 0 0 0 1rem;
+    border-left: 3px solid var(--pg-line-strong); color: var(--pg-muted);
+  }
+  .pg-content pre {
+    position: relative; overflow: auto; background: var(--pg-code-bg);
+    border: 1px solid var(--pg-line); border-radius: var(--pg-radius-lg); padding: 0.9rem 1rem;
+  }
+  .pg-content :not(pre) > code {
+    background: var(--pg-code-bg); border-radius: var(--pg-radius); padding: 0.1rem 0.35rem;
+  }
+
+  /* Tables ---------------------------------------------------------------------------------- */
+  .pg-content table { border-collapse: collapse; margin: 1.25rem 0; }
+  .pg-content th, .pg-content td {
+    border: 1px solid var(--pg-line); padding: 0.4rem 0.65rem; text-align: left;
+  }
+  .pg-content thead th { background: var(--pg-bg-sunken); border-bottom-color: var(--pg-line-strong); }
+
+  /* Tabs -------------------------------------------------------------------------------------- */
+  .pg-tabs { margin: 1rem 0; }
+  .pg-tabs__list { display: flex; gap: 0; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--pg-line); }
+  .pg-tabs [role="tab"] {
+    background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+    padding: 0.5rem 0.9rem; color: var(--pg-muted); font: inherit; font-size: 0.9rem;
+  }
+  .pg-tabs [role="tab"][aria-selected="true"] { color: var(--pg-accent); border-bottom-color: var(--pg-accent); font-weight: 600; }
+  .pg-tabs [role="tabpanel"][hidden] { display: none; }
+  .pg-tabs [role="tabpanel"] { padding-top: 0.9rem; }
+
+  /* Admonitions -------------------------------------------------------------------------------- */
+  .pg-admonition {
+    border-left: 3px solid var(--pg-note); background: var(--pg-bg-raised);
+    border-radius: 0 var(--pg-radius) var(--pg-radius) 0; padding: 0.75rem 1rem; margin: 1.25rem 0;
+  }
+  .pg-admonition__title { font-weight: 600; margin-bottom: 0.25rem; }
+  .pg-admonition--note { border-color: var(--pg-note); }
+  .pg-admonition--tip { border-color: var(--pg-tip); }
+  .pg-admonition--warning { border-color: var(--pg-warning); }
+  .pg-admonition--danger { border-color: var(--pg-danger); }
+
+  /* Code-copy button ---------------------------------------------------------------------------- */
+  .pg-copy {
+    position: absolute; top: 0.4rem; right: 0.4rem; font-size: 0.75rem;
+    background: var(--pg-bg); color: var(--pg-muted); border: 1px solid var(--pg-line);
+    border-radius: var(--pg-radius); padding: 0.15rem 0.5rem; cursor: pointer;
+  }
+  .pg-copy:hover { color: var(--pg-fg); }
+
+  /* Kineglyph figures --------------------------------------------------------------------------- */
+  figure.kg { margin: 1.5rem 0; }
+  figure.kg [data-kg-stage] { min-height: 8rem; }
+  picture.kg-static img { width: 100%; height: auto; display: block; }
+
+  /* Shiki dual-theme hookup: shiki emits inline `color`/`background-color` plus
+     `--shiki-dark`/`--shiki-dark-bg` custom properties (via `defaultColor: false`); swap to the
+     dark variables under our own dark theme. The `!important` is not a preference: shiki writes
+     its colours as an inline `style`, which no ordinary rule can outrank. `--pg-shiki-bg` gives
+     a host the same handle on the light surface (the dark rule below is more specific, so it
+     still wins under `[data-theme="dark"]`). */
+  .shiki { background-color: var(--pg-shiki-bg) !important; }
+  [data-theme="dark"] .shiki,
+  [data-theme="dark"] .shiki span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}

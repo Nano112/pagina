@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@pagina/core": "*",
+    "@pagina/shell-static": "*",
     "@tiptap/core": "^3.7.2",
     "@tiptap/extension-code": "^3.7.2",
     "@tiptap/extension-color": "^3.7.2",

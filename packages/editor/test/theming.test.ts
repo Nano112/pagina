@@ -1,16 +1,20 @@
 /**
- * The editor is a second surface on the *same* token contract, not a second theme.
+ * The editor is a second surface on the *same* token contract, not a second theme — and, since
+ * the host-integration fix, on the same *reading* layer too.
  *
  * These assertions are what keeps that true: they fail the moment someone reintroduces an
- * editor-local colour, or lets the editor's copy of the token defaults drift from the shell's.
+ * editor-local colour, or lets the editor stop carrying the shell's tokens and reading layers,
+ * or narrows the layer declaration back to the two layers the editor itself uses. That last one
+ * is the subtle one: with only `@layer pagina.tokens, pagina.editor;`, a host that links
+ * `editor.css` before `pagina.css` registers `pagina.editor` *ahead* of `pagina.reading`, and
+ * the reading layer starts winning arguments the editor should win.
  *
  * The layer parser below is a deliberate copy of the one in `@pagina/shell-static`'s suite
  * (`test/css-layers.ts`) rather than an import: each package's `tsconfig` roots at its own
  * directory, and loosening that for one test helper would cost more than fifteen lines do. The
- * *contract* the two share is asserted directly — `pagina.tokens` here must equal `pagina.tokens`
- * there, byte for byte.
+ * *contract* the two share is asserted directly.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -35,25 +39,47 @@ function layerBody(css: string, name: string): string {
 const themeCss = read("../src/ui/theme.css");
 const tokensCss = read("../../shell-static/client/tokens.css");
 const tool = layerBody(themeCss, "pagina.editor");
+/** The complete order every pagina sheet declares, `pagina.editor` last. */
+const DECLARATION = "@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;";
 
 describe("the editor stylesheet", () => {
-  it("declares its two layers first, tokens before tool", () => {
+  it("declares the whole pagina layer order first, so link order cannot change the cascade", () => {
     const first = (/^\s*([^{;]*[;{])/.exec(stripComments(themeCss))?.[1] ?? "").trim();
-    expect(first).toBe("@layer pagina.tokens, pagina.editor;");
+    expect(first).toBe(DECLARATION);
+  });
+
+  it("imports the shell's tokens and reading layers rather than restating them", () => {
+    // Copying them was the old arrangement, and a test had to hold the copies byte-identical.
+    // Importing is the arrangement that cannot drift at all — and it is what makes `editor.css`
+    // self-sufficient: a host that links only the editor's sheet still gets a preview whose
+    // `.pg-content` typography matches the published page.
+    const imports = [...stripComments(themeCss).matchAll(/@import\s+"([^"]+)"/g)].map((m) => m[1]!);
+    expect(imports).toEqual([
+      "@pagina/shell-static/client/tokens.css",
+      "@pagina/shell-static/client/reading.css",
+    ]);
+    // Bare specifiers, so they resolve for a published consumer too — and therefore a real
+    // dependency, not a monorepo-only relative path.
+    const pkg = JSON.parse(read("../package.json")) as { dependencies: Record<string, string> };
+    expect(pkg.dependencies["@pagina/shell-static"]).toBeDefined();
+    for (const spec of imports) {
+      const rel = spec.replace("@pagina/shell-static/", "../../shell-static/");
+      expect(existsSync(fileURLToPath(new URL(rel, import.meta.url))), spec).toBe(true);
+    }
   });
 
   it("leaves no rule outside a layer", () => {
-    // Everything between the two top-level blocks must be whitespace: the declaration, the
-    // tokens block, the editor block, nothing else.
+    // Everything outside the one top-level block must be the declaration and the two imports.
     const rest = stripComments(themeCss)
       .replace(/^@layer[^;]*;/m, "")
-      .replace(`@layer pagina.tokens {${layerBody(themeCss, "pagina.tokens")}}`, "")
+      .replace(/^@import[^;]*;$/gm, "")
       .replace(`@layer pagina.editor {${tool}}`, "");
     expect(rest.trim()).toBe("");
   });
 
-  it("carries the shell's token defaults verbatim, so a bare host page still looks deliberate", () => {
-    expect(layerBody(themeCss, "pagina.tokens")).toBe(layerBody(tokensCss, "pagina.tokens"));
+  it("no longer keeps a second copy of the token defaults", () => {
+    expect(() => layerBody(themeCss, "pagina.tokens")).toThrow();
+    expect(tokensCss).toContain("--pg-accent");
   });
 
   it("keeps only genuinely tool-specific properties as --pge-*", () => {
@@ -76,12 +102,39 @@ describe("the editor stylesheet", () => {
     }
   });
 
-  it("defines every token it consumes", () => {
+  it("consumes only tokens the shell's contract defines", () => {
     const defined = new Set(
-      [...layerBody(themeCss, "pagina.tokens").matchAll(/(?:^|[{;\s])(--pg-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!),
+      [...layerBody(tokensCss, "pagina.tokens").matchAll(/(?:^|[{;\s])(--pg-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!),
     );
     for (const m of tool.matchAll(/var\((--pg-[a-z0-9-]+)/g)) {
       expect(defined.has(m[1]!), `${m[1]} is used but not defined`).toBe(true);
     }
+  });
+});
+
+/**
+ * What a host actually links. The source is three files; `dist/editor.css` must be one, and must
+ * establish the whole cascade on its own.
+ *
+ * Skipped without a build, because `npx vitest run` on a fresh clone has no `dist/`; the e2e
+ * `bundle` project asserts the same thing in a browser, where it cannot be skipped.
+ */
+describe("the built editor.css", () => {
+  const dist = fileURLToPath(new URL("../dist/editor.css", import.meta.url));
+  const built = existsSync(dist) ? readFileSync(dist, "utf8") : undefined;
+
+  it.skipIf(built === undefined)("carries the reading layer, in cascade order, with no import", () => {
+    expect(built).not.toContain("@import");
+    // Minified, so the leading declaration may be gone: lightningcss drops it when it can prove
+    // the order by sorting the blocks instead, and reserves a bare `@layer x;` for the slots it
+    // has no block for. Read the order the way the cascade reads it.
+    const order: string[] = [];
+    for (const m of built!.matchAll(/@layer\s+([a-z.,\s]+?)\s*[;{]/g)) {
+      for (const name of m[1]!.split(",").map((s) => s.trim())) if (!order.includes(name)) order.push(name);
+    }
+    expect(order).toEqual(["pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome", "pagina.editor"]);
+    // The rule whose absence made an unstyled preview under a host reset.
+    expect(built).toMatch(/\.pg-content h1\s*\{[^}]*font-size/);
+    expect(built).toContain("--pg-accent");
   });
 });

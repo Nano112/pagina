@@ -28,20 +28,63 @@ const repo = resolve(here, "..");
 const PORT = Number(process.env.PAGINA_STATIC_PORT ?? 4600);
 const ARTICLE = resolve(here, ".tmp/static-article");
 const API = "/api/articles/fixture";
+/** The built site `e2e/setup.ts` produces, and the base it was built for. Keep the two in step. */
+const SITE = resolve(here, ".tmp/site");
+const SITE_BASE = "/site/";
 
-/** Exactly the five files `sync-assets.sh` copies into the Laravel package, minus the two CSS. */
+/**
+ * Exactly the files `sync-assets.sh` copies into the Laravel package.
+ *
+ * `pagina.css` is the *built* `dist/pagina.css`, not `client/pagina.css`: the source is three
+ * files held together by `@import`, and a host that copies it copies a sheet whose imports
+ * resolve to 404s next to it. Publishing the flattened artefact is the fix; serving it here is
+ * how we notice if it ever stops being emitted.
+ */
 const ASSETS = {
   "/vendor/pagina/editor.js": resolve(repo, "packages/editor/dist/editor.js"),
   "/vendor/pagina/editor.iife.js": resolve(repo, "packages/editor/dist/editor.iife.js"),
   "/vendor/pagina/editor.css": resolve(repo, "packages/editor/dist/editor.css"),
-  "/vendor/pagina/pagina.css": resolve(repo, "packages/shell-static/client/pagina.css"),
+  "/vendor/pagina/pagina.css": resolve(repo, "packages/shell-static/dist/pagina.css"),
+  "/vendor/pagina/pagina.tokens.css": resolve(repo, "packages/shell-static/dist/pagina.tokens.css"),
   "/vendor/pagina/kineglyph-web.js": resolve(
     require_.resolve("@kineglyph/web/package.json"),
     "../dist/kineglyph-web.js",
   ),
 };
 
-const TYPES = { ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
+const TYPES = {
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
+
+/**
+ * A host's CSS reset, shaped like Tailwind's preflight: inside `@layer base`, and linked *before*
+ * pagina's assets.
+ *
+ * This is the trap. `h1 { font-size: inherit }` is what every reset says, pagina's own bare shell
+ * never had one, and browser heading defaults papered over the gap in every test we had. A sheet
+ * that does not carry the reading layer leaves the preview's `h1` at body size — which is to say
+ * the preview stops resembling the page it previews, which is the pane's entire job.
+ *
+ * Layered rather than unlayered on purpose: pagina's contract is that *unlayered* host CSS wins,
+ * so an unlayered reset flattening the headings would be pagina working as designed. A preflight
+ * in `@layer base` is the real-world case, and pagina's layers must sort after it however the
+ * `<link>`s are ordered.
+ */
+const RESET = `<style>
+@layer base;
+@layer base {
+  h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; margin: 0; }
+  p, blockquote, figure, pre, ul, ol { margin: 0; }
+  ul, ol { list-style: none; padding: 0; }
+  a { color: inherit; text-decoration: inherit; }
+  img { display: block; max-width: 100%; }
+}
+</style>`;
 
 /** The Blade view's shape: import map, stylesheet, element, `defineElement()`, publish button. */
 const page = () => `<!doctype html>
@@ -76,6 +119,43 @@ const page = () => `<!doctype html>
 </script>
 </body></html>`;
 
+/**
+ * The same editor page, under a host that has a CSS reset and knows nothing about pagina's
+ * layer order.
+ *
+ * Two variants, because the guarantee has two halves:
+ *
+ *  - `sheets: ["editor.css"]` — a host that links *only* the editor's stylesheet still gets a
+ *    preview that matches the published page. `editor.css` carries the reading layer itself.
+ *  - `sheets: ["editor.css", "pagina.css"]` — the editor's sheet first, which is the order that
+ *    used to break: `editor.css` declared only `pagina.tokens, pagina.editor`, so loading it
+ *    first registered `pagina.editor` *ahead* of `pagina.reading`. schemat.io worked around it
+ *    by linking `pagina.css` first. Every pagina sheet now declares the whole order, so both
+ *    orders produce the same cascade and the workaround is unnecessary.
+ */
+const resetHostPage = (sheets) => `<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8"><title>Editing (host with a reset)</title>
+${RESET}
+${sheets.map((s) => `<link rel="stylesheet" href="/vendor/pagina/${s}">`).join("\n")}
+<script type="importmap">{"imports":{"kineglyph":"/vendor/pagina/kineglyph-web.js"}}</script>
+</head>
+<body>
+<pagina-editor data-editor backend-url="${API}" page="" base="/" theme="light"></pagina-editor>
+<script type="module">
+  import { defineElement } from "/vendor/pagina/editor.js";
+  defineElement();
+  window.__paginaDefined = true;
+</script>
+</body></html>`;
+
+const HOST_PAGES = {
+  "/host-reset": () => resetHostPage(["editor.css"]),
+  "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
+  "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),
+};
+
 const edit = viteEditMiddleware(ARTICLE, { base: API, siteBase: "/" });
 
 createServer((req, res) => {
@@ -98,6 +178,26 @@ createServer((req, res) => {
         res.setHeader("content-type", "text/html; charset=utf-8");
         res.end(page());
         return;
+      }
+      const hostPage = HOST_PAGES[path];
+      if (hostPage !== undefined) {
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        res.end(hostPage());
+        return;
+      }
+      // The published site, served as flat files at its own base — no rewriting, no index
+      // synthesis beyond the directory index every static host does.
+      if (path.startsWith(SITE_BASE)) {
+        const rel = path.slice(SITE_BASE.length) + (path.endsWith("/") ? "index.html" : "");
+        const file = resolve(SITE, rel);
+        if (file.startsWith(`${SITE}/`)) {
+          try {
+            const bytes = await readFile(file);
+            res.setHeader("content-type", TYPES[extname(file)] ?? "application/octet-stream");
+            res.end(bytes);
+            return;
+          } catch { /* fall through to 404 */ }
+        }
       }
       res.statusCode = 404;
       res.end("not found");

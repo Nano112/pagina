@@ -7,15 +7,21 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./pagina.css": "./dist/pagina.css",
+    "./pagina.tokens.css": "./dist/pagina.tokens.css",
+    "./pagina.reading.css": "./dist/pagina.reading.css",
+    "./client/*": "./client/*",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "src",
-    "client"
+    "client",
+    "scripts"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-css.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

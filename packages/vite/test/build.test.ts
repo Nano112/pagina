@@ -3,6 +3,7 @@ import { cp, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promise
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { staticShell } from "@pagina/shell-static";
 import { buildStatic, bundleClient } from "../src/index.js";
 import { stubShell } from "./stub-shell.js";
 
@@ -95,18 +96,53 @@ describe("bundleClient", () => {
     const tokens = await readFile(join(outDir, "_pagina/pagina.tokens.css"), "utf8");
     const source = await readFile(new URL("../../shell-static/client/tokens.css", import.meta.url), "utf8");
     expect(tokens).toBe(source);
-    expect(tokens).toContain("@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;");
+    expect(tokens).toContain("@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;");
 
     // The bundled sheet is minified by lightningcss, which drops the standalone `@layer`
     // declaration *because* it has already sorted the blocks into the declared order — so the
     // guarantee to assert on the emitted file is the block order, which is what the cascade
     // actually reads. (`docs/theming.md` says the same.)
     const css = await readFile(join(outDir, "_pagina/pagina.css"), "utf8");
-    expect([...css.matchAll(/@layer\s+([a-z.]+)\s*\{/g)].map((m) => m[1])).toEqual([
-      "pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome",
+    // Blocks *and* the bare `@layer x;` lightningcss keeps for a slot it has no block for
+    // (`pagina.editor` — the site sheet reserves it so `editor.css` cannot land ahead of the
+    // reading layer). Together they are the order the cascade reads.
+    const order: string[] = [];
+    for (const m of css.matchAll(/@layer\s+([a-z.,\s]+?)\s*[;{]/g)) {
+      for (const name of m[1]!.split(",").map((s) => s.trim())) if (!order.includes(name)) order.push(name);
+    }
+    expect(order).toEqual([
+      "pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome", "pagina.editor",
     ]);
+    // Both source `@import`s are inlined, so a host gets one file with one hash — an imported
+    // sheet has no URL of its own for a cache-buster to stamp.
     expect(css).not.toContain("@import");
+    expect(css).toContain(".pg-content h1");
     expect(css).toContain("--pg-accent");
+  }, 60_000);
+
+  /**
+   * The defect this closes: `pagina.tokens.css` was a *name* — the template linked it and the
+   * docs published it — with nothing checking that a build ever wrote a file under that name. A
+   * `theme: "tokens"` site therefore shipped a `<link>` to a 404 and rendered untokenised.
+   *
+   * So: build at every theme level with the *real* shell, and follow each `<link rel=stylesheet>`
+   * to the file it names. This is deliberately blind to which name is right — rename the artefact
+   * or rename the reference, either fixes it; shipping a link nothing answers does not.
+   */
+  it.each(["full", "tokens", "none"] as const)("links only stylesheets that exist in the built site (theme: %s)", async (theme) => {
+    const outDir = await mkdtemp(join(tmpdir(), `pagina-links-${theme}-`));
+    await buildStatic({ folder: fixture, outDir, shell: staticShell, strict: true, base: "/docs/", theme });
+    const html = await readFile(join(outDir, "index.html"), "utf8");
+    const hrefs = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]!);
+
+    expect(hrefs).toEqual(theme === "none" ? [] : [`/docs/_pagina/pagina${theme === "tokens" ? ".tokens" : ""}.css`]);
+    for (const href of hrefs) {
+      // `outDir` is the directory served *at* base, so base comes off the front of the URL.
+      const file = join(outDir, href.replace(/^\/docs\//, ""));
+      expect(existsSync(file), `${href} is linked but ${file} was never written`).toBe(true);
+      // A file, not an empty placeholder, and one that carries pagina's contract.
+      expect(await readFile(file, "utf8")).toContain("--pg-accent");
+    }
   }, 60_000);
 
   it("skips the tokens sheet for a shell that has none", async () => {

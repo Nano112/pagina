@@ -10,14 +10,22 @@
  * goes the other way). If that control ever stops holding, the assertion under it is worthless
  * and the failure will say so.
  */
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  PAGINA_LAYERS, declaredLayers, definedTokens, layerBody, outsideLayers, read, stripComments,
+  PAGINA_LAYERS, PAGINA_LAYER_DECLARATION, declaredLayers, definedTokens, effectiveLayerOrder,
+  filePath, layerBody, outsideLayers, read, stripComments,
 } from "./css-layers.js";
 
 const paginaCss = read("../client/pagina.css");
 const tokensCss = read("../client/tokens.css");
+const readingCss = read("../client/reading.css");
 const docs = read("../../../docs/theming.md");
+/** The three source files, in the order `pagina.css` composes them. */
+const sheets = { "pagina.css": paginaCss, "tokens.css": tokensCss, "reading.css": readingCss };
 
 /** Injects a stylesheet, with `@import` removed: jsdom does not fetch them. */
 function style(css: string): void {
@@ -27,26 +35,29 @@ function style(css: string): void {
 }
 
 describe("cascade layers", () => {
-  it("declares exactly the four designed layers, as the first statement of the sheet", () => {
+  it("declares the same five layers, first, in every sheet", () => {
     // The declaration fixes the order; a layer first *used* later would sort itself after the
-    // ones named here, so this line has to come before any rule.
-    expect(declaredLayers(paginaCss)).toEqual([...PAGINA_LAYERS]);
-    expect(firstLine(paginaCss)).toBe("@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;");
-    // The tokens-only sheet declares the same four, so linking it alone still fixes the order.
-    expect(declaredLayers(tokensCss)).toEqual([...PAGINA_LAYERS]);
+    // ones named here, so this line has to come before any rule. Repeating the *complete* order
+    // in every sheet is what makes a host's link order irrelevant: whichever pagina sheet lands
+    // first, `pagina.editor` ends up last and `pagina.reading` ends up third.
+    for (const [name, css] of Object.entries(sheets)) {
+      expect(declaredLayers(css), name).toEqual([...PAGINA_LAYERS]);
+      expect(firstLine(css), name).toBe(PAGINA_LAYER_DECLARATION);
+    }
   });
 
   it("leaves no rule outside a layer", () => {
-    const stray = outsideLayers(paginaCss)
-      .replace(/^@layer[^;]*;$/gm, "")
-      .replace(/^@import[^;]*;$/gm, "")
-      .trim();
-    expect(stray).toBe("");
-    expect(outsideLayers(tokensCss).replace(/^@layer[^;]*;$/gm, "").trim()).toBe("");
+    for (const [name, css] of Object.entries(sheets)) {
+      const stray = outsideLayers(css)
+        .replace(/^@layer[^;]*;$/gm, "")
+        .replace(/^@import[^;]*;$/gm, "")
+        .trim();
+      expect(stray, name).toBe("");
+    }
   });
 
   it("puts each rule in the layer that owns it", () => {
-    const reading = layerBody(paginaCss, "pagina.reading")!;
+    const reading = layerBody(readingCss, "pagina.reading")!;
     const chrome = layerBody(paginaCss, "pagina.chrome")!;
     for (const sel of [".pg-content", ".pg-admonition", ".pg-tabs", ".pg-copy", "figure.kg", ".shiki"]) {
       expect(reading, `${sel} belongs to the reading layer`).toContain(sel);
@@ -62,9 +73,56 @@ describe("cascade layers", () => {
   });
 });
 
+/**
+ * The artefacts a host links, as opposed to the sources we edit.
+ *
+ * `client/*.css` is three files held together by `@import`; `dist/*.css` is what ships. The
+ * difference is not cosmetic: an imported sheet has no URL of its own for a host's cache-busting
+ * to stamp, so a tokens-only edit would leave the importing sheet's hash unchanged and every
+ * browser would keep the stale tokens. These assertions are the reason a host may cache-bust by
+ * content and stop there.
+ */
+describe("the built stylesheets", () => {
+  it("inline every import, keep the layer order, and name what the docs tell hosts to link", async () => {
+    const dist = await mkdtemp(join(tmpdir(), "pagina-shell-css-"));
+    // The build step itself, run the way `npm run build` runs it.
+    execFileSync(process.execPath, [filePath("../scripts/build-css.mjs"), dist]);
+    const written = ["pagina.css", "pagina.tokens.css", "pagina.reading.css"];
+
+    const built = Object.fromEntries(
+      await Promise.all(written.map(async (f) => [f, await readFile(join(dist, f), "utf8")] as const)),
+    ) as Record<string, string>;
+
+    for (const [name, css] of Object.entries(built)) {
+      // One file, one request, one hash.
+      expect(stripComments(css), `${name} still imports`).not.toContain("@import");
+      // Exactly one declaration survives the inlining, and it is still the first statement.
+      expect(firstLine(css), name).toBe(PAGINA_LAYER_DECLARATION);
+      expect(stripComments(css).match(/@layer\s+pagina\.[a-z]+\s*,/g), `${name} declarations`).toHaveLength(1);
+    }
+
+    // The full sheet really is the sum of the parts, in cascade order.
+    expect(effectiveLayerOrder(built["pagina.css"]!)).toEqual([...PAGINA_LAYERS]);
+    for (const layer of ["pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome"]) {
+      expect(layerBody(built["pagina.css"]!, layer), `${layer} block`).toBeDefined();
+    }
+    // …and the two partial sheets carry exactly their own layers.
+    expect(layerBody(built["pagina.tokens.css"]!, "pagina.reading")).toBeUndefined();
+    expect(layerBody(built["pagina.reading.css"]!, "pagina.chrome")).toBeUndefined();
+    expect(built["pagina.tokens.css"]).toContain("--pg-accent");
+    expect(built["pagina.reading.css"]).toContain(".pg-content h1");
+  });
+
+  it("is what `docs/theming.md` tells a host to link", () => {
+    // The names are a published surface; a rename that misses the docs is the defect this catches.
+    for (const name of ["pagina.css", "pagina.tokens.css"]) expect(docs).toContain(name);
+  });
+});
+
 describe("an unlayered host rule", () => {
   it("beats pagina's, at lower specificity, with no !important", () => {
     style(tokensCss);
+    style(readingCss);
     style(paginaCss);
     style(`.pg-content h2 { color: rgb(1, 2, 3); }`);
     document.body.innerHTML = `<article class="pg-content"><h2 id="h">Heading</h2></article>`;
@@ -116,7 +174,7 @@ describe("the token contract", () => {
   });
 
   it("uses tokens rather than literals for colour, type and radius", () => {
-    const rules = [layerBody(paginaCss, "pagina.reading")!, layerBody(paginaCss, "pagina.chrome")!].join("\n");
+    const rules = [layerBody(readingCss, "pagina.reading")!, layerBody(paginaCss, "pagina.chrome")!].join("\n");
     // Shadows and the pill toggle are geometry, not palette; nothing here may name a colour.
     expect(rules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(rules).not.toMatch(/\brgba?\(/);

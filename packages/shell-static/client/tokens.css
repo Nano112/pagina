@@ -5,18 +5,20 @@
  * onto these ~20 custom properties and everything pagina draws follows. It is shipped two ways
  * from this one source, so the two can never drift:
  *
- *   - `@import`ed by `pagina.css` (the full sheet), and
- *   - copied verbatim to `_pagina/pagina.tokens.css` for `theme: "tokens"` hosts, which want
- *     pagina's structure and tokens but style the content column themselves.
+ *   - inlined into `pagina.css` (the full sheet) at build time, and
+ *   - copied verbatim to `dist/pagina.tokens.css` and to a built site's
+ *     `_pagina/pagina.tokens.css` for `theme: "tokens"` hosts, which want pagina's structure
+ *     and tokens but style the content column themselves.
  *
  * Everything is inside a cascade layer. Unlayered CSS beats layered CSS whatever its
  * specificity, so a host's plain `.pg-content h2 { … }` wins over pagina without `!important`.
- * The four layers are declared here, in the order the full sheet uses them, so the order is
- * fixed even when only this file is loaded.
+ * All five layers are declared here, in the order the full sheet uses them, so the order is
+ * fixed even when only this file is loaded — and identical to the order every other pagina
+ * sheet declares, so which one a host links first cannot change the cascade.
  *
  * See `docs/theming.md` for the token table and the escape hatches.
  */
-@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
 
 @layer pagina.tokens {
   :root {

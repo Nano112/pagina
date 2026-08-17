@@ -1,11 +1,17 @@
 /* @pagina/shell-static — default theme ----------------------------------------------------
  *
- * Four cascade layers, declared here in cascade order (later wins):
+ * Five cascade layers, declared here in cascade order (later wins):
  *
- *   pagina.reset    box-sizing and body basics
- *   pagina.tokens   the `--pg-*` contract (see `tokens.css`)
- *   pagina.reading  the content column: typography, code, admonitions, tabs, tables, figures
- *   pagina.chrome   header, nav, TOC, pager, theme toggle, layout grid
+ *   pagina.reset    box-sizing and body basics      (tokens.css)
+ *   pagina.tokens   the `--pg-*` contract           (tokens.css)
+ *   pagina.reading  the content column              (reading.css)
+ *   pagina.chrome   header, nav, TOC, pager, theme toggle, layout grid   (below)
+ *   pagina.editor   the editing tool                (@pagina/editor's theme.css)
+ *
+ * `pagina.editor` is named here even though nothing in this file uses it: naming all five in
+ * every pagina sheet is what makes the load order irrelevant. Whichever sheet a host links
+ * first fixes the same order, so the editor's rules win over the reading layer whether the
+ * host loads `pagina.css` before `editor.css` or the other way round.
  *
  * Every rule below lives in a layer, and *unlayered CSS beats layered CSS regardless of
  * specificity*. A host therefore restyles pagina with ordinary selectors and no `!important`;
@@ -14,93 +20,14 @@
  * The declaration line must stay the first statement in the file: it is what fixes the order,
  * and a layer first used later would otherwise sort itself after the ones named here.
  *
- * `tokens.css` carries the reset + tokens layers and is also shipped on its own; it is imported
- * rather than duplicated so the two sheets cannot drift.
+ * The two `@import`s are **build inputs, not runtime requests**: `dist/pagina.css` (and the
+ * `_pagina/pagina.css` a site build emits) has them inlined, so a host links one file with one
+ * hash. An imported sheet has no URL of its own for a host's cache-busting to stamp, which made
+ * a tokens-only edit invisible to the importing sheet's hash. See `docs/theming.md`.
  */
-@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
 @import "./tokens.css";
-
-@layer pagina.reading {
-  a { color: var(--pg-accent); }
-  code, pre, kbd { font-family: var(--pg-font-mono); font-size: 0.875em; }
-
-  /* Content typography ---------------------------------------------------------------------- */
-  .pg-content { max-width: var(--pg-measure); }
-  .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
-    font-family: var(--pg-font-display); line-height: 1.25; scroll-margin-top: 4rem;
-  }
-  .pg-content h1 { font-size: 1.9rem; }
-  .pg-content h2 { font-size: 1.4rem; margin-top: 2rem; }
-  .pg-content h3 { font-size: 1.15rem; margin-top: 1.5rem; }
-  .pg-content p, .pg-content ul, .pg-content ol { margin: 0.9rem 0; }
-  .pg-content img { max-width: 100%; }
-  .pg-content blockquote {
-    margin: 1.25rem 0; padding: 0 0 0 1rem;
-    border-left: 3px solid var(--pg-line-strong); color: var(--pg-muted);
-  }
-  .pg-content pre {
-    position: relative; overflow: auto; background: var(--pg-code-bg);
-    border: 1px solid var(--pg-line); border-radius: var(--pg-radius-lg); padding: 0.9rem 1rem;
-  }
-  .pg-content :not(pre) > code {
-    background: var(--pg-code-bg); border-radius: var(--pg-radius); padding: 0.1rem 0.35rem;
-  }
-
-  /* Tables ---------------------------------------------------------------------------------- */
-  .pg-content table { border-collapse: collapse; margin: 1.25rem 0; }
-  .pg-content th, .pg-content td {
-    border: 1px solid var(--pg-line); padding: 0.4rem 0.65rem; text-align: left;
-  }
-  .pg-content thead th { background: var(--pg-bg-sunken); border-bottom-color: var(--pg-line-strong); }
-
-  /* Tabs -------------------------------------------------------------------------------------- */
-  .pg-tabs { margin: 1rem 0; }
-  .pg-tabs__list { display: flex; gap: 0; list-style: none; margin: 0; padding: 0; border-bottom: 1px solid var(--pg-line); }
-  .pg-tabs [role="tab"] {
-    background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
-    padding: 0.5rem 0.9rem; color: var(--pg-muted); font: inherit; font-size: 0.9rem;
-  }
-  .pg-tabs [role="tab"][aria-selected="true"] { color: var(--pg-accent); border-bottom-color: var(--pg-accent); font-weight: 600; }
-  .pg-tabs [role="tabpanel"][hidden] { display: none; }
-  .pg-tabs [role="tabpanel"] { padding-top: 0.9rem; }
-
-  /* Admonitions -------------------------------------------------------------------------------- */
-  .pg-admonition {
-    border-left: 3px solid var(--pg-note); background: var(--pg-bg-raised);
-    border-radius: 0 var(--pg-radius) var(--pg-radius) 0; padding: 0.75rem 1rem; margin: 1.25rem 0;
-  }
-  .pg-admonition__title { font-weight: 600; margin-bottom: 0.25rem; }
-  .pg-admonition--note { border-color: var(--pg-note); }
-  .pg-admonition--tip { border-color: var(--pg-tip); }
-  .pg-admonition--warning { border-color: var(--pg-warning); }
-  .pg-admonition--danger { border-color: var(--pg-danger); }
-
-  /* Code-copy button ---------------------------------------------------------------------------- */
-  .pg-copy {
-    position: absolute; top: 0.4rem; right: 0.4rem; font-size: 0.75rem;
-    background: var(--pg-bg); color: var(--pg-muted); border: 1px solid var(--pg-line);
-    border-radius: var(--pg-radius); padding: 0.15rem 0.5rem; cursor: pointer;
-  }
-  .pg-copy:hover { color: var(--pg-fg); }
-
-  /* Kineglyph figures --------------------------------------------------------------------------- */
-  figure.kg { margin: 1.5rem 0; }
-  figure.kg [data-kg-stage] { min-height: 8rem; }
-  picture.kg-static img { width: 100%; height: auto; display: block; }
-
-  /* Shiki dual-theme hookup: shiki emits inline `color`/`background-color` plus
-     `--shiki-dark`/`--shiki-dark-bg` custom properties (via `defaultColor: false`); swap to the
-     dark variables under our own dark theme. The `!important` is not a preference: shiki writes
-     its colours as an inline `style`, which no ordinary rule can outrank. `--pg-shiki-bg` gives
-     a host the same handle on the light surface (the dark rule below is more specific, so it
-     still wins under `[data-theme="dark"]`). */
-  .shiki { background-color: var(--pg-shiki-bg) !important; }
-  [data-theme="dark"] .shiki,
-  [data-theme="dark"] .shiki span {
-    color: var(--shiki-dark) !important;
-    background-color: var(--shiki-dark-bg) !important;
-  }
-}
+@import "./reading.css";
 
 @layer pagina.chrome {
   /* Header ----------------------------------------------------------------------------------- */
