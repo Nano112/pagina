@@ -76,6 +76,54 @@ describe("renderPageHtml", () => {
   });
 });
 
+describe("theme levels and chrome", () => {
+  const link = /<link rel="stylesheet" href="([^"]*)">/g;
+  const links = (html: string) => [...html.matchAll(link)].map((m) => m[1]);
+
+  it("links the full sheet by default", () => {
+    expect(links(renderPageHtml(article, "/", ctx))).toEqual(["/_pagina/pagina.css"]);
+  });
+
+  it('links the tokens sheet, and not the full one, at theme "tokens"', () => {
+    const html = renderPageHtml(article, "/", { ...ctx, theme: "tokens", tokensCssUrl: "/_pagina/pagina.tokens.css" });
+    expect(links(html)).toEqual(["/_pagina/pagina.tokens.css"]);
+    expect(html).not.toContain("/_pagina/pagina.css");
+  });
+
+  it("derives the tokens sheet from the full one when the builder did not say", () => {
+    // Every pagina build emits the pair side by side, so the fallback is the layout, not a guess.
+    expect(links(renderPageHtml(article, "/", { ...ctx, theme: "tokens" }))).toEqual(["/_pagina/pagina.tokens.css"]);
+    expect(links(renderPageHtml(article, "/", { ...ctx, theme: "tokens", base: "/docs/", cssUrl: "/docs/_pagina/pagina.css" })))
+      .toEqual(["/docs/_pagina/pagina.tokens.css"]);
+  });
+
+  it('links no stylesheet at all at theme "none"', () => {
+    const html = renderPageHtml(article, "/", { ...ctx, theme: "none" });
+    expect(links(html)).toEqual([]);
+    // Structure is still the contract: the class names and the markup are all there.
+    expect(html).toContain(`class="pg-content"`);
+    expect(html).toContain(`class="pg-shell"`);
+  });
+
+  it("keeps every theme level on the same markup", () => {
+    const strip = (html: string) => html.replace(link, "");
+    expect(strip(renderPageHtml(article, "/g/page/", { ...ctx, theme: "tokens" })))
+      .toBe(strip(renderPageHtml(article, "/g/page/", ctx)));
+    expect(strip(renderPageHtml(article, "/g/page/", { ...ctx, theme: "none" })))
+      .toBe(strip(renderPageHtml(article, "/g/page/", ctx)));
+  });
+
+  it("omits pagina's header — and only its header — under chrome: false", () => {
+    const html = renderPageHtml(article, "/g/page/", { ...ctx, chrome: false });
+    expect(html).not.toContain("pg-header");
+    expect(html).not.toContain("data-pagina-theme-toggle");
+    // The sidebar, TOC and pager are the article's own navigation and stay.
+    expect(html).toContain(`class="pg-nav"`);
+    expect(html).toContain(`class="pg-toc"`);
+    expect(html).toContain(`class="pg-pager"`);
+  });
+});
+
 describe("the <model-viewer> module", () => {
   /** The same article with a 3-D model on one of its two pages. */
   const withModel: RenderedArticle = {

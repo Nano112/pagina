@@ -3,10 +3,12 @@ import { cp, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promise
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildStatic } from "../src/index.js";
+import { buildStatic, bundleClient } from "../src/index.js";
 import { stubShell } from "./stub-shell.js";
 
 const fixture = new URL("../../core/test/fixture/", import.meta.url).pathname;
+/** The real shell's client entry, for the CSS-emission assertions below. */
+const shellClient = new URL("../../shell-static/client/pagina.ts", import.meta.url).pathname;
 
 describe("buildStatic", () => {
   it("emits pages, copies assets, pre-renders figures, writes manifest and runtime", async () => {
@@ -79,5 +81,38 @@ describe("buildStatic", () => {
 
     const strictOut = await mkdtemp(join(tmpdir(), "pagina-broken-strict-"));
     await expect(buildStatic({ folder, outDir: strictOut, shell: stubShell })).rejects.toThrow(/kg-guide-figures-1/);
+  }, 60_000);
+});
+
+describe("bundleClient", () => {
+  it("ships the tokens sheet beside the full one, from the same source file", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-css-"));
+    const urls = await bundleClient(outDir, "/docs/", shellClient);
+    expect(urls.cssUrl).toBe("/docs/_pagina/pagina.css");
+    expect(urls.tokensCssUrl).toBe("/docs/_pagina/pagina.tokens.css");
+
+    // Copied verbatim: the tokens sheet is the file `pagina.css` imports, not a re-derivation.
+    const tokens = await readFile(join(outDir, "_pagina/pagina.tokens.css"), "utf8");
+    const source = await readFile(new URL("../../shell-static/client/tokens.css", import.meta.url), "utf8");
+    expect(tokens).toBe(source);
+    expect(tokens).toContain("@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome;");
+
+    // The bundled sheet is minified by lightningcss, which drops the standalone `@layer`
+    // declaration *because* it has already sorted the blocks into the declared order — so the
+    // guarantee to assert on the emitted file is the block order, which is what the cascade
+    // actually reads. (`docs/theming.md` says the same.)
+    const css = await readFile(join(outDir, "_pagina/pagina.css"), "utf8");
+    expect([...css.matchAll(/@layer\s+([a-z.]+)\s*\{/g)].map((m) => m[1])).toEqual([
+      "pagina.reset", "pagina.tokens", "pagina.reading", "pagina.chrome",
+    ]);
+    expect(css).not.toContain("@import");
+    expect(css).toContain("--pg-accent");
+  }, 60_000);
+
+  it("skips the tokens sheet for a shell that has none", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-css-none-"));
+    const urls = await bundleClient(outDir, "/", stubShell.clientEntry);
+    expect(urls.tokensCssUrl).toBeUndefined();
+    expect(existsSync(join(outDir, "_pagina/pagina.tokens.css"))).toBe(false);
   }, 60_000);
 });
