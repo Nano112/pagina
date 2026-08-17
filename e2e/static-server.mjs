@@ -250,6 +250,10 @@ async function siteUnderHostTheme(rel) {
 
 const HOST_PAGES = {
   "/site-dark": () => siteUnderHostTheme("index.html"),
+  // A sub-page of the same article, same host, same palette — the proof that the hero is the
+  // *article's* and not every page's. It is a route rather than an assertion on `/site-dark`
+  // because "absent" is only convincing next to a picture of where it is present.
+  "/site-dark-sub": () => siteUnderHostTheme("guide/tabs/index.html"),
   "/host-reset": () => resetHostPage(["editor.css"]),
   "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
   "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),

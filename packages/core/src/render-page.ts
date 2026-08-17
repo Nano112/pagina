@@ -6,6 +6,7 @@ import { extractFigures } from "./figures.js";
 import { hrefOf, resolveRelative, rewriteLinks } from "./links.js";
 import { parseFrontMatter } from "./front-matter.js";
 import { firstParagraph } from "./seo.js";
+import { readingMinutes } from "./reading-time.js";
 
 export interface RenderPageOptions {
   readonly fs: ContentFs; readonly config: ArticleConfig; readonly path: string;
@@ -31,11 +32,16 @@ export async function renderPage(o: RenderPageOptions): Promise<{ page: Rendered
   const figures = figs.figures.map((f) => f.kind === "module" && f.scene !== undefined && !f.scene.startsWith("/") && !/^[a-z]+:/i.test(f.scene)
     ? { ...f, scene: `${base.replace(/\/$/, "")}/${resolveRelative(o.path, f.scene)}` } : f);
   const excerpt = firstParagraph(rendered.html);
+  // Counted on `rendered.html` — before figures became `<picture>` elements and before links were
+  // rewritten — because none of that changes a word of prose, and the earlier the count runs the
+  // fewer generated attributes there are for a tag-stripper to trip over.
+  const minutes = readingMinutes(rendered.html);
   return {
     page: {
       path: o.path, href, title: front.meta.title ?? (rendered.title || o.path), html: linked.html,
       headings: rendered.headings, figures, links: linked.links, frontMatter: front.meta,
       ...(excerpt === undefined ? {} : { excerpt }),
+      ...(minutes === undefined ? {} : { readingMinutes: minutes }),
     },
     diagnostics: [...front.diagnostics, ...snip.diagnostics, ...figs.diagnostics.map((d) => ({ ...d, page: o.path })), ...linked.diagnostics],
   };

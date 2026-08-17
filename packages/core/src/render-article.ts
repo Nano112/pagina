@@ -110,7 +110,13 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     // The description chain, run once here so that every consumer — pagina's shell, a Laravel
     // host reading manifest.json — reaches the same answer without re-deriving it.
     const description = fm.description ?? config.description ?? p.excerpt;
-    const cover = await resolveCover(fm.cover, f.page, o.fs, base, f.page, diagnostics, f.page) ?? articleCover;
+    // The page's own cover and the page's own alt text travel together: a page that overrides the
+    // image but not the description would otherwise be labelled with the article cover's alt.
+    const own = await resolveCover(fm.cover, f.page, o.fs, base, f.page, diagnostics, f.page);
+    const cover = own ?? articleCover;
+    // Never empty and never the filename: an author's words if there are any, else the article
+    // title, which is at least true about what the image is introducing.
+    const coverAlt = (own === undefined ? undefined : fm.coverAlt) ?? config.coverAlt ?? config.title;
     const author = fm.author ?? config.author;
     const published = fm.published ?? config.published;
     const updated = fm.updated ?? config.updated;
@@ -121,8 +127,9 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
       ...(i > 0 ? { prev: hrefOf(present[i - 1]!.page) } : {}),
       ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}),
       ...(description === undefined ? {} : { description: truncateWords(description) }),
-      ...(cover === undefined ? {} : { cover }),
+      ...(cover === undefined ? {} : { cover, coverAlt }),
       ...(author === undefined ? {} : { author }),
+      ...(p.readingMinutes === undefined ? {} : { readingMinutes: p.readingMinutes }),
       ...(published === undefined ? {} : { published }),
       ...(updated === undefined ? {} : { updated }),
       ...(tags.length === 0 ? {} : { tags }),
@@ -140,11 +147,20 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     }
   const figures: Manifest["figures"] = Object.fromEntries(Object.values(pages).flatMap((p) => p.figures.map((f) => [f.id, { page: p.href, kind: f.kind, ...(f.scene === undefined ? {} : { scene: f.scene }), staticBase: `${base}/_pagina/figures/${pageSlug(p.href)}/${f.id}` }])));
   const assets = (await o.fs.list(".")).filter((f) => !/\.md$/i.test(f) && f !== "article.yaml");
+  // The landing page is the first page in nav order — the one a reader arrives at, and the one
+  // `coverOn: "root"` names. Emitted so no consumer has to re-walk `nav` to find it.
+  const rootHref = present.length === 0 ? "/" : hrefOf(present[0]!.page);
+  // The whole article's reading time is the sum of the pages', not a recount of the concatenation:
+  // a card that says "12 min" and a page list whose numbers add to 11 is a card nobody trusts.
+  const totalMinutes = Object.values(metas).reduce((n, m) => n + (m.readingMinutes ?? 0), 0);
   const article: ArticleMeta = {
     slug: config.slug, title: config.title, form: config.form, status: config.status, visibility: config.visibility, tags: config.tags,
+    rootHref, coverOn: config.coverOn,
+    ...(totalMinutes === 0 ? {} : { readingMinutes: totalMinutes }),
     ...(config.category === undefined ? {} : { category: config.category }),
     ...(config.theme === undefined ? {} : { theme: config.theme }),
     ...(articleCover === undefined ? {} : { cover: articleCover }),
+    ...(config.coverAlt === undefined ? {} : { coverAlt: config.coverAlt }),
     ...(config.description === undefined ? {} : { description: config.description }),
     ...(config.author === undefined ? {} : { author: config.author }),
     ...((o.siteUrl ?? config.siteUrl) === undefined ? {} : { siteUrl: o.siteUrl ?? config.siteUrl }),

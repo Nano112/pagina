@@ -76,22 +76,42 @@
   .pg-crumbs a:hover { color: var(--pg-accent); }
   .pg-crumbs__sep { margin: 0 0.35rem; }
 
-  /* Cover ------------------------------------------------------------------------------------------
-   * The article's (or the page's) cover image, above the content and below the breadcrumbs. It is
-   * the same image `og:image` points at, so what a reader sees on the page and what a link preview
-   * shows are one source. `alt=""` on purpose: it is decorative here — the headline immediately
-   * below it carries the meaning, and describing it twice is noise in a screen reader.
+  /* Article header ---------------------------------------------------------------------------------
+   * The cover, the title and the line of provenance, above the content and below the breadcrumbs.
+   * It renders on the article's landing page only, unless `cover_on` says otherwise — a cover
+   * belongs to the article, not to each of its pages. See `docs/theming.md`.
    *
-   * Constrained to the reading measure rather than the full column so it does not tower over the
-   * text it introduces, and given an explicit aspect ratio so the page does not reflow when it
-   * lands. A host that brings its own hero drops `.pg-cover` and loses nothing else.
+   * The title element is the page's own `h1`, *moved* here by the template rather than reprinted,
+   * so it is outside `.pg-content` and the reading layer's heading rules no longer reach it. That
+   * is why the whole declaration is restated below: under a host reset (Tailwind's preflight sets
+   * `font-size: inherit; font-weight: inherit; margin: 0` on every heading) anything left unsaid
+   * arrives flattened, which is exactly the class of bug `host-theming.spec.ts` exists for.
+   *
+   * The cover is constrained to the reading measure rather than the full column so it does not
+   * tower over the text it introduces, and carries an explicit aspect ratio so the page does not
+   * reflow when the image lands — pagina copies the file without decoding it, so no intrinsic
+   * `width`/`height` is knowable at build time and the ratio box is the reflow guard.
+   *
+   * A host that brings its own hero drops `.pg-article-header` and loses nothing else.
    */
-  .pg-cover { margin: 0 0 1.5rem; max-width: var(--pg-measure); }
+  .pg-article-header { margin: 0 0 2rem; max-width: var(--pg-measure); }
+  .pg-cover { margin: 0 0 1.5rem; }
   .pg-cover__img {
     display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover;
     border-radius: var(--pg-radius-lg); border: 1px solid var(--pg-line);
     background: var(--pg-bg-raised);
   }
+  .pg-article-header h1 {
+    font-family: var(--pg-font-display); font-size: 2.1rem; font-weight: 700;
+    line-height: 1.2; letter-spacing: -0.01em; color: var(--pg-fg); margin: 0;
+  }
+  /* The meta row: date · author · reading time, each independently optional. The separator is a
+   * real element rather than a `::before`, so a row missing its first item cannot open with one. */
+  .pg-article-meta {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem;
+    margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--pg-muted);
+  }
+  .pg-article-meta__sep { color: var(--pg-line-strong); }
 
   /* Pager ------------------------------------------------------------------------------------------ */
   .pg-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; }

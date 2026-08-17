@@ -99,6 +99,30 @@ A kind pagina does not know (`!!! spoiler`) still renders, with `note`'s glyph a
 setting `--pg-adm-hue`, `--pg-adm-surface` and `--pg-adm-fg` on that class, which is the same
 three-property shape as everything above.
 
+### The article header
+
+The header above the content — cover, title, then *date · author · reading time* — is drawn
+entirely from tokens already in the table above, so it needs no new ones:
+
+| Part | Class | Tokens it uses |
+|---|---|---|
+| The whole header | `.pg-article-header` | `--pg-measure` |
+| The cover image | `.pg-cover`, `.pg-cover__img` | `--pg-radius-lg`, `--pg-line`, `--pg-bg-raised` |
+| The title | `.pg-article-header h1` | `--pg-font-display`, `--pg-fg` |
+| The meta row | `.pg-article-meta`, `.pg-article-meta__item` | `--pg-muted` |
+| Its separators | `.pg-article-meta__sep` | `--pg-line-strong` |
+
+Two things worth knowing before you restyle it. The title is the page's own `<h1>`, **moved** into
+the header by the shell rather than reprinted — so it is outside `.pg-content`, and a rule you wrote
+as `.pg-content h1` no longer reaches it. Under `theme: "tokens"` that matters: add
+`.pg-article-header h1` wherever you style headings, or the landing page's title arrives at whatever
+size your reset left it. And the cover carries no intrinsic `width`/`height` (pagina copies the file
+without decoding it), so `.pg-cover__img`'s `aspect-ratio` is the only thing holding the layout
+still while the image loads — replace it, do not simply remove it.
+
+Which pages get a header is the author's call, not the host's: `cover_on` in `article.yaml` is
+`root` (the landing page only, the default), `all`, or `none`.
+
 ## The four escape hatches, in order
 
 ### 1. Map the tokens

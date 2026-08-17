@@ -24,6 +24,21 @@ describe("parseArticleConfig", () => {
     expect(cfg.author).toBe("Fixture Author");
     expect(cfg.siteUrl).toBe("https://fixture.example");
   });
+  it('defaults cover_on to "root", because a cover belongs to the article', () => {
+    expect(parseArticleConfig(yaml).coverOn).toBe("root");
+    expect(parseArticleConfig(`slug: a\ntitle: A\nnav: []\ncover_on: all`).coverOn).toBe("all");
+    expect(parseArticleConfig(`slug: a\ntitle: A\nnav: []\ncover_on: none`).coverOn).toBe("none");
+  });
+  it("rejects a cover_on it does not know rather than falling back", () => {
+    // `cover_on: rooot` falling back to "none" would hide the header everywhere and look exactly
+    // like the bug this option exists to fix.
+    expect(() => parseArticleConfig(`slug: a\ntitle: A\nnav: []\ncover_on: rooot`))
+      .toThrow(/cover_on must be root\|all\|none/);
+  });
+  it("reads cover_alt under its snake_case key", () => {
+    expect(parseArticleConfig(`slug: a\ntitle: A\nnav: []\ncover_alt: A wide shot`).coverAlt).toBe("A wide shot");
+    expect(parseArticleConfig(`slug: a\ntitle: A\nnav: []`).coverAlt).toBeUndefined();
+  });
   it("leaves absent metadata absent rather than empty", () => {
     const cfg = parseArticleConfig(`slug: a\ntitle: A\nnav: []`);
     expect(cfg.cover).toBeUndefined();

@@ -23,8 +23,9 @@ import type { Manifest, PageMeta } from "../src/types.js";
 const manifest = (article: Partial<Manifest["article"]> = {}, pages: Record<string, Partial<PageMeta>> = {}): Manifest => ({
   article: {
     slug: "a", title: "The Site", form: "docs", status: "published", visibility: "public", tags: [],
+    rootHref: "/", coverOn: "root",
     ...article,
-  },
+  } as Manifest["article"],
   nav: [],
   pages: Object.fromEntries(
     Object.entries({ "/": {}, ...pages }).map(([href, meta]) => [

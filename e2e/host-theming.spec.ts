@@ -72,8 +72,11 @@ test.describe("a host with a CSS reset", () => {
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();
-    await page.goto(SITE_BASE);
-    await expect(page.locator(".pg-content h1")).toHaveText("Fixture");
+    // A **sub-page**, deliberately. The landing page's `h1` is moved into the article header,
+    // which is chrome; the reading layer's heading rules are measured on the content column, and
+    // a sub-page is where that column is untouched — which is also the page the preview shows.
+    await page.goto(`${SITE_BASE}guide/tabs/`);
+    await expect(page.locator(".pg-content h1")).toHaveText("Tabs and snippets");
     published = await readingType(page, ".pg-content h1");
     publishedProbe = await probeReadingLayer(page);
     // Guard the guard: if the published page's own `h1` were body-sized, every comparison below

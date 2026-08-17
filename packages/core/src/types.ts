@@ -7,6 +7,17 @@ export interface ContentFs {
 export interface NavPage { readonly title: string; readonly page: string }             // page = md path relative to folder
 export interface NavSection { readonly section: string; readonly children: readonly NavEntry[] }
 export type NavEntry = NavPage | NavSection;
+/**
+ * Which pages of an article show the cover header.
+ *
+ * A cover belongs to the **article**, not to each of its pages: an API reference three levels
+ * into a docs article re-displaying the hero is a magazine that reprints its front page on every
+ * spread. So the default is `"root"` — the header renders on the article's landing page and
+ * nowhere else. `"all"` is for the author who disagrees (a set of standalone posts kept in one
+ * folder), and `"none"` for a host that supplies its own hero and wants pagina's out of the way.
+ */
+export type CoverOn = "root" | "all" | "none";
+
 export interface ArticleConfig {
   readonly slug: string; readonly title: string; readonly form: "docs";
   readonly status: "draft" | "published"; readonly visibility: "public" | "members" | "authors";
@@ -14,6 +25,10 @@ export interface ArticleConfig {
   readonly theme?: string;
   /** Cover image, as written: a path relative to the article folder, or an absolute URL. */
   readonly cover?: string;
+  /** Alt text for the cover. Absent, consumers fall back to the article title — never to "". */
+  readonly coverAlt?: string;
+  /** Where the cover header renders. `article.yaml` writes it as `cover_on`. Default `"root"`. */
+  readonly coverOn: CoverOn;
   /** Fallback meta description for every page that does not carry its own. */
   readonly description?: string;
   /** Byline. Emitted as `article:author` and as the JSON-LD `author`. */
@@ -52,6 +67,8 @@ export interface PageFrontMatter {
   readonly description?: string;
   /** Path relative to *the page*, or an absolute URL. */
   readonly cover?: string;
+  /** Alt text for this page's cover. Written `cover_alt` in the front-matter block. */
+  readonly coverAlt?: string;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
@@ -68,6 +85,8 @@ export interface RenderedPage {
   readonly frontMatter: PageFrontMatter;
   /** The page's first paragraph as plain text — the last resort in the description chain. */
   readonly excerpt?: string;
+  /** Whole minutes to read this page's prose. Absent when the page has none. See `reading-time.ts`. */
+  readonly readingMinutes?: number;
 }
 export interface NavNode { readonly title: string; readonly href?: string; readonly children?: readonly NavNode[] }
 
@@ -86,18 +105,40 @@ export interface PageMeta {
   readonly description?: string;
   /** Resolved site URL of the cover image, or the absolute URL the author gave. */
   readonly cover?: string;
+  /** Alt text for {@link cover}. Already resolved: the author's, else the article title. */
+  readonly coverAlt?: string;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
   readonly tags?: readonly string[];
   /** True for a page the author marked `noindex`, and for every page of a draft article. */
   readonly noindex?: boolean;
+  /**
+   * Whole minutes to read this page — at least 1, absent when the page has no prose.
+   *
+   * The **one** number every consumer uses. Computed in the build from rendered prose (see
+   * `reading-time.ts`) so pagina's shell, a Laravel host and an index card cannot disagree.
+   */
+  readonly readingMinutes?: number;
 }
 
 /** `article.yaml`, minus the two fields that describe the build rather than the article. */
 export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "cover"> {
   /** Resolved site URL of the article cover, or the absolute URL the author gave. */
   readonly cover?: string;
+  /**
+   * The href of the article's landing page — the first page in nav order.
+   *
+   * Emitted rather than derived because every consumer needs it to honour `coverOn: "root"`, and
+   * three consumers walking `nav` for the first leaf is three chances to walk it differently.
+   */
+  readonly rootHref: string;
+  /**
+   * Minutes to read the whole article: the sum of every page's `readingMinutes`.
+   *
+   * For an index card that summarises a multi-page article. Absent when no page has prose.
+   */
+  readonly readingMinutes?: number;
 }
 
 export interface Manifest {

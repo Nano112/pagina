@@ -79,6 +79,13 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     }
     return { [key]: d };
   };
+  // `cover_alt` is the only key whose YAML spelling differs from its field name, so it is read
+  // by hand rather than through `text_`. Snake_case in the file matches `article.yaml`'s.
+  let coverAlt: Record<string, string> = {};
+  if (o["cover_alt"] !== undefined && o["cover_alt"] !== null) {
+    if (typeof o["cover_alt"] !== "string" || o["cover_alt"] === "") bad("front matter: cover_alt must be a non-empty string");
+    else coverAlt = { coverAlt: o["cover_alt"] };
+  }
   let noindex: Record<string, boolean> = {};
   if (o["noindex"] !== undefined && o["noindex"] !== null) {
     if (typeof o["noindex"] !== "boolean") bad("front matter: noindex must be true or false");
@@ -92,7 +99,7 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
   return {
     meta: {
       ...text_("title"), ...text_("description"), ...text_("cover"), ...text_("author"),
-      ...date("published"), ...date("updated"), ...noindex, ...tags,
+      ...coverAlt, ...date("published"), ...date("updated"), ...noindex, ...tags,
     },
     body,
     diagnostics,

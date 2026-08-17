@@ -5,7 +5,7 @@ import type { RenderedArticle } from "@pagina/core";
 const article: RenderedArticle = {
   diagnostics: [],
   manifest: {
-    article: { slug: "t", title: "T Docs", form: "docs", status: "published", visibility: "public", tags: [] },
+    article: { slug: "t", title: "T Docs", form: "docs", status: "published", visibility: "public", tags: [], rootHref: "/", coverOn: "root" },
     nav: [{ title: "Home", href: "/" }, { title: "G", children: [{ title: "Page", href: "/g/page/" }] }],
     pages: { "/": { title: "Home", headings: [], breadcrumbs: [{ title: "Home", href: "/" }], next: "/g/page/" }, "/g/page/": { title: "Page", headings: [{ id: "a", text: "A", level: 2 }], breadcrumbs: [{ title: "G" }, { title: "Page", href: "/g/page/" }], prev: "/" } },
     figures: {}, assets: [],
@@ -19,7 +19,7 @@ const nastyTitle = 'A "quoted" & <b>title</b>';
 const nastyArticle: RenderedArticle = {
   diagnostics: [],
   manifest: {
-    article: { slug: "t", title: "T Docs", form: "docs", status: "published", visibility: "public", tags: [] },
+    article: { slug: "t", title: "T Docs", form: "docs", status: "published", visibility: "public", tags: [], rootHref: "/", coverOn: "root" },
     nav: [{ title: nastyTitle, href: '/g/q"uote/' }],
     pages: {
       "/": {
@@ -156,11 +156,119 @@ describe("SEO metadata and the cover", () => {
     expect(html).toContain(`application/ld+json`);
   });
 
-  it("renders the cover above the content, and only when there is one", () => {
-    const html = renderPageHtml(withMeta, "/g/page/", ctx);
-    expect(html).toContain(`<figure class="pg-cover"><img class="pg-cover__img" src="/media/hero.png"`);
-    expect(html.indexOf("pg-cover")).toBeLessThan(html.indexOf(`class="pg-content"`));
-    expect(renderPageHtml(withMeta, "/", ctx)).not.toContain("pg-cover");
+  /**
+   * The article header, and the rule that a cover belongs to the *article*.
+   *
+   * `withMeta`'s cover sits on `/g/page/` — a sub-page — and its `rootHref` is `/`. So the
+   * interesting assertions are the negative ones: the sub-page that *has* a cover still must not
+   * draw a hero, because a reference page three levels into a docs article is not the front of it.
+   */
+  const rooted = (a: RenderedArticle, rootHref: string, coverOn: "root" | "all" | "none" = "root"): RenderedArticle => ({
+    ...a,
+    manifest: { ...a.manifest, article: { ...a.manifest.article, rootHref, coverOn } },
+  });
+  /** The same manifest, with the cover and the dates moved onto the landing page. */
+  const onRoot: RenderedArticle = {
+    ...withMeta,
+    manifest: {
+      ...withMeta.manifest,
+      pages: {
+        ...withMeta.manifest.pages,
+        "/": {
+          ...withMeta.manifest.pages["/"]!,
+          cover: "/media/hero.png", coverAlt: "A hero", author: "Ada",
+          published: "2026-01-01", readingMinutes: 7,
+        },
+      },
+    },
+  };
+
+  it("renders the article header on the landing page and on no other", () => {
+    const root = renderPageHtml(onRoot, "/", ctx);
+    expect(root).toContain(`<header class="pg-article-header">`);
+    expect(root).toContain(`<figure class="pg-cover"><img class="pg-cover__img" src="/media/hero.png"`);
+    expect(root.indexOf("pg-article-header")).toBeLessThan(root.indexOf(`class="pg-content"`));
+
+    // The sub-page has a cover of its own in the manifest and still must not draw the hero.
+    const sub = renderPageHtml(onRoot, "/g/page/", ctx);
+    expect(sub).not.toContain("pg-article-header");
+    expect(sub).not.toContain("pg-cover");
+  });
+
+  it('follows cover_on: "all" and "none"', () => {
+    expect(renderPageHtml(rooted(onRoot, "/", "all"), "/g/page/", ctx)).toContain("pg-article-header");
+    expect(renderPageHtml(rooted(onRoot, "/", "none"), "/", ctx)).not.toContain("pg-article-header");
+    // …and "none" leaves the page exactly as it was before the header existed.
+    expect(renderPageHtml(rooted(onRoot, "/", "none"), "/", ctx)).not.toContain("pg-cover");
+  });
+
+  it("gives the cover alt text that is never empty and never the filename", () => {
+    expect(renderPageHtml(onRoot, "/", ctx)).toContain(`alt="A hero"`);
+    // No author-supplied alt: the article title, which is at least true about what it introduces.
+    const withoutAlt = Object.fromEntries(
+      Object.entries(onRoot.manifest.pages["/"]!).filter(([k]) => k !== "coverAlt"),
+    ) as (typeof onRoot.manifest.pages)[string];
+    const noAlt: RenderedArticle = {
+      ...onRoot,
+      manifest: { ...onRoot.manifest, pages: { ...onRoot.manifest.pages, "/": withoutAlt } },
+    };
+    const html = renderPageHtml(noAlt, "/", ctx);
+    expect(html).toContain(`alt="T Docs"`);
+    expect(html).not.toContain(`alt=""`);
+    expect(html).not.toContain("hero.png\" alt=\"hero");
+  });
+
+  it("holds the layout still while the cover loads, and defers only what is not the LCP", () => {
+    // No intrinsic size is knowable at build time, so `.pg-cover__img`'s aspect-ratio box is the
+    // reflow guard; the landing page's cover is the LCP element and must not be lazy.
+    expect(renderPageHtml(onRoot, "/", ctx)).toContain(`loading="eager"`);
+    expect(renderPageHtml(rooted(onRoot, "/", "all"), "/g/page/", ctx)).toContain(`loading="lazy"`);
+  });
+
+  it("moves the page's own h1 into the header rather than printing a second one", () => {
+    const withH1: RenderedArticle = {
+      ...onRoot,
+      pages: { ...onRoot.pages, "/": { ...onRoot.pages["/"]!, html: `<h1 id="home">Home</h1><p>hi</p>` } },
+    };
+    const html = renderPageHtml(withH1, "/", ctx);
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    // Moved, not reprinted: the heading keeps its id, so a link to `#home` still lands.
+    expect(html).toContain(`<header class="pg-article-header">`);
+    expect(html).toContain(`<h1 id="home">Home</h1>`);
+    expect(html).toContain(`<article class="pg-content"><p>hi</p></article>`);
+  });
+
+  it("falls back to the manifest title when the page does not open with a heading", () => {
+    // `onRoot`'s `/` is `<p>hi</p>`.
+    expect(renderPageHtml(onRoot, "/", ctx)).toContain(`<h1>Home</h1>`);
+  });
+
+  it("renders the meta row as date · author · reading time, dropping what is absent", () => {
+    const html = renderPageHtml(onRoot, "/", ctx);
+    expect(html).toContain(`<time class="pg-article-meta__item" datetime="2026-01-01">1 January 2026</time>`);
+    expect(html).toContain(`<span class="pg-article-meta__item">Ada</span>`);
+    expect(html).toContain(`<span class="pg-article-meta__item">7 min read</span>`);
+    expect(html.match(/pg-article-meta__sep/g)).toHaveLength(2);
+  });
+
+  it("degrades to a header that is only a title when there is nothing else", () => {
+    // No cover, no author, no dates, no prose: a title, and not an empty box with separators.
+    const bare = renderPageHtml(article, "/", ctx);
+    expect(bare).toContain(`<header class="pg-article-header"><h1>Home</h1></header>`);
+    expect(bare).not.toContain("pg-article-meta");
+    expect(bare).not.toContain("pg-cover");
+  });
+
+  it("keeps one separator between two items, not one per item", () => {
+    const onlyAuthor: RenderedArticle = {
+      ...article,
+      manifest: {
+        ...article.manifest,
+        pages: { ...article.manifest.pages, "/": { ...article.manifest.pages["/"]!, author: "Ada", readingMinutes: 3 } },
+      },
+    };
+    const html = renderPageHtml(onlyAuthor, "/", ctx);
+    expect(html).toContain(`<p class="pg-article-meta"><span class="pg-article-meta__item">Ada</span><span class="pg-article-meta__sep" aria-hidden="true">·</span><span class="pg-article-meta__item">3 min read</span></p>`);
   });
 
   it("takes the site URL from the manifest when the builder did not pass one", () => {

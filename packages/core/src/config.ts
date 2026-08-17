@@ -1,5 +1,8 @@
 import { parse } from "yaml";
-import type { ArticleConfig, NavEntry } from "./types.js";
+import type { ArticleConfig, CoverOn, NavEntry } from "./types.js";
+
+/** Every value `cover_on` may take, in the order the doc lists them. */
+export const COVER_ON: readonly CoverOn[] = ["root", "all", "none"];
 
 function fail(field: string, why: string): never {
   throw new Error(`article.yaml: ${field} ${why}`);
@@ -51,6 +54,11 @@ export function parseArticleConfig(text: string): ArticleConfig {
   const snippets = (o.snippets ?? {}) as Record<string, unknown>;
   const roots = snippets.roots === undefined ? ["."] : (snippets.roots as unknown[]).map((r, i) => str(r, `snippets.roots[${i}]`));
   const kg = (o.kineglyph ?? undefined) as Record<string, unknown> | undefined;
+  // A cover belongs to the article, so the default is its landing page and nowhere else. A typo
+  // here is an error rather than a silent fallback: `cover_on: rooot` would otherwise hide the
+  // header on every page and look exactly like the bug this option exists to fix.
+  const coverOn = (o.cover_on ?? "root") as string;
+  if (!COVER_ON.includes(coverOn as CoverOn)) fail("cover_on", `must be ${COVER_ON.join("|")} (got "${coverOn}")`);
   return {
     slug: str(o.slug, "slug"),
     title: str(o.title, "title"),
@@ -61,6 +69,9 @@ export function parseArticleConfig(text: string): ArticleConfig {
     tags: Array.isArray(o.tags) ? o.tags.map((t, i) => str(t, `tags[${i}]`)) : [],
     ...(o.theme === undefined ? {} : { theme: str(o.theme, "theme") }),
     ...optionalStr(o.cover, "cover"),
+    // `cover_alt` in the file, `coverAlt` in the object — the same snake_case rule as `site_url`.
+    ...(o.cover_alt === undefined || o.cover_alt === null ? {} : { coverAlt: str(o.cover_alt, "cover_alt") }),
+    coverOn: coverOn as CoverOn,
     ...optionalStr(o.description, "description"),
     ...optionalStr(o.author, "author"),
     // `site_url` in the file, `siteUrl` in the object: YAML keys here are snake_case, and this is

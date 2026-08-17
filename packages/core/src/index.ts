@@ -1,6 +1,7 @@
 export * from "./types.js";
 export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
-export { parseArticleConfig } from "./config.js";
+export { parseArticleConfig, COVER_ON } from "./config.js";
+export { WORDS_PER_MINUTE, countWords, prose, readingMinutes } from "./reading-time.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets } from "./plugins/snippets.js";
 export { ADMONITION_KINDS } from "./plugins/admonition.js";

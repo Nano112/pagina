@@ -206,6 +206,71 @@ describe("renderArticle", () => {
     expect(r.manifest.article.siteUrl).toBe("https://host.example");
   });
 
+  /**
+   * The two fields every consumer reads, in the shapes the Laravel package is coded against:
+   * `manifest.pages[href].readingMinutes` (a number, whole, ≥ 1, absent without prose) and
+   * `manifest.article.readingMinutes` (their sum).
+   */
+  it("puts a whole-minute reading time on every page that has prose", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    for (const [href, meta] of Object.entries(r.manifest.pages)) {
+      expect(typeof meta.readingMinutes, href).toBe("number");
+      expect(Number.isInteger(meta.readingMinutes), href).toBe(true);
+      expect(meta.readingMinutes, href).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("makes the article's reading time the sum of its pages'", async () => {
+    // A card that says "12 min" over a page list whose numbers add to 11 is a card nobody trusts.
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    const sum = Object.values(r.manifest.pages).reduce((n, m) => n + (m.readingMinutes ?? 0), 0);
+    expect(r.manifest.article.readingMinutes).toBe(sum);
+  });
+
+  it("omits the reading time entirely for a page with no prose", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base, read: async (p) => (p === "index.md" ? "```ts\nconst a = 1;\n```\n" : base.read(p)) };
+    const r = await renderArticle({ fs, strict: false });
+    // Absent, not zero: "0 min read" is not a claim anyone wants to make.
+    expect(r.manifest.pages["/"]!.readingMinutes).toBeUndefined();
+    expect("readingMinutes" in r.manifest.pages["/"]!).toBe(false);
+  });
+
+  it("names the landing page and carries cover_on, so no consumer re-derives either", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    expect(r.manifest.article.rootHref).toBe("/");           // the first page in nav order
+    expect(r.manifest.article.coverOn).toBe("root");
+  });
+
+  it("resolves cover alt text to the author's words, else the article title", async () => {
+    const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
+    // The fixture gives no `cover_alt`, so every page falls back to the article title — never "",
+    // and never "cover.svg".
+    expect(r.manifest.pages["/"]!.coverAlt).toBe("Fixture Docs");
+
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "article.yaml"
+        ? `${await base.read(p)}\ncover_alt: The fixture's own cover\n`
+        : base.read(p)),
+    };
+    expect((await renderArticle({ fs, strict: true })).manifest.pages["/"]!.coverAlt).toBe("The fixture's own cover");
+  });
+
+  it("lets a page that overrides the cover override its alt text too", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md"
+        ? `---\ncover: media/static.svg\ncover_alt: A page's own picture\n---\n\n# X\n\nSome prose.\n`
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(r.manifest.pages["/"]!.cover).toBe("/media/static.svg");
+    expect(r.manifest.pages["/"]!.coverAlt).toBe("A page's own picture");
+    // A page that did not override the image keeps the article's alt, not this page's.
+    expect(r.manifest.pages["/guide/tabs/"]!.coverAlt).toBe("Fixture Docs");
+  });
+
   it("flags a same-page anchor to a missing heading, and not one to a real heading", async () => {
     const base = nodeFs(fixture);
     const fs: ContentFs = { ...base,

@@ -122,6 +122,10 @@ The renderer resolves all of it once, into the manifest, so a consumer never re-
 |---|---|
 | `slug`, `title`, `form`, `status`, `visibility`, `category`, `tags` | as before |
 | `cover` | **site URL** of the article cover (`/media/hero.png`, or `/docs/media/hero.png` under `--base /docs/`), or the absolute URL the author gave. Absent when there is none |
+| `coverAlt` | alt text for the cover, as written in `article.yaml`'s `cover_alt`. Absent when there is none — consumers fall back to `title`, never to `""` |
+| `coverOn` | `"root"` (default), `"all"` or `"none"` — which pages show the cover header. `article.yaml` writes it as `cover_on` |
+| `rootHref` | href of the article's landing page: the first page in nav order. The page `coverOn: "root"` means |
+| `readingMinutes` | whole minutes to read the **whole article**: the sum of every page's `readingMinutes`. Absent when no page has prose |
 | `description`, `author`, `siteUrl`, `published`, `updated` | as written in `article.yaml` (`site_url` → `siteUrl`) |
 
 | `manifest.pages[href]` | |
@@ -129,11 +133,40 @@ The renderer resolves all of it once, into the manifest, so a consumer never re-
 | `title`, `headings`, `breadcrumbs`, `prev`, `next` | as before |
 | `description` | **resolved**: page front matter → `article.yaml` → the page's first paragraph, whitespace collapsed and truncated to 160 characters on a word boundary |
 | `cover` | **resolved** site URL: page front matter → `article.yaml` |
+| `coverAlt` | **resolved** alt text: the page's `cover_alt` (only when the page also overrode `cover`) → `article.yaml`'s `cover_alt` → the article title. Present whenever `cover` is, and never `""` |
 | `author`, `published`, `updated`, `tags` | resolved the same way |
 | `noindex` | `true` for a page that asked for it and for **every** page of a `status: draft` article; absent otherwise |
+| `readingMinutes` | **a number**: whole minutes, minimum 1. Absent when the page has no prose |
 
 A cover that does not resolve to a file in the folder is a build **error** naming the page, and the
 value is dropped rather than emitted — an `og:image` pointing at a 404 is worse than none.
+
+### Reading time
+
+`readingMinutes` is computed **at build time** so that the static shell, a Laravel host and an index
+card all read one number and cannot disagree. It counts words in *rendered prose* at
+`WORDS_PER_MINUTE = 220` — fenced code blocks, figure specs, raw HTML blocks, comments and front
+matter contribute nothing, so a page that is 90% code block does not claim a twenty-minute read.
+Inline `` `code` `` does count: a sentence with a symbol in it is still a sentence. The rate is
+Brysbaert's ~238 wpm for English non-fiction, rounded down because documentation is read slower
+than prose. `@pagina/core` exports `readingMinutes`, `countWords`, `prose` and `WORDS_PER_MINUTE`
+for anything that needs the same count over text pagina did not render.
+
+### The article header
+
+The static shell renders a header above the content: the cover, the title, then a meta row of
+*date · author · reading time* — each part dropped independently when it is absent. **A cover
+belongs to the article, not to each page**, so the header renders on `article.rootHref` and nowhere
+else; a reference page three levels into a docs article does not re-display the hero. `cover_on:
+all` puts it on every page and `cover_on: none` removes it entirely.
+
+The page's own `<h1>` is **moved** into the header rather than printed a second time, keeping its
+`id` so in-page anchors still land. A page that does not open with a heading gets an `<h1>` built
+from its manifest title. The cover's `alt` is the author's `cover_alt`, else the article title —
+never empty, never the filename — and the image is held in an aspect-ratio box (pagina copies the
+file without decoding it, so no intrinsic size is knowable at build time) so the page does not
+reflow as it loads. It is `loading="eager"` on the landing page, where it is the LCP element, and
+`loading="lazy"` on a sub-page under `cover_on: all`.
 
 `@pagina/core` exports the emitters over that manifest: `pageSeo(manifest, href, { siteUrl, base })`
 returns `{ title, description, canonical, image, noindex, meta[], jsonLd, diagnostics }`, and

@@ -33,7 +33,8 @@ const meta = async (page: Page, selector: string): Promise<string | null> =>
 test.describe("the published page's metadata", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(SITE_BASE);
-    await expect(page.locator(".pg-content h1")).toHaveText("Fixture");
+    // The landing page's title lives in the article header — moved there, not reprinted.
+    await expect(page.locator(".pg-article-header h1")).toHaveText("Fixture");
   });
 
   test("carries title, description, canonical, OpenGraph and Twitter", async ({ page }) => {
@@ -84,6 +85,48 @@ test.describe("the published page's metadata", () => {
       return cover.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING;
     });
     expect(order).toBeGreaterThan(0);
+    // Alt text a screen reader can use: the article title, since the fixture supplies no
+    // `cover_alt`. Never empty, and never "cover.svg".
+    expect(await img.getAttribute("alt")).toBe("Fixture Docs");
+  });
+
+  test("renders the title once, in the header, with a meta row under it", async ({ page }) => {
+    // The h1 is *moved* into the header, not reprinted: a hero that repeats the headline
+    // immediately below it is the defect this header would otherwise introduce.
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(page.locator(".pg-article-header h1")).toHaveText("Fixture");
+    await expect(page.locator(".pg-content h1")).toHaveCount(0);
+    // …and the heading keeps its id, so a link to it still lands.
+    expect(await page.locator(".pg-article-header h1").getAttribute("id")).toBe("fixture");
+
+    const row = page.locator(".pg-article-meta");
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Fixture Author");
+    await expect(row).toContainText("min read");
+  });
+
+  test("keeps the hero off a sub-page: a cover belongs to the article", async ({ page }) => {
+    await page.goto(`${SITE_BASE}guide/tabs/`);
+    await expect(page.locator(".pg-content h1")).toHaveText("Tabs and snippets");
+    // The manifest resolves this page's cover to the article's — and the shell still must not
+    // draw it. A reference page three levels in is not the front of the magazine.
+    await expect(page.locator(".pg-article-header")).toHaveCount(0);
+    await expect(page.locator(".pg-cover")).toHaveCount(0);
+  });
+
+  test("publishes one reading time that the manifest and the page agree on", async ({ page }) => {
+    const manifest = await (await page.request.get(`${SITE_BASE}_pagina/manifest.json`)).json() as {
+      article: { readingMinutes?: number };
+      pages: Record<string, { readingMinutes?: number }>;
+    };
+    const root = manifest.pages["/"]!.readingMinutes;
+    expect(Number.isInteger(root)).toBe(true);
+    expect(root).toBeGreaterThanOrEqual(1);
+    // The article's number is the sum of the pages', so a card and a page list cannot disagree.
+    const sum = Object.values(manifest.pages).reduce((n, m) => n + (m.readingMinutes ?? 0), 0);
+    expect(manifest.article.readingMinutes).toBe(sum);
+    // And the number on the page is that same number, not one the shell recomputed.
+    await expect(page.locator(".pg-article-meta")).toContainText(`${String(root)} min read`);
   });
 });
 
@@ -103,12 +146,26 @@ test.describe("the cover under the host's dark theme", () => {
     expect(paint.ratio).toBe("2 / 1");
     expect(paint.fit).toBe("cover");
 
-    // The host's reset flattens headings; the reading layer must still be winning underneath.
-    const h1 = await page.locator(".pg-content h1").evaluate((el) => getComputedStyle(el).fontSize);
+    // The host's reset flattens headings; the header's own rules must still be winning underneath.
+    // This is the half the reading layer no longer covers — the title lives outside `.pg-content`
+    // now, so `pagina.chrome` has to restate the whole declaration or the hero arrives body-sized.
+    const h1 = await page.locator(".pg-article-header h1").evaluate((el) => getComputedStyle(el).fontSize);
     const body = await page.evaluate(() => getComputedStyle(document.body).fontSize);
     expect(parseFloat(h1)).toBeGreaterThan(parseFloat(body) * 1.4);
+    // The meta row takes the host's muted ink, not a colour pagina hardcoded.
+    expect(await page.locator(".pg-article-meta").evaluate((el) => getComputedStyle(el).color))
+      .toBe("rgb(154, 147, 171)");                      // the host's --pg-muted
 
     await page.screenshot({ path: `${SHOTS}cover-dark-host.png`, fullPage: false });
+  });
+
+  test("is absent on a sub-page of the same article, under the same host", async ({ page }) => {
+    await page.goto("/site-dark-sub");
+    await expect(page.locator(".pg-content h1")).toHaveText("Tabs and snippets");
+    await expect(page.locator(".pg-article-header")).toHaveCount(0);
+    await expect(page.locator(".pg-cover")).toHaveCount(0);
+    // The picture of the negative: the same palette, the same layout, no hero.
+    await page.screenshot({ path: `${SHOTS}sub-page-dark-host.png`, fullPage: false });
   });
 });
 
