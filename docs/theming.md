@@ -89,12 +89,12 @@ same thing, so **a host that mapped pagina's tokens has themed its diagrams too*
 | `--kg-color-surface` | `var(--pg-bg)` | Node and card fills |
 | `--kg-color-surface-raised` | `var(--pg-bg)` | Fills above the surface (raised, floating, glass) |
 | `--kg-color-surface-muted` | `var(--pg-bg-sunken)` | Recessed fills (inset) |
-| `--kg-color-border` | `var(--pg-line)` | Node and card outlines |
+| `--kg-color-border` | `var(--pg-line-strong)` | Node and card outlines |
 | `--kg-color-text` | `var(--pg-fg)` | Labels and body text |
 | `--kg-color-text-muted` | `var(--pg-muted)` | Captions, secondary text, edge labels |
 | `--kg-color-accent` | `var(--pg-accent)` | Icons, motifs, focus rings, highlighted edges |
 | `--kg-color-accent-contrast` | `var(--pg-accent-fg)` | Text and marks drawn *on* the accent |
-| `--kg-color-connector` | `var(--pg-line-strong)` | Edges, arrowheads, packets |
+| `--kg-color-connector` | `var(--pg-muted)` | Edges, arrowheads, packets |
 | `--kg-color-info` | `var(--pg-note)` | The `info` tone |
 | `--kg-color-success` | `var(--pg-tip)` | The `success` tone |
 | `--kg-color-warning` | `var(--pg-warning)` | The `warning` tone |
@@ -112,6 +112,31 @@ Set any of them directly to give diagrams a palette of their own:
 
 The pairings match the swatches the Figure Builder shows an author, so the tone picked in the
 editor is the colour the published figure carries.
+
+**Two of these are not the obvious neighbour, on purpose.** `--kg-color-connector` paints the
+arrows in a flow diagram, and an arrow is the sentence's verb, not a rule between paragraphs;
+pointed at `--pg-line-strong` it carried 1.49:1 on the figure canvas and simply vanished. It maps
+to `--pg-muted` — the token that already means *ink that is secondary but still ink* — for 4.51:1.
+`--kg-color-border` moves up to `--pg-line-strong` for the same reason: a node needs an outline
+that separates it from its ground, not a divider. A host that wants its diagrams' arrows in its
+brand colour says so and nothing else moves:
+
+```css
+:root { --kg-color-connector: var(--pg-accent); }
+```
+
+**A host whose `--pg-bg` is `transparent`** — a dark site whose prose sits straight on the page —
+should set the figure surfaces explicitly. Prose does not need a plane behind it; a diagram does,
+because a node with no fill is an outline rather than an object:
+
+```css
+:root {
+  --kg-color-canvas: rgb(255 255 255 / 0.04);
+  --kg-color-surface: rgb(255 255 255 / 0.09);
+  --kg-color-surface-raised: rgb(255 255 255 / 0.13);
+  --kg-color-border: rgb(255 255 255 / 0.22);
+}
+```
 
 **Colour is the whole contract.** Type and geometry are decided when a figure is rendered, not when
 it is read: SVG cannot wrap or reflow text, so each box is measured once against the text it will

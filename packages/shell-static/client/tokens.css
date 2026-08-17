@@ -96,17 +96,24 @@
      *
      * Tone pairings match the Figure Builder's swatches (`FigureBuilder.tsx`), so the colour an
      * author picks in the editor is the colour the published figure shows.
+     *
+     * One role is deliberately *not* mapped to the rule colour it superficially resembles.
+     * `--kg-color-connector` paints the arrows in a flow diagram, and an arrow is the sentence's
+     * verb, not a rule between paragraphs: pointed at `--pg-line-strong` it carried 1.49:1 on the
+     * figure canvas and vanished. `--pg-muted` is the token that already means "ink that is
+     * secondary but still ink" (4.51:1 here), which is what a connector is. A host that wants its
+     * diagrams' arrows in its brand colour sets `--kg-color-connector: var(--pg-accent)`.
      */
     --kg-color-canvas: var(--pg-bg-raised);
     --kg-color-surface: var(--pg-bg);
     --kg-color-surface-raised: var(--pg-bg);
     --kg-color-surface-muted: var(--pg-bg-sunken);
-    --kg-color-border: var(--pg-line);
+    --kg-color-border: var(--pg-line-strong);
     --kg-color-text: var(--pg-fg);
     --kg-color-text-muted: var(--pg-muted);
     --kg-color-accent: var(--pg-accent);
     --kg-color-accent-contrast: var(--pg-accent-fg);
-    --kg-color-connector: var(--pg-line-strong);
+    --kg-color-connector: var(--pg-muted);
     --kg-color-info: var(--pg-note);
     --kg-color-success: var(--pg-tip);
     --kg-color-warning: var(--pg-warning);
