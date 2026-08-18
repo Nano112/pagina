@@ -35,6 +35,10 @@ nav:
     children:
       - { title: The article folder, page: article-folder.md }
       - { title: Theming, page: theming.md }
+  - section: Writing
+    children:
+      - { title: The editor, page: editing.md }
+      - { title: Try the editor, page: demo.md }
   - section: Publishing
     children:
       - { title: Article bundles, page: bundles.md }

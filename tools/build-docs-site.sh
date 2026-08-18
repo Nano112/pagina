@@ -91,6 +91,25 @@ run_pagina "" build "$WORK/unpacked" \
   --site-url "$SITE_URL" \
   ${MIRROR_OF:+--mirror-of "$MIRROR_OF"}
 
+# ---- 3. the editor, for the live demo -----------------------------------------------------------
+# `docs/demo.md` runs the real editor against browser storage, so the built bundle has to be on the
+# site. It is copied here rather than committed into the article for two reasons: it is a 1.3 MB
+# build artefact that would be stale the moment a package changed, and — the deciding one — an
+# `editor.js` inside `docs/` would be packed into every `.pgz` of this article, which is the
+# opposite of what a portable bundle is for. The demo page reaches it at `<base>editor/`, derived
+# from its own URL, so this path is the contract between the two.
+#
+# Missing is fatal. A demo page whose editor 404s looks exactly like a broken site.
+EDITOR_DIST="$REPO_ROOT/packages/editor/dist"
+for f in editor.js editor.css; do
+  if [ ! -f "$EDITOR_DIST/$f" ]; then
+    echo "error: $EDITOR_DIST/$f does not exist — 'npm run build' has not produced the editor bundle" >&2
+    exit 1
+  fi
+done
+mkdir -p "$OUT/editor"
+cp "$EDITOR_DIST/editor.js" "$EDITOR_DIST/editor.css" "$OUT/editor/"
+
 # The bundle is worth keeping: it is what a host would import, and having the exact artefact the
 # site was built from makes a bad deploy diagnosable.
 cp "$WORK/pagina.pgz" "$OUT.pgz"
