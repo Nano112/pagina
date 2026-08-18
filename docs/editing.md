@@ -98,7 +98,7 @@ Three forms, one implementation. Pick by what the host page already is.
     Figures in the preview must hydrate on the *same* runtime instance the site's own pages use, so
     the host page's import map decides what the bare `kineglyph` specifier resolves to. A host with
     neither an import map nor a bundler alias will see figure nodes report *Failed to resolve module
-    specifier*, a configuration requirement rather than a bug. React **is** bundled: a host page must not
+    specifier*, a configuration requirement rather than a bug. React *is* bundled: a host page must not
     have to install it.
 
 ## What the document is made of
@@ -249,7 +249,7 @@ why the demo is worth having: until it existed, those code paths had unit tests 
 
 ## Publishing
 
-`publish()` renders every page through `@pagina/core` **and** every figure to light and dark SVG on
+`publish()` renders every page through `@pagina/core` *and* every figure to light and dark SVG on
 the host page's Kineglyph runtime, then sends manifest, pages and figures as one payload. A host
 that stores it can serve the article without running Node: the same output `pagina build` produces,
 which is the point of it going through core rather than through a second renderer.
@@ -277,7 +277,7 @@ Stated plainly, because finding these written down is more use than discovering 
 
 **In the editor**
 
-- **No page rename** from the sidebar: create and delete only. **No undo across files**, and no
+- **No page rename** from the sidebar: create and delete only. No undo across files, and no
   search.
 - **No presence and no locking.** A subscription tells you a file changed; it does not tell you who
   is editing it. Conflict detection is the whole of the multi-user story.

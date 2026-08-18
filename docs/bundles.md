@@ -169,7 +169,7 @@ another language should implement the same dialect: it is deliberately narrow so
 
 ## The property that makes the format trustworthy
 
-`pack → unpack → pack` produces **byte-identical bytes**. That is asserted directly in
+`pack → unpack → pack` produces **byte-identical output**. That is asserted directly in
 `packages/vite/test/bundle.test.ts`, on a destination far from the source repo, with the sibling
 folder the fixture's snippet root points at nowhere in reach. If the bundle had lost a snippet,
 renamed an asset, reordered the nav or failed to carry a figure, the second pack could not
