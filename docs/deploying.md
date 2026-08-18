@@ -1,6 +1,9 @@
 # Deploying — sub-paths, two homes, and which copy counts
 
-One article, more than one address. That is the situation this page is about: the same folder
+[Install](install.md#publish-to-github-pages) has the short version: one `--site-url`, one
+workflow, done. This page is what to do when that is not enough.
+
+One article, more than one address. That is the situation it is about: the same folder
 published at `https://schemat.io/…` by a CMS **and** at `https://user.github.io/Project/` by a
 static build, from the same source. Everything below follows from those two facts — the site is not
 at the root of its origin, and it is not the only copy.

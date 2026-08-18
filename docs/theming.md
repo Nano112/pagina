@@ -3,8 +3,8 @@
 pagina has one theme. Everything else on this page is a way of overriding it.
 
 That is not a simplification for the introduction — it is the whole design. Every colour, font and
-radius pagina draws goes through about twenty CSS custom properties named `--pg-*`. A default set
-ships in `tokens.css`. A host, an article, a page and a figure may each redefine any subset of them,
+radius pagina draws goes through 22 CSS custom properties named `--pg-*`, plus three more for each
+of the seven admonition kinds. A default set ships in `tokens.css`. A host, an article, a page and a figure may each redefine any subset of them,
 each at its own range, and **a level that says nothing inherits the level above it**. There is no
 second mechanism to learn at any level, because there is nothing else to write: it is the same
 tokens all the way down.

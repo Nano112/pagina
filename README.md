@@ -28,29 +28,36 @@ Design goals, in order:
   references, carries the pre-rendered output, and checksums every file. `pagina unpack` verifies
   the whole thing before it writes a byte. See **[docs/bundles.md](docs/bundles.md)**.
 
-> **Status:** early. The pipeline is complete and browser-verified end-to-end (build, dev
-> server, HMR, theme toggle, three figure forms), and Nucleation's docs are being ported page by
-> page. `@kineglyph/*` is not yet on npm, so the dev loop uses `npm link` (see below).
+> **Status:** early. `@pagina/*` and `@kineglyph/*` are on npm, the pipeline is browser-verified
+> end-to-end (build, dev server, HMR, theme toggle, three figure forms), and Nucleation's docs are
+> being ported page by page.
+
+**The documentation is at <https://nano112.github.io/pagina/>**, built by pagina from
+[`docs/`](docs/) in this repository. Start with [why](docs/index.md), then
+[how it works](docs/how-it-works.md) and [install](docs/install.md).
 
 ## Quick start
 
+Using pagina on your own folder:
+
 ```sh
-# 1. Kineglyph is consumed from a sibling checkout (until it is published)
-git clone https://github.com/Nano112/kineglyph.git ../kineglyph
-(cd ../kineglyph && npm run bootstrap && for p in packages/*; do (cd "$p" && npm link); done)
-
-# 2. This repo
-npm install && npm run link:kineglyph
-npm run build
-npm install && npm run link:kineglyph      # once: creates node_modules/.bin/pagina, then re-link
-
-# 3. Render the fixture article
-npx pagina dev   packages/core/test/fixture              # http://127.0.0.1:4321
-npx pagina build packages/core/test/fixture --out dist   # static site in ./dist
+npm install --save-dev @pagina/cli
+npx pagina dev   docs              # http://127.0.0.1:4321
+npx pagina build docs --out dist   # a static site in ./dist
 ```
 
-`npm install` prunes the `@kineglyph/*` symlinks every time; `npm run link:kineglyph` puts them
-back. If figures fail with "cannot resolve `kineglyph`", that is what happened.
+Working on pagina itself:
+
+```sh
+npm ci
+npm run build
+npx pagina dev packages/core/test/fixture   # the fixture article, which exercises the dialect
+npm test                                    # build, typecheck, lint, vitest, playwright
+```
+
+Kineglyph, the figure engine, is an ordinary registry dependency. The two GitHub workflows still
+build it from the commit pinned in `.github/kineglyph-ref`, so the pictures on the docs site cannot
+change without a commit here.
 
 ## The article folder
 

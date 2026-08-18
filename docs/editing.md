@@ -302,6 +302,12 @@ Stated plainly, because finding these written down is more use than discovering 
 - **Inline markdown is not processed inside a `<figure>`.** Backticks in a `<figcaption>` are
   published as literal backticks, with no diagnostic; `markdown="span"` is neither honoured nor
   stripped there. Write `<code>` in a caption.
+- **A code block is rewritten like the rest of the page.** `rewriteLinks` runs over the whole
+  rendered HTML, so a relative `href=` or `src=` inside a fenced sample is base-prefixed *and*
+  counted as an asset the article must carry. A quoted `<a href="./guide/">` therefore fails
+  `pack` with `bundle-asset-missing`, and a template placeholder in one fails it naming the shiki
+  markup that split it. Site-absolute values (`/assets/…`) are left alone, which is the workaround;
+  `examples/node-host/server.mjs` builds its attributes through a helper for this reason.
 - **A scene-spec error is reported against a generated id**, not the author's: `kg-theming-1` rather
   than the scene's own `id` or its file name. With several figures on a page you are counting
   `<figure>` elements to find the broken one. The message itself is good; only the subject is wrong.

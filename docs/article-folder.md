@@ -58,6 +58,8 @@ The fields, in full:
 | `theme` | a CSS file of the article's own, writing `--pg-*`; or `inherit`. Level 3 of [the cascade](theming.md#the-cascade), and a page may override it in its front matter |
 | `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures, a theme by name, or `inherit`. A palette [claims the roles it names](theming.md#level-5-the-figure) and inherits the rest from the page |
 | `kineglyph.width` | the layout width figures are pre-rendered at |
+| `kineglyph.widths` | several of them: the figure is drawn once per width and the page shows the one its frame fits. Default `[960, 640, 440, 320]`, at most five |
+| `kineglyph.themes` | the palettes a `<figure data-theme="…">` may name, by name. See [Theming](theming.md#one-figure-one-palette) |
 | `snippets.roots` | the directories `--8<--` may read from. Default `["."]` |
 | `exclude` | glob patterns for files that are **not** article content and must not be published |
 | `exclude_gitignore` | whether a folder in a git repository also excludes what git ignores. Default `true` |

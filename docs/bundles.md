@@ -21,6 +21,7 @@ media/…                             only assets a page or the manifest actuall
 scenes/…                            figure scene modules, and whatever they import
 snippets/…                          `--8<--` targets, resolved out of the repo into here
 .rendered/manifest.json             the article manifest, as `pagina build` produces it
+.rendered/search.json               the section index, the same bytes a build writes
 .rendered/pages/<slug>.html         one HTML fragment per page, figures already inlined
 .rendered/figures/<id>.<theme>.svg  every drawn figure, one file per theme
 bundle.json                         format version, pagina version, created, per-file checksums
@@ -44,6 +45,13 @@ that reads one reads the other.
 `.rendered/manifest.json` is the article manifest with one field re-derived: `assets` lists what
 the *bundle* holds, not what the source folder held. That is both more correct for a host and what
 makes packing idempotent.
+
+!!! warning "The manifest addresses pages without the base; the fragments address them with it"
+    `manifest.pages` is keyed `/`, `/theming/` whatever `--base` the bundle was packed at, and
+    `manifest.nav` matches. The `href`s *inside* `.rendered/pages/*.html` carry the base, because
+    they are the links a reader clicks. A host converting between the two converts in one direction
+    only; [the worked example](install.md#embed-in-a-site-you-already-have) is two one-line
+    helpers.
 
 ## `bundle.json`
 

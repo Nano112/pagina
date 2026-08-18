@@ -94,7 +94,7 @@ markdown, the largest article pagina has been pointed at.
 | | raw | gzip |
 |---|---|---|
 | the dialog itself, a separate chunk | 11.9 kB | 4.2 kB |
-| `search.json`, this site — 9 pages, 87 sections | ~116 kB | ~38 kB |
+| `search.json`, this site — 10 pages, 111 sections | 152 kB | 49 kB |
 | `search.json`, Nucleation — 29 pages, 687 sections | 602 kB | 188 kB |
 
 Parsing the 29-page index takes **1.9 ms**; a query against it runs in **0.1–2.2 ms** (the slow end
@@ -155,7 +155,7 @@ binary that post-processes *a directory of built HTML*, and pagina's output is n
 directory: the Laravel package serves fragments out of a bundle, and a post-processor pointed at a
 folder cannot see them. Adopting it would also mean a second build tool with its own idea of what a
 page is, its own place for exclusions to be applied, and its own runtime — ~40 kB of WASM before
-any index — for a corpus where the whole index here is 38 kB. **The escape hatch is real, though:
+any index — for a corpus where the whole index here is 49 kB gzipped. **The escape hatch is real, though:
 if an article grows past the point where one file is sensible, run Pagefind over `dist/` and point
 `data-pg-search` somewhere else. Nothing about the shell assumes this implementation.**
 
