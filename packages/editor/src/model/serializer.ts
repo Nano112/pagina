@@ -1,6 +1,7 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { MarkdownSerializer, type MarkdownSerializerState, defaultMarkdownSerializer } from "prosemirror-markdown";
 import { INNER_HTML_KEY } from "./raw-html.js";
+import { isSelfClosing, parseAttrSource, renderAttrs } from "./attr-source.js";
 
 /**
  * ProseMirror document → pagina's markdown dialect.
@@ -19,6 +20,18 @@ import { INNER_HTML_KEY } from "./raw-html.js";
 type Attrs = Record<string, unknown>;
 type NodeSerializer = (state: MarkdownSerializerState, node: ProseMirrorNode, parent: ProseMirrorNode, index: number) => void;
 
+/**
+ * The two pieces of `MarkdownSerializerState` the library uses everywhere but does not put in its
+ * `.d.ts`: the output buffer, and the pending-blank-line bookkeeping. Both are needed to write a
+ * line that must *not* pick up the enclosing block's indentation — see `codeBlock` and the lists.
+ */
+interface StateInternals {
+  out: string;
+  flushClose(size?: number): void;
+}
+
+const internals = (state: MarkdownSerializerState): StateInternals => state as unknown as StateInternals;
+
 /** A string attribute, or `""` when unset — for attributes whose empty value is meaningful. */
 const raw = (attrs: Attrs, key: string): string => (typeof attrs[key] === "string" ? (attrs[key] as string) : "");
 /** A string attribute, or `null` when unset or empty — for attributes that are simply absent. */
@@ -28,6 +41,17 @@ const some = (attrs: Attrs, key: string): string | null => {
 };
 
 const capitalise = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
+
+/**
+ * The author's raw attribute text for this node, or `null` when the node came from the UI. Unlike
+ * `some`, an empty string is a real answer: `<model-viewer>` wrote no attributes, and that is not
+ * the same as never having been written by hand.
+ */
+const attrSourceOf = (attrs: Attrs): string | null => (typeof attrs["attrSource"] === "string" ? (attrs["attrSource"] as string) : null);
+
+/** Whether the author's text actually spelled this attribute out. */
+const declared = (source: string | null, name: string): boolean =>
+  source !== null && parseAttrSource(source).attrs.some((a) => a.name === name);
 
 /** `{ width="480" .cls }` — markdown-it-attrs' suffix, in the one order this serializer emits. */
 function attrSuffix(width: string | null, classes: string | null): string {
@@ -41,11 +65,17 @@ function attrSuffix(width: string | null, classes: string | null): string {
 const imageMarkup = (attrs: Attrs, escapedAlt: string): string =>
   `![${escapedAlt}](${raw(attrs, "src").replace(/[()]/g, "\\$&")}${some(attrs, "title") === null ? "" : ` "${raw(attrs, "title").replace(/"/g, '\\"')}"`})`;
 
-/** ` name="value"` for every entry, in insertion order; the reserved inner-HTML key is skipped. */
-function htmlAttrs(entries: Iterable<readonly [string, string]>): string {
-  let out = "";
-  for (const [name, value] of entries) if (name !== INNER_HTML_KEY) out += ` ${name}="${value}"`;
-  return out;
+/**
+ * The attribute text for a tag the editor models: the author's own text, patched with whatever the
+ * model holds now, or the canonical ` name="value"` form for a node the UI created. The reserved
+ * inner-HTML key is not an attribute and is dropped before it reaches the tag.
+ *
+ * `insertion order` is therefore only the *fallback* order. What a saved file gets is the order the
+ * author wrote — which is the whole point; see `attr-source.ts`.
+ */
+function htmlAttrs(attrs: Attrs, entries: Iterable<readonly [string, string]>): string {
+  const desired = [...entries].filter(([name]) => name !== INNER_HTML_KEY);
+  return renderAttrs(attrSourceOf(attrs), desired);
 }
 
 /** A JSON object string as written by `raw-html.ts`, or an empty map when absent/unparseable. */
@@ -61,8 +91,9 @@ function jsonAttrs(value: string | null): Map<string, string> {
 
 /**
  * Writes a marker line, then the node's content indented by four spaces, exactly as core's
- * `readIndentedBody` expects to read it back. `blankLine` follows how the dialect's pages are
- * written: a blank line after `=== "Label"`, none after `!!! kind`.
+ * `readIndentedBody` expects to read it back. `blankLine` is a source-formatting fact, not a
+ * rendering one: a tab is always written with a blank line after `=== "Label"`, while an admonition
+ * gets back whichever of the two forms its author used (core records that on the token).
  *
  * `closeBlock` is what produces that blank line *without* leaving the enclosing delimiter on it:
  * `flushClose` trims trailing whitespace off the delimiter, so a body four (or eight, nested)
@@ -89,6 +120,15 @@ function adjacent(node: ProseMirrorNode, parent: ProseMirrorNode, index: number)
   return run % 2 === 1;
 }
 
+/**
+ * Closes the preceding block with a single blank line before a list starts.
+ *
+ * `renderList` otherwise leaves *two* blank lines after a list of the same type, its own way of
+ * stopping the two from merging. `adjacent` already stops that, and more cheaply — by alternating
+ * the marker — so the second blank line is pure noise, and noise that lands in the author's diff.
+ */
+const separate = (state: MarkdownSerializerState): void => internals(state).flushClose(2);
+
 // -------------------------------------------------------------------------------------------
 // Tables
 // -------------------------------------------------------------------------------------------
@@ -102,7 +142,9 @@ const DASHES: Record<string, string> = { left: ":---", right: "---:", center: ":
 const cellText = (cell: ProseMirrorNode): string =>
   serializer.serialize(cell).replace(/\n+/g, " ").trim().replace(/\|/g, "\\|");
 
-const tableRow = (cells: readonly string[]): string => `| ${cells.join(" | ")} |`;
+// An empty cell gets one space, not two: `| a | |`, which is how a table with a gap in it is
+// written by hand, and `| a |  |` would be a diff on every save of such a table.
+const tableRow = (cells: readonly string[]): string => `|${cells.map((cell) => (cell === "" ? " " : ` ${cell} `)).join("|")}|`;
 
 function serializeTable(state: MarkdownSerializerState, node: ProseMirrorNode): void {
   const rows: string[][] = [];
@@ -166,17 +208,28 @@ const nodes: Record<string, NodeSerializer> = {
     const runs = node.textContent.match(/`{3,}/gm);
     const fence = runs === null ? "```" : `${runs.sort().slice(-1)[0]!}\``;
     state.write(`${fence}${raw(node.attrs, "language")}\n`);
-    state.text(node.textContent, false);
-    state.write("\n");
+    // Line by line rather than `state.text(…)`, for the blank ones: inside an indented block (a
+    // tab, an admonition) `write` prefixes every line with the block's four spaces, which turns an
+    // empty line in the author's code into four spaces of trailing whitespace.
+    const lines = node.textContent.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (i > 0) internals(state).out += "\n";
+      if (lines[i] !== "") state.text(lines[i]!, false);
+    }
+    // Not `write("\n")`: when the last line is already blank that would emit the block delimiter
+    // again, which is the very whitespace this loop exists to avoid.
+    state.ensureNewLine();
     state.write(fence);
     state.closeBlock(node);
   },
 
   bulletList(state, node, parent, index) {
+    separate(state);
     state.renderList(node, "  ", () => (adjacent(node, parent, index) ? "* " : "- "));
   },
 
   orderedList(state, node, parent, index) {
+    separate(state);
     const delimiter = adjacent(node, parent, index) ? ")" : ".";
     const start = Number(node.attrs["start"] ?? 1);
     const width = String(start + node.childCount - 1).length;
@@ -214,7 +267,7 @@ const nodes: Record<string, NodeSerializer> = {
     const title = raw(node.attrs, "title");
     const marker = node.attrs["collapsible"] === true ? "???" : "!!!";
     // core defaults an omitted title to the capitalised kind, so writing it back would be noise.
-    indentedBody(state, node, `${marker} ${kind}${title === capitalise(kind) ? "" : ` "${title}"`}`, false);
+    indentedBody(state, node, `${marker} ${kind}${title === capitalise(kind) ? "" : ` "${title}"`}`, node.attrs["blankLine"] === true);
   },
 
   snippet(state, node) {
@@ -223,10 +276,12 @@ const nodes: Record<string, NodeSerializer> = {
   },
 
   /**
-   * Canonical `<figure class="kg" …>`: attribute order is fixed (class, data-scene, id,
-   * data-static, data-controls, data-readout, data-instrument, then whatever `extraAttrs` kept) so
-   * the same figure always serializes to the same bytes. An inline scene's source goes back inside
-   * its `<script type="text/kineglyph">`; any other inner HTML rides along under `INNER_HTML_KEY`.
+   * `<figure class="kg" …>`. The attributes are written back in the author's own order, quoting and
+   * spacing when the node came from a file (`attrSource`); a figure the UI created has no such text
+   * and falls back to a fixed order (class, data-scene, id, data-static, data-controls,
+   * data-readout, data-instrument, then whatever `extraAttrs` kept), so the same figure always
+   * serializes to the same bytes either way. An inline scene's source goes back inside its
+   * `<script type="text/kineglyph">`; any other inner HTML rides along under `INNER_HTML_KEY`.
    */
   figureKg(state, node) {
     const extra = jsonAttrs(some(node.attrs, "extraAttrs"));
@@ -238,25 +293,38 @@ const nodes: Record<string, NodeSerializer> = {
     for (const [name, value] of extra) if (name !== "class") ordered.set(name, value);
     const source = some(node.attrs, "source");
     const script = source === null ? "" : `<script type="text/kineglyph">\n${source}\n</script>`;
-    state.text(`<figure${htmlAttrs(ordered)}>${script}${extra.get(INNER_HTML_KEY) ?? ""}</figure>`, false);
+    state.text(`<figure${htmlAttrs(node.attrs, ordered)}>${script}${extra.get(INNER_HTML_KEY) ?? ""}</figure>`, false);
     state.closeBlock(node);
   },
 
-  /** MkDocs' captioned image: markdown inside, so the inner lines are markdown, not HTML. */
+  /**
+   * MkDocs' captioned image: markdown inside, so the inner lines are markdown, not HTML. The
+   * `<figure>` tag itself models only `markdown="span"`, so its other attributes are kept rather
+   * than dropped — `keepUnknown`, because nothing else in the node remembers them.
+   */
   figureImage(state, node) {
+    const attrs = attrSourceOf(node.attrs);
+    const open = attrs === null ? ' markdown="span"' : renderAttrs(attrs, [], { keepUnknown: true });
     const image = `  ${imageMarkup(node.attrs, raw(node.attrs, "alt"))}${attrSuffix(some(node.attrs, "width"), null)}`;
     const caption = some(node.attrs, "caption");
-    const lines = ['<figure markdown="span">', image, ...(caption === null ? [] : [`  <figcaption>${caption}</figcaption>`]), "</figure>"];
+    const lines = [`<figure${open}>`, image, ...(caption === null ? [] : [`  <figcaption>${caption}</figcaption>`]), "</figure>"];
     state.text(lines.join("\n"), false);
     state.closeBlock(node);
   },
 
   modelViewer(state, node) {
-    const ordered = new Map<string, string>([["src", raw(node.attrs, "src")]]);
+    const attrs = attrSourceOf(node.attrs);
+    const ordered = new Map<string, string>();
+    const src = raw(node.attrs, "src");
+    // An empty `src` the author never wrote is not an attribute; one they did write stays written.
+    if (src !== "" || attrs === null || declared(attrs, "src")) ordered.set("src", src);
     const alt = some(node.attrs, "alt");
     if (alt !== null) ordered.set("alt", alt);
     for (const [name, value] of jsonAttrs(some(node.attrs, "attrs"))) ordered.set(name, value);
-    state.text(`<model-viewer${htmlAttrs(ordered)}></model-viewer>`, false);
+    // A self-closing `<model-viewer …/>` has no closing tag to write, and its `/` is already in the
+    // attribute text's tail.
+    const body = isSelfClosing(attrs) ? "" : `${some(node.attrs, "inner") ?? ""}</model-viewer>`;
+    state.text(`<model-viewer${htmlAttrs(node.attrs, ordered)}>${body}`, false);
     state.closeBlock(node);
   },
 

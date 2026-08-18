@@ -1,3 +1,4 @@
+
 # Basics
 
 A `Schematic` is an editable Minecraft build. It holds blocks, block entities,

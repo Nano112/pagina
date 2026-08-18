@@ -52,6 +52,11 @@ export function admonitionPlugin(md: MarkdownIt): void {
     open.attrSet("kind", kind);
     open.attrSet("title", title);
     open.attrSet("collapsible", marker === "???" ? "true" : "false");
+    // Whether the author left a blank line between the marker and the body. It makes no difference
+    // to the HTML, so nothing here reads it — but it is the kind of formatting the editor has to
+    // write back untouched, and once the tokens are made the source line is gone. See
+    // `packages/editor/src/model/serializer.ts`.
+    open.attrSet("blankLine", startLine + 1 < next && state.isEmpty(startLine + 1) ? "true" : "false");
     open.map = [startLine, next];
     parseBodyInto(state, body, startLine + 1);
     state.push("pg_admonition_close", "", -1).markup = marker;

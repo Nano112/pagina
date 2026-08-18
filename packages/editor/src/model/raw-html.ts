@@ -9,19 +9,19 @@
  * Everything that is recognised must be reconstructible, because task A3 serialises these nodes
  * back to markdown. Attributes the node model does not name are therefore preserved verbatim —
  * `figureKg` keeps them in `extraAttrs`, `modelViewer` in `attrs`, both as a JSON object string.
+ *
+ * A JSON bag preserves *which* attributes there were and what they said, but not how they were
+ * written: their order relative to the modelled ones, their quote character, and whether a boolean
+ * one was bare. Those reach the rendered page verbatim, so every recognised node also keeps the
+ * tag's attribute text in `attrSource`, which `renderAttrs` replays token by token. See
+ * `attr-source.ts`.
  */
 
 /** `figureKg.extraAttrs` key holding the figure's inner HTML minus its kineglyph `<script>`. */
 export const INNER_HTML_KEY = "#inner";
 
-const ATTR_RE = /([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-
-/** Parses a tag's attribute text (`class="kg" data-scene="x"`) into a plain object, in order. */
-export function parseAttributes(source: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of source.matchAll(ATTR_RE)) out[m[1]!] = m[2] ?? m[3] ?? m[4] ?? "";
-  return out;
-}
+export { parseAttributes } from "./attr-source.js";
+import { parseAttributes } from "./attr-source.js";
 
 /** `{ …rest }` as a JSON object string, or `null` when nothing is left over. */
 const leftovers = (attrs: Record<string, string>, known: readonly string[]): string | null => {
@@ -35,7 +35,9 @@ export interface RawHtmlNode {
 }
 
 const FIGURE_RE = /^<figure\b([^>]*)>([\s\S]*?)<\/figure>\s*$/;
-const MODEL_VIEWER_RE = /^<model-viewer\b([^>]*?)(\/?)>(?:([\s\S]*?)<\/model-viewer>)?\s*$/;
+// Group 1 is everything between the tag name and `>`, *including* a self-closing `/`: it is handed
+// to `parseAttrSource`, which leaves the slash in the tail so the tag comes back as it went in.
+const MODEL_VIEWER_RE = /^<model-viewer\b([^>]*)>(?:([\s\S]*?)<\/model-viewer>)?\s*$/;
 // Non-greedy to the first `</script>`, which is what the HTML parser does too — so a scene whose
 // source contains that sequence inside a string literal truncates here (it would break the browser
 // as well, and the fix is the same: split the literal). Matches core's `extractFigures` regex.
@@ -61,6 +63,7 @@ function classifyFigure(attrText: string, inner: string): RawHtmlNode | null {
     return {
       node: "figureKg",
       attrs: {
+        attrSource: attrText,
         kind: script !== null ? "inline" : scene !== null ? "module" : "static",
         id: attrs["id"] ?? null,
         scene,
@@ -81,6 +84,7 @@ function classifyFigure(attrText: string, inner: string): RawHtmlNode | null {
   return {
     node: "figureImage",
     attrs: {
+      attrSource: attrText,
       src: image[2] ?? "",
       alt: image[1] ?? "",
       title: image[3] ?? null,
@@ -98,8 +102,21 @@ export function classifyHtmlBlock(html: string): RawHtmlNode {
   if (classified !== null) return classified;
   const model = MODEL_VIEWER_RE.exec(text);
   if (model !== null) {
-    const attrs = parseAttributes(model[1] ?? "");
-    return { node: "modelViewer", attrs: { src: attrs["src"] ?? "", alt: attrs["alt"] ?? "", attrs: leftovers(attrs, ["src", "alt"]) } };
+    const attrText = model[1] ?? "";
+    const attrs = parseAttributes(attrText);
+    // `<model-viewer>` may wrap fallback content — a `<img slot="poster">`, a `<div slot="ar-button">`.
+    // The editor has nothing to show for it, but dropping it would delete the author's markup.
+    const inner = (model[2] ?? "").trim();
+    return {
+      node: "modelViewer",
+      attrs: {
+        attrSource: attrText,
+        src: attrs["src"] ?? "",
+        alt: attrs["alt"] ?? "",
+        inner: inner === "" ? null : inner,
+        attrs: leftovers(attrs, ["src", "alt"]),
+      },
+    };
   }
   return { node: "htmlBlock", attrs: { html: text } };
 }

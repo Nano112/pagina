@@ -16,11 +16,16 @@ import { parseMarkdown, serializeMarkdown } from "../src/model/index.js";
  *
  * Sources are the fixture's three pages, two real Nucleation pages, and one synthetic sample per
  * custom node, mark and block construct.
+ *
+ * The Nucleation pages are **vendored** into `fixtures/nucleation/`, not read out of a sibling
+ * checkout. Reading a sibling checkout made this suite prove nothing anywhere else (it skipped
+ * itself when the path was absent) and made it fail here whenever someone edited an unrelated
+ * repository. `scripts/sync-nucleation-fixtures.mjs` refreshes the copies, explicitly and by hand.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = resolve(here, "../../core/test/fixture");
-const nucleationDocs = "/Users/harrison/RustroverProjects/Nucleation/docs";
+const nucleationDocs = resolve(here, "../../../fixtures/nucleation/docs");
 
 const FRONT_MATTER = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
@@ -272,6 +277,48 @@ export default { id: "inline-demo" };
 <figure class="kg" data-static="media/static.svg"><img src="media/static.svg" alt="static"></figure>
 `,
   ),
+  /**
+   * The attribute shapes hand-written `<model-viewer>` and `<figure>` markup actually uses, each
+   * of which the serializer once flattened into a canonical form of its own:
+   *
+   *  - a modelled attribute (`src`, `alt`) written *after* an unmodelled one, so re-emitting the
+   *    modelled ones first reorders the tag — the defect that made Nucleation's landing page fail;
+   *  - a bare boolean (`camera-controls`), which is not the same bytes as `camera-controls=""`;
+   *  - single quotes, and a value that contains a double quote only single quotes can hold;
+   *  - an unquoted value;
+   *  - attributes split across lines (with the closing `>` kept off column one, where markdown
+   *    would read it as a blockquote), and doubled spaces between them;
+   *  - a self-closing tag, which has no closing tag to write;
+   *  - fallback content inside the element, which no attribute models;
+   *  - a `<figure markdown="span">` carrying an `id` and a `class` the node does not model.
+   */
+  synthetic(
+    "attribute shapes, kept as written",
+    `<model-viewer class="nu-model" src="media/a.glb" alt="Written after the class" camera-controls="" touch-action="pan-y"></model-viewer>
+
+<model-viewer src="media/b.glb" camera-controls autoplay ar></model-viewer>
+
+<model-viewer src='media/c.glb' alt='He said "hello"' loading=lazy></model-viewer>
+
+<model-viewer
+  src="media/d.glb"
+  alt="Across several lines"
+  reveal="interaction"></model-viewer>
+
+<model-viewer src="media/e.glb"  alt="Two spaces before this" ></model-viewer>
+
+<model-viewer src="media/f.glb" alt="Self-closing" />
+
+<model-viewer src="media/g.glb" alt="With a poster"><img slot="poster" src="media/poster.png" alt="Poster"></model-viewer>
+
+<figure markdown="span" id="plan" class="wide">
+  ![A figure with attributes of its own](media/static.svg){ width="480" }
+  <figcaption>Kept.</figcaption>
+</figure>
+
+<figure class="kg" data-scene="scenes/demo.mjs" id="scene-first" data-static="media/static.svg" hidden></figure>
+`,
+  ),
   synthetic(
     "html figures, model viewer and raw html",
     `<figure markdown="span">
@@ -293,8 +340,7 @@ export default { id: "inline-demo" };
 ];
 
 const FIXTURE: readonly Source[] = ["index.md", "guide/tabs.md", "guide/figures.md"].map(fixturePage);
-const hasNucleation = existsSync(nucleationDocs);
-const NUCLEATION: readonly Source[] = hasNucleation ? ["index.md", "features/basics.md"].map(nucleationPage) : [];
+const NUCLEATION: readonly Source[] = ["index.md", "features/basics.md"].map(nucleationPage);
 
 // ---------------------------------------------------------------------------------------------
 // The guarantee
@@ -317,9 +363,18 @@ describe.each([...FIXTURE, ...NUCLEATION, ...SYNTHETIC])("round trip: $name", (s
     const after = await html(source, serialize(source.markdown));
     expectSame(after, before, "rendered HTML changed");
   });
+
+  /**
+   * The strongest form, and the one a WYSIWYG editor is actually judged by: opening a hand-written
+   * file and saving it without touching anything gives back the same bytes. Identical HTML is not
+   * enough on its own — a diff nobody asked for is still a diff in the author's git history.
+   */
+  it("round-trips to the same bytes", () => {
+    expectSame(serialize(source.markdown), source.markdown, "markdown changed");
+  });
 });
 
-describe.skipIf(!hasNucleation)("normalisation footprint", () => {
+describe("normalisation footprint", () => {
   it.each(["index.md", "features/basics.md"])("reports how far serialize(parse(md)) drifts from Nucleation's %s", (page) => {
     const source = nucleationPage(page);
     const round = serialize(source.markdown);

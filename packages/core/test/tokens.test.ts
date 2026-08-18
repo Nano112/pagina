@@ -31,7 +31,7 @@ describe("structured tokens", () => {
     expect(tokens[5]!.map).toEqual([8, 9]);
   });
 
-  it("emits an admonition with kind, resolved title and collapsible, around body tokens", () => {
+  it("emits an admonition with kind, resolved title, collapsible and blankLine, around body tokens", () => {
     const tokens = md.parse(`??? tip "More"\n\n    ## Inside\n\n    Body.\n`, {});
     expect(shape(tokens)).toEqual([
       ["pg_admonition_open", 1, 0],
@@ -43,14 +43,27 @@ describe("structured tokens", () => {
       ["paragraph_close", -1, 1],
       ["pg_admonition_close", -1, 0],
     ]);
-    expect(tokens[0]!.attrs).toEqual([["kind", "tip"], ["title", "More"], ["collapsible", "true"]]);
+    expect(tokens[0]!.attrs).toEqual([["kind", "tip"], ["title", "More"], ["collapsible", "true"], ["blankLine", "true"]]);
     expect(tokens[0]!.markup).toBe("???");
     expect(tokens[0]!.map).toEqual([0, 6]);
     expect(tokens[1]!.tag).toBe("h2");
     // A titleless `!!!` resolves the title from the kind, and is not collapsible.
     const plain = md.parse(`!!! warning\n\n    B\n`, {})[0]!;
-    expect(plain.attrs).toEqual([["kind", "warning"], ["title", "Warning"], ["collapsible", "false"]]);
+    expect(plain.attrs).toEqual([["kind", "warning"], ["title", "Warning"], ["collapsible", "false"], ["blankLine", "true"]]);
     expect(plain.markup).toBe("!!!");
+  });
+
+  /**
+   * `blankLine` records whether the author left a line between the marker and the body. It changes
+   * no HTML — both forms render identically — and exists only so the editor can save a page back
+   * in the shape it was written; the assertion is here because nothing downstream would notice.
+   */
+  it("records whether the admonition's body started on the next line or after a blank one", () => {
+    const withBlank = md.parse(`!!! note\n\n    B\n`, {})[0]!;
+    const without = md.parse(`!!! note\n    B\n`, {})[0]!;
+    expect(withBlank.attrGet("blankLine")).toBe("true");
+    expect(without.attrGet("blankLine")).toBe("false");
+    expect(renderMarkdown(md, `!!! note\n\n    B\n`).html).toBe(renderMarkdown(md, `!!! note\n    B\n`).html);
   });
 
   it("nests a tab group inside an admonition inside a tab", () => {

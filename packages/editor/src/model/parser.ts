@@ -221,7 +221,12 @@ const tokenSpec: Record<string, ParseSpec> = {
   pg_tab: { block: "tab", getAttrs: (t) => ({ label: t.attrGet("label") ?? "" }) },
   pg_admonition: {
     block: "admonition",
-    getAttrs: (t) => ({ kind: t.attrGet("kind") ?? "note", title: t.attrGet("title") ?? "", collapsible: t.attrGet("collapsible") === "true" }),
+    getAttrs: (t) => ({
+      kind: t.attrGet("kind") ?? "note",
+      title: t.attrGet("title") ?? "",
+      collapsible: t.attrGet("collapsible") === "true",
+      blankLine: t.attrGet("blankLine") === "true",
+    }),
   },
 
   pg_snippet: { node: "snippet", getAttrs: (t) => meta(t) },

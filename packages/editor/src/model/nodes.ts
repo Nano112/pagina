@@ -79,6 +79,13 @@ export const Admonition = Node.create({
         parseHTML: (element: HTMLElement): boolean => element.getAttribute("data-collapsible") === "true",
         renderHTML: (attrs: Record<string, unknown>): Record<string, string> => ({ "data-collapsible": attrs["collapsible"] === true ? "true" : "false" }),
       },
+      // Whether the author left a blank line under the marker. Invisible in the rendered page and
+      // in the editor; it exists only so that saving does not reflow the source.
+      blankLine: {
+        default: false,
+        parseHTML: (element: HTMLElement): boolean => element.getAttribute("data-blankline") === "true",
+        renderHTML: (attrs: Record<string, unknown>): Record<string, string> => ({ "data-blankline": attrs["blankLine"] === true ? "true" : "false" }),
+      },
     };
   },
   parseHTML() {
@@ -107,7 +114,15 @@ export const Snippet = Node.create({
   },
 });
 
-const KG_KEYS = ["kind", "id", "scene", "source", "static", "controls", "readout", "instrument", "extraAttrs"] as const;
+/**
+ * The author's raw attribute text for a tag the editor models. It is not data the UI shows or
+ * edits: it is what lets the serializer put the attributes back in the author's order, quoting and
+ * spacing instead of a canonical order of its own. `null` on a node the UI created, which has no
+ * author text to preserve and gets the canonical form. See `attr-source.ts`.
+ */
+const ATTR_SOURCE_KEY = "attrSource";
+
+const KG_KEYS = [ATTR_SOURCE_KEY, "kind", "id", "scene", "source", "static", "controls", "readout", "instrument", "extraAttrs"] as const;
 
 /**
  * `<figure class="kg" …>` — a Kineglyph figure. `kind` mirrors core's `FigureRef`:
@@ -140,7 +155,7 @@ export const FigureImage = Node.create({
   selectable: true,
   draggable: true,
   addAttributes() {
-    return { src: stringAttr("src", ""), alt: stringAttr("alt", ""), title: stringAttr("title"), width: stringAttr("width"), caption: stringAttr("caption", "") };
+    return { [ATTR_SOURCE_KEY]: stringAttr(ATTR_SOURCE_KEY), src: stringAttr("src", ""), alt: stringAttr("alt", ""), title: stringAttr("title"), width: stringAttr("width"), caption: stringAttr("caption", "") };
   },
   parseHTML() {
     return [{ tag: "figure[data-pg-figure-image]" }];
@@ -150,7 +165,10 @@ export const FigureImage = Node.create({
   },
 });
 
-/** `<model-viewer src="…">` — a glTF/GLB viewer element; unmodelled attributes live in `attrs`. */
+/**
+ * `<model-viewer src="…">` — a glTF/GLB viewer element; unmodelled attributes live in `attrs`,
+ * and any fallback content the element wrapped (a poster `<img>`, an AR button) in `inner`.
+ */
 export const ModelViewer = Node.create({
   name: "modelViewer",
   group: "block",
@@ -158,7 +176,7 @@ export const ModelViewer = Node.create({
   selectable: true,
   draggable: true,
   addAttributes() {
-    return { src: stringAttr("src", ""), alt: stringAttr("alt", ""), attrs: stringAttr("attrs") };
+    return { [ATTR_SOURCE_KEY]: stringAttr(ATTR_SOURCE_KEY), src: stringAttr("src", ""), alt: stringAttr("alt", ""), inner: stringAttr("inner"), attrs: stringAttr("attrs") };
   },
   parseHTML() {
     return [{ tag: "model-viewer" }];

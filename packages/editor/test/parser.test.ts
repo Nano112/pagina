@@ -7,7 +7,11 @@ import { INNER_HTML_KEY } from "../src/model/raw-html.js";
 
 const repo = (path: string): string => fileURLToPath(new URL(`../../../${path}`, import.meta.url));
 const fixture = (name: string): string => readFileSync(repo(`packages/core/test/fixture/${name}`), "utf8");
-const nucleation = (name: string): string => readFileSync(`/Users/harrison/RustroverProjects/Nucleation/docs/${name}`, "utf8");
+/**
+ * Real pages, vendored into `fixtures/nucleation/` rather than read from a sibling checkout — see
+ * the header of `roundtrip.test.ts`, and `scripts/sync-nucleation-fixtures.mjs` to refresh them.
+ */
+const nucleation = (name: string): string => readFileSync(repo(`fixtures/nucleation/docs/${name}`), "utf8");
 
 /** Every node in the document, in document order, excluding the doc node itself. */
 function nodes(doc: ProseMirrorNode): ProseMirrorNode[] {
@@ -246,14 +250,19 @@ describe("parseMarkdown — standard markdown", () => {
 });
 
 describe("parseMarkdown — Nucleation pages", () => {
-  it("parses docs/index.md, falling back to raw HTML only for the hero <figure>", () => {
+  it("parses docs/index.md, falling back to raw HTML only for the page <style> and the hero <figure>", () => {
     const { doc, frontMatter } = parseMarkdown(nucleation("index.md"));
     expect(frontMatter).toBe("title: Nucleation");
     const raw = ofType(doc, "htmlBlock");
-    // The one genuinely raw block: the hero `<figure>` holding an `<img>` and a `<figcaption>`
-    // written as HTML (no `markdown="span"`, no `class="kg"`), so no node models it.
-    expect(raw).toHaveLength(1);
-    expect(raw[0]!.attrs["html"]).toContain('<img src="media/hero.gif"');
+    // The two genuinely raw blocks: the page's own `<style>`, and the hero `<figure>` holding an
+    // `<img>` and a `<figcaption>` written as HTML (no `markdown="span"`, no `class="kg"`). No
+    // node models either, so both stay verbatim — which is the only way they survive a save.
+    expect(raw).toHaveLength(2);
+    expect(raw[0]!.attrs["html"]).toMatch(/^<style>/);
+    expect(raw[1]!.attrs["html"]).toContain('<img src="media/hero.gif"');
+    // The landing page's `<model-viewer>`, which the round-trip test pins byte for byte.
+    expect(ofType(doc, "modelViewer")).toHaveLength(1);
+    expect(ofType(doc, "modelViewer")[0]!.attrs).toMatchObject({ src: "media/capture-1779012187376.glb" });
     expect(ofType(doc, "figureKg")).toHaveLength(1);
     expect(ofType(doc, "figureKg")[0]!.attrs).toMatchObject({ kind: "module", scene: "scenes/formats-and-io.mjs", controls: "false", readout: "false" });
     expect(ofType(doc, "tabs")).toHaveLength(1);

@@ -18,16 +18,19 @@ import type { ContentFs } from "../src/types.js";
  *     PAGINA_UPDATE_GOLDEN=1 npx vitest run packages/core/test/golden.test.ts
  *
  * Inputs are committed under `test/golden/input/`: the fixture pages come from `test/fixture/`,
- * and the two Nucleation pages are snapshotted (post-`expandSnippets`) from a local checkout at
- * `NUCLEATION_DOCS` so the goldens stay reproducible even though that repo keeps moving. Updating
- * refreshes the inputs from that checkout when it is present, then rewrites every golden.
+ * and the two Nucleation pages are snapshotted (post-`expandSnippets`) from the vendored copies in
+ * `fixtures/nucleation/`, so the goldens stay reproducible even though that repo keeps moving.
+ * Updating regenerates the inputs from those copies, then rewrites every golden.
+ *
+ * The vendored copies are refreshed by hand — `scripts/sync-nucleation-fixtures.mjs` — and never
+ * by a test. Nothing here reads a path outside this repository.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const goldenDir = join(here, "golden");
 const inputDir = join(goldenDir, "input");
 const fixtureRoot = join(here, "fixture");
-const NUCLEATION_DOCS = "/Users/harrison/RustroverProjects/Nucleation/docs";
+const nucleationRoot = resolve(here, "../../../fixtures/nucleation/docs");
 const UPDATE = process.env["PAGINA_UPDATE_GOLDEN"] === "1";
 
 const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
@@ -67,10 +70,8 @@ async function collectInputs(): Promise<Map<string, string>> {
     for (const page of fixturePages()) {
       generated.set(`fixture-${page.replace(/\.md$/, "").replace(/\//g, "-")}`, await expandedSource(fixtureRoot, page, [".", "../outside"]));
     }
-    if (existsSync(NUCLEATION_DOCS)) {
-      for (const page of ["index.md", "features/basics.md"]) {
-        generated.set(`nucleation-${page.replace(/\.md$/, "").replace(/\//g, "-")}`, await expandedSource(NUCLEATION_DOCS, page, [".", ".."]));
-      }
+    for (const page of ["index.md", "features/basics.md"]) {
+      generated.set(`nucleation-${page.replace(/\.md$/, "").replace(/\//g, "-")}`, await expandedSource(nucleationRoot, page, [".", ".."]));
     }
     for (const [name, text] of generated) writeFileSync(join(inputDir, `${name}.md`), text);
   }

@@ -1,9 +1,43 @@
+<style>
+/* Two call-to-action links on the landing page. pagina ships no button
+   primitive, so this is defined here — over pagina's own --pg-* token
+   contract, so it follows the reader's light/dark theme — and travels with
+   the article rather than depending on a host stylesheet. The `nu-` prefix
+   keeps it out of pagina's `pg-` namespace. */
+.nu-cta {
+  display: inline-block;
+  margin: 0 0.5rem 0.5rem 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--pg-line-strong, var(--pg-line));
+  border-radius: var(--pg-radius);
+  color: var(--pg-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+.nu-cta:hover { border-color: var(--pg-accent); }
+.nu-cta--primary {
+  background: var(--pg-accent);
+  border-color: var(--pg-accent);
+  color: var(--pg-accent-fg);
+}
+/* `<model-viewer>` defaults to height:150px in its own stylesheet, which beats
+   an `aspect-ratio`, so the height is set outright or the model renders as a
+   sliver in a letterbox. */
+.nu-model {
+  display: block;
+  width: 100%;
+  height: min(26rem, 56vh);
+  background: var(--pg-bg-sunken);
+  border-radius: var(--pg-radius);
+}
+</style>
 <h1 id="minecraft-treated-as-programmable-matter">Minecraft, treated as programmable matter.</h1>
-<p>Nucleation reads, writes, builds, simulates, meshes, and renders Minecraft
-schematics. Rust is the implementation. Six generated bindings expose the same
+<p>Nucleation reads, writes, builds, simulates, meshes, and renders Minecraft<br>
+schematics. Rust is the implementation. Six generated bindings expose the same<br>
 model to Python, JavaScript, Kotlin, PHP, C, and C++.</p>
-<p><a href="features/basics.md" class="pg-button pg-button--primary">Start with a schematic</a>
-<a href="features/formats-and-io.md" class="pg-button">Read the format guarantees</a></p>
+<p><model-viewer class="nu-model" src="media/capture-1779012187376.glb" alt="An interactive 3D view of a schematic exported from Nucleation as glTF" camera-controls="" touch-action="pan-y"></model-viewer></p>
+<p><a href="features/basics.md" class="nu-cta nu-cta--primary">Start with a schematic</a>
+<a href="features/formats-and-io.md" class="nu-cta">Read the format guarantees</a></p>
 <figure class="kg" data-scene="scenes/formats-and-io.mjs" data-controls="false" data-readout="false"></figure>
 <figure>
   <img src="media/hero.gif" alt="A scorched animated 3 by 7 torus knot generated and rendered by Nucleation">
