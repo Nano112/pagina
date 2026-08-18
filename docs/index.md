@@ -11,7 +11,13 @@ pagina in the same commit. The token table on the theming page is quoted out of 
 that ships it. The `article.yaml` on the folder page is this page's own. If any of that stopped
 being true, the build would fail rather than mislead you.
 
-<figure class="kg" data-scene="scenes/publishing.mjs"><figcaption>One render, written down three ways. `build`, `pack` and the editor's preview are not three pipelines that might disagree — they are the same render, which is why a bundle a host serves without running Node matches a build byte for byte.</figcaption></figure>
+<!--
+  The caption uses `<code>` elements rather than backticks on purpose. A figure is raw HTML, and
+  inline markdown is not processed inside one — backticks come out literally, with no diagnostic.
+  `markdown="span"` does not help here either: it is neither honoured nor stripped, so it ends up
+  in the published markup. Written as HTML, it renders.
+-->
+<figure class="kg" data-scene="scenes/publishing.mjs"><figcaption>One render, written down three ways. <code>build</code>, <code>pack</code> and the editor's preview are not three pipelines that might disagree — they are the same render, which is why a bundle a host serves without running Node matches a build byte for byte.</figcaption></figure>
 
 ## What it is for
 
