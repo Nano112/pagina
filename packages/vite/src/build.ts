@@ -3,9 +3,9 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, llmsJson, llmsTxt, parseArticleConfig, renderArticle, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, llmsJson, llmsTxt, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
-import { gitIgnoredPaths } from "./gitignore.js";
+import { emptyArticleDiagnostic, resolveArticle } from "./article.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 
@@ -87,41 +87,6 @@ function stripBase(url: string, base: string): string {
   // Only strip at a path-segment boundary: base `/docs` must not eat `/docsearch/...`.
   const inBase = b !== "" && (url === b || url.startsWith(`${b}/`));
   return (inBase ? url.slice(b.length) : url).replace(/^\/+/, "");
-}
-
-/**
- * Everything this folder excludes beyond the built-in defaults and its own `exclude` list — which
- * today means whatever git ignores — and what to tell the author about it.
- *
- * Reported rather than applied silently. Honouring `.gitignore` is the right default (it is where
- * "not for publication" is already written, and it is what would have kept a directory of internal
- * notes off the public web), but a default that removes files without saying so is exactly the
- * kind of quiet behaviour this work exists to remove. So every build that drops something names
- * how much and, up to a readable number, which.
- */
-async function folderExclusions(
-  folder: string,
-  fs: NodeContentFs,
-  config: ArticleConfig,
-): Promise<{ exclude: string[]; gitIgnored: Set<string>; diagnostics: Diagnostic[] }> {
-  const none = { exclude: [], gitIgnored: new Set<string>(), diagnostics: [] };
-  if (!config.excludeGitignore) return none;
-  const all = await fs.list(".");
-  const ignored = await gitIgnoredPaths(folder, all);
-  if (ignored === undefined || ignored.size === 0) return none;
-  const named = [...ignored].sort();
-  const shown = named.slice(0, 10);
-  return {
-    // As literal paths, not as patterns: git already decided, and re-expressing its answer as a
-    // glob is a second matcher that can disagree with the first.
-    exclude: named,
-    gitIgnored: ignored,
-    diagnostics: [{
-      severity: "warning",
-      code: "gitignored-excluded",
-      message: `git ignores ${String(ignored.size)} file(s) in this folder, so they were not published: ${shown.join(", ")}${named.length > shown.length ? `, and ${String(named.length - shown.length)} more` : ""}. Set \`exclude_gitignore: false\` in article.yaml to publish them anyway.`,
-    }],
-  };
 }
 
 /** The codes {@link unreferencedReport} raises, and the only ones it may fail a build on. */
@@ -308,14 +273,9 @@ export async function bundleClient(
 export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   const base = o.base ?? "/";
   const strict = o.strict ?? true;
-  const fs = new NodeContentFs(o.folder);
-  const config = parseArticleConfig(await fs.read("article.yaml"));
-  // What the folder says is not for publication, before anything is read as content. `.gitignore`
-  // is asked first because it is the answer that already exists — see `gitignore.ts`.
-  const containment = await folderExclusions(o.folder, fs, config);
-  const article = await renderArticle({
-    fs, strict, base,
-    ...(containment.exclude.length === 0 ? {} : { exclude: containment.exclude }),
+  // The same resolution the dev server does — see `article.ts` for why that is one function now.
+  const { fs, config, article, containment } = await resolveArticle({
+    folder: o.folder, base, strict,
     ...(o.md === undefined ? {} : { md: o.md }),
     ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
   });
@@ -324,7 +284,11 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
 
   const themes = await loadKineglyphThemes(o.folder, config);
   const prerendered = await prerenderFigures(article, o.folder, themes, figureWidths(config), base);
-  const diagnostics: Diagnostic[] = [...article.diagnostics, ...prerendered.diagnostics, ...containment.diagnostics];
+  const empty = emptyArticleDiagnostic(article);
+  const diagnostics: Diagnostic[] = [
+    ...article.diagnostics, ...prerendered.diagnostics, ...containment.diagnostics,
+    ...(empty === undefined ? [] : [empty]),
+  ];
   // What was copied but never reached. Computed before anything is written, so a `strictAssets`
   // build refuses instead of publishing and apologising.
   diagnostics.push(...await unreferencedReport({

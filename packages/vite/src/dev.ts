@@ -3,8 +3,8 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { SEARCH_INDEX_PATH, buildSearchIndex, inlineArticleFigures, parseArticleConfig, renderArticle, serializeSearchIndex, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
-import { NodeContentFs } from "./node-fs.js";
+import { SEARCH_INDEX_PATH, buildSearchIndex, inlineArticleFigures, serializeSearchIndex, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
+import { emptyArticleDiagnostic, resolveArticle, type ResolvedArticle } from "./article.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
 import { viteEditMiddleware, type EditWatcher } from "./edit-middleware.js";
@@ -163,15 +163,37 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
         if (rel.endsWith(".mjs") || rel.endsWith(".js")) return [];
       },
       configureServer(s) {
-        const contentFs = new NodeContentFs(folder);
-        let article: Promise<RenderedArticle> | undefined;
+        let resolved: Promise<ResolvedArticle> | undefined;
         let themes: Promise<{ themes: KineglyphThemes; widths: readonly number[] }> | undefined;
         const figCache = new Map<string, PrerenderedFigure[]>();
-        const getArticle = (): Promise<RenderedArticle> =>
-          (article ??= renderArticle({ fs: contentFs, strict: false, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) }));
+        /**
+         * The article, resolved exactly as a build resolves it — same exclusions, same render —
+         * and with the diagnostics a build would print printed here too.
+         *
+         * The logging is the point as much as the sharing is. This lane is deliberately
+         * non-strict: a writer mid-sentence should keep seeing their site, not a stack trace. But
+         * "non-strict" used to mean the diagnostics were discarded, so a page that failed to
+         * render just *was not there* and the request fell through to Vite's bare "Cannot GET /".
+         * The author's own tooling knew exactly what was wrong and said nothing. Now it says it.
+         */
+        const getResolved = (): Promise<ResolvedArticle> =>
+          (resolved ??= (async () => {
+            const r = await resolveArticle({
+              folder, base, strict: false,
+              ...(o.md === undefined ? {} : { md: o.md }),
+              ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+            });
+            const empty = emptyArticleDiagnostic(r.article);
+            for (const d of [...r.diagnostics, ...(empty === undefined ? [] : [empty])])
+              (d.severity === "error" ? s.config.logger.error : s.config.logger.warn)(
+                `[pagina] ${d.code}${d.page === undefined ? "" : ` (${d.page})`}: ${d.message}`,
+              );
+            return r;
+          })());
+        const getArticle = async (): Promise<RenderedArticle> => (await getResolved()).article;
         const getThemes = (): Promise<{ themes: KineglyphThemes; widths: readonly number[] }> =>
           (themes ??= (async () => {
-            const cfg = parseArticleConfig(await contentFs.read("article.yaml"));
+            const cfg = (await getResolved()).config;
             return { themes: await loadKineglyphThemes(folder, cfg), widths: figureWidths(cfg) };
           })());
 
@@ -195,6 +217,53 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
           const results = figures.get(id);
           if (results !== undefined) figCache.set(id, results);
           return results;
+        };
+
+        /** The article href a request path addresses. `/guide/index.html` is `/guide/`. */
+        const hrefFor = (path: string): string => {
+          const rest = path.startsWith(base) ? `/${path.slice(base.length)}` : path;
+          return rest.endsWith("/index.html") ? rest.slice(0, -"index.html".length)
+            : rest.endsWith("/") ? rest : `${rest}/`;
+        };
+
+        /**
+         * One document out of the shell, whether it is a page or the article's 404.
+         *
+         * Figures are inlined here as they are in a build, so dev shows the same document a reader
+         * gets — themed by the host's CSS, and legible with the runtime turned off. Only the
+         * figures named are rendered, and each is cached.
+         */
+        const renderHtml = async (
+          a: RenderedArticle,
+          file: string,
+          figures: readonly { id: string; kind: string }[],
+          path: string,
+        ): Promise<string> => {
+          const rendered = new Map<string, DrawnFigure>();
+          for (const fig of figures) {
+            if (fig.kind === "static") continue;
+            const drawn = drawnFigure(await renderFigure(fig.id));
+            if (drawn !== undefined) rendered.set(fig.id, drawn);
+          }
+          const withFigures = inlineArticleFigures(a, (id) => rendered.get(id)).article;
+          const pages = await o.shell.render(withFigures, {
+            base,
+            dev: true,
+            edit: o.edit === true,
+            clientUrl: `/@fs${o.shell.clientEntry}`,
+            cssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
+            tokensCssUrl: `/@fs${resolve(o.shell.clientEntry, "../tokens.css")}`,
+            kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
+            searchUrl: `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`,
+            ...(o.theme === undefined ? {} : { theme: o.theme }),
+            ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
+            ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+            ...(o.mirrorOf === undefined ? {} : { mirrorOf: o.mirrorOf }),
+          });
+          const rel = file === "404.html" ? file
+            : file === "/" ? "index.html"
+            : `${file.replace(/^\/|\/$/g, "")}/index.html`;
+          return await s.transformIndexHtml(path, String(pages[rel] ?? ""));
         };
 
         // Mounted first so a `PUT /__pagina/edit/files/...` never reaches the page middleware,
@@ -221,7 +290,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
             s.ws.send({ type: "custom", event: "kineglyph:update", data: { url: `${base.replace(/\/$/, "")}/${rel}` } });
             return;
           }
-          article = undefined;
+          resolved = undefined;
           themes = undefined;
           figCache.clear();
           // Broadcast to every client, always. A `full-reload` is right for a reader's tab and
@@ -299,47 +368,53 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 return;
               }
 
-              if (!(req.headers.accept ?? "").includes("text/html")) return next();
+              // Deliberately not gated on `Accept: text/html`. A browser sends that header, so
+              // gating on it looked fine by hand and 404'd for `curl`, a health check, a link
+              // checker and anything else scripted — which reads as "the server is down" and cost
+              // at least one wrong diagnosis. What decides whether this is a page is whether the
+              // article has one at this href, which is the same question a build asks.
               const a = await getArticle();
-              const rest = path.startsWith(base) ? `/${path.slice(base.length)}` : path;
-              // `/guide/figures/index.html` addresses the same page as `/guide/figures/`.
-              const href = rest.endsWith("/index.html") ? rest.slice(0, -"index.html".length)
-                : rest.endsWith("/") ? rest : `${rest}/`;
-              const requested = a.pages[href];
+              const requested = a.pages[hrefFor(path)];
               if (requested === undefined) return next();
-              // Figures are inlined into the page here as they are in a build, so dev shows the
-              // same document a reader gets — themed by the host's CSS, and legible with the
-              // runtime turned off. Only this page's figures are rendered, and each is cached.
-              const rendered = new Map<string, DrawnFigure>();
-              for (const fig of requested.figures) {
-                if (fig.kind === "static") continue;
-                const drawn = drawnFigure(await renderFigure(fig.id));
-                if (drawn !== undefined) rendered.set(fig.id, drawn);
-              }
-              const withFigures = inlineArticleFigures(a, (id) => rendered.get(id)).article;
-              const pages = await o.shell.render(withFigures, {
-                base,
-                dev: true,
-                edit: o.edit === true,
-                clientUrl: `/@fs${o.shell.clientEntry}`,
-                cssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
-                tokensCssUrl: `/@fs${resolve(o.shell.clientEntry, "../tokens.css")}`,
-                kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
-                searchUrl: `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`,
-                ...(o.theme === undefined ? {} : { theme: o.theme }),
-                ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
-                ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
-                ...(o.mirrorOf === undefined ? {} : { mirrorOf: o.mirrorOf }),
-              });
-              const rel = href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`;
-              const html = await s.transformIndexHtml(path, String(pages[rel] ?? ""));
               res.setHeader("content-type", "text/html");
-              res.end(html);
+              res.end(await renderHtml(a, requested.href, requested.figures, path));
             } catch (error) {
               next(error);
             }
           })();
         });
+
+        /**
+         * The article's own 404 page, for a path the article has no page at.
+         *
+         * Registered in the post hook so it runs *after* Vite's own middlewares: everything real —
+         * a scene module, an asset, `/@fs/…`, `/@vite/client` — has already been served by the
+         * time a request gets here, so what is left is genuinely not found. A build has emitted
+         * this page since it learned to; serving it here is what lets an author meet their own
+         * 404 instead of Vite's `Cannot GET /`.
+         *
+         * Only document-shaped paths get it. A missing `.png` is a missing subresource and should
+         * stay a bare 404 — handing an `<img>` a page of HTML helps nobody.
+         */
+        return () => {
+          s.middlewares.use((req, res, next) => {
+            void (async () => {
+              try {
+                if (req.method !== "GET" && req.method !== "HEAD") return next();
+                const path = new URL(req.url ?? "/", "http://localhost").pathname;
+                if (path.startsWith("/@")) return next();
+                const last = path.slice(path.lastIndexOf("/") + 1);
+                if (last !== "" && last.includes(".") && !last.endsWith(".html")) return next();
+                const a = await getArticle();
+                res.statusCode = 404;
+                res.setHeader("content-type", "text/html");
+                res.end(await renderHtml(a, "404.html", [], path));
+              } catch (error) {
+                next(error);
+              }
+            })();
+          });
+        };
       },
     }],
   });

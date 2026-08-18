@@ -48,4 +48,36 @@ describe("createDevServer", () => {
     const missing = await fetch(`${origin}/_pagina/figures/guide-figures/nope.light.svg`);
     expect(missing.status).toBe(404);
   }, 60_000);
+
+  /**
+   * A browser sends `Accept: text/html`; `curl`, a health check, a link checker and every CI
+   * script do not. Gating the page lane on that header therefore looked correct by hand and
+   * returned 404 to everything automated — which reads as "the dev server is down".
+   */
+  it("serves a page to a request that sends no Accept header", async () => {
+    for (const path of ["/", "/guide/figures/"]) {
+      const res = await fetch(`${origin}${path}`);
+      expect(res.status, path).toBe(200);
+      expect(await res.text()).toContain("importmap");
+    }
+    const head = await fetch(`${origin}/`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+  }, 60_000);
+
+  /** The author's own 404 page, which until now only a deployed build ever showed anyone. */
+  it("serves the article's 404 page for an unknown path, with or without Accept", async () => {
+    for (const headers of [{ accept: "text/html" }, {}]) {
+      const res = await fetch(`${origin}/guide/that/never/existed/`, { headers });
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(await res.text()).toContain("data-pagina-404");
+    }
+  }, 60_000);
+
+  /** A missing subresource is not a document: handing an `<img>` a page of HTML helps nobody. */
+  it("leaves a missing subresource as a bare 404", async () => {
+    const res = await fetch(`${origin}/nothing-here.png`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("data-pagina-404");
+  }, 60_000);
 });
