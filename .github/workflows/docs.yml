@@ -41,7 +41,7 @@ env:
   PAGINA_SITE_URL: https://nano112.github.io/pagina/
   # Kineglyph is consumed from source. Pinned, because an unpinned figure engine means the site's
   # pictures can change without a commit here.
-  KINEGLYPH_REF: 1422ee8511d709962d01cffe86f1a255496ff6b2
+  KINEGLYPH_REF: 9afebfa229c3e72cbc6efdc0113d1eb10cdac7e7
 
 jobs:
   build:
