@@ -84,7 +84,25 @@
   }
 
   /* Tables ---------------------------------------------------------------------------------- */
-  .pg-content table { border-collapse: collapse; margin: 1.25rem 0; }
+  /*
+   * A table too wide for the phone scrolls inside itself, not by taking the page with it.
+   *
+   * A markdown table is sized by its content and has no way to say "wrap": the token table on the
+   * theming page is 387px of unbreakable identifiers, which at a 390px viewport pushed the
+   * document to 592px and left the whole article — prose, headings, figures — sliding sideways
+   * under the reader. Every other wide thing on the page already owns its overflow (`.kg-frame`
+   * scrolls, `pre` scrolls); the table was the one that did not.
+   *
+   * `display: block` is what makes `overflow-x` apply at all — it does not apply to a table box —
+   * and `width: max-content` keeps the block from collapsing to the column and squeezing the
+   * columns it is meant to be scrolling. A table that already fits is untouched: at a 1280px
+   * viewport this one is 726px wide before and after, and scrolls nothing.
+   */
+  .pg-content table {
+    border-collapse: collapse; margin: 1.25rem 0;
+    display: block; width: max-content; max-width: 100%; overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
   .pg-content th, .pg-content td {
     border: 1px solid var(--pg-line); padding: 0.4rem 0.65rem; text-align: left;
   }
