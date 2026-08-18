@@ -28,6 +28,7 @@
 @layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
 @import "./tokens.css";
 @import "./reading.css";
+@import "./search.css";
 
 @layer pagina.chrome {
   /* Header ----------------------------------------------------------------------------------- */

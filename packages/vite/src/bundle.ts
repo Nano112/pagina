@@ -12,8 +12,9 @@ import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, sta
 import { dirname, join, resolve, sep } from "node:path";
 import type MarkdownIt from "markdown-it";
 import {
-  BUNDLE_MANIFEST_PATH, BundleError, DEFAULT_BUNDLE_LIMITS, buildBundleContents, inlineArticleFigures,
-  parseArticleConfig, parseBundleManifest, renderArticle, verifyBundleEntries,
+  BUNDLE_MANIFEST_PATH, BundleError, DEFAULT_BUNDLE_LIMITS, buildBundleContents, buildSearchIndex,
+  inlineArticleFigures, parseArticleConfig, parseBundleManifest, renderArticle, serializeSearchIndex,
+  verifyBundleEntries,
   type BundleEntry, type BundleLimits, type BundleManifest, type Diagnostic, type RenderedOutput,
 } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
@@ -114,6 +115,9 @@ export async function packBundle(o: PackOptions): Promise<PackResult> {
     figures: Object.fromEntries(
       [...prerendered.figures].map(([id, results]) => [id, Object.fromEntries(widestPerTheme(results).map((r) => [r.theme, r.svg]))]),
     ),
+    // Built here, from the inlined pages, and carried in the archive — so a host that only reads
+    // `.rendered/` has search without a second renderer. See `@pagina/core`'s `search.ts`.
+    search: serializeSearchIndex(buildSearchIndex(inlined.article)),
   };
   const built = await buildBundleContents({
     fs, config, articleYaml, base, rendered,

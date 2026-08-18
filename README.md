@@ -20,6 +20,9 @@ Design goals, in order:
   Blade view, say) can consume the same manifest without pulling in anything else.
 - **Strict by default.** A nav entry without a file, a dead link, a missing snippet, a broken
   anchor, or a figure that fails to pre-render fails the build with a diagnostic naming the page.
+- **Search is a file, not a service.** A build writes one `search.json` indexed by *section*, and a
+  page fetches it the first time someone presses `/` — never before. No server, no post-processing
+  step, no runtime dependency. See **[docs/search.md](docs/search.md)**.
 - **An article travels as one file.** `pagina pack` **builds** a bundle rather than zipping a
   folder: it resolves the snippets that live outside it, copies only the media a page actually
   references, carries the pre-rendered output, and checksums every file. `pagina unpack` verifies
@@ -238,7 +241,7 @@ hatch for fully custom, non-pre-renderable interactivity.
 
 ```
 pagina dev    <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL] [--mirror-of URL]
-pagina build  <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL] [--mirror-of URL]
+pagina build  <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--no-search] [--site-url URL] [--mirror-of URL]
 pagina pack   [folder] [-o article.pgz] [--base /] [--created ISO8601]
 pagina unpack <article.pgz> [dir] [--force]
 ```
@@ -251,6 +254,8 @@ pagina unpack <article.pgz> [dir] [--force]
 - `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
 - `--theme full|tokens|none` picks how much pagina CSS a page links and `--no-chrome` drops
   pagina's own header row — see [Theming](#theming).
+- `--no-search` writes no `_pagina/search.json` and renders no search control, for a host that
+  indexes its whole site itself. On by default; see [Search](docs/search.md).
 - `--site-url https://example.com/docs/` is the **deployment URL**, path included: the path becomes
   `base`, so one flag gives both correct asset URLs and a correct canonical. It overrides
   `article.yaml`'s `site_url`, which is what a folder with more than one home needs. `build` writes
@@ -391,6 +396,11 @@ Two invariants are enforced, not just intended:
 The manifest (`_pagina/manifest.json`) records the article metadata, the nav tree, per-page
 title/headings/prev/next/breadcrumbs, every figure's `staticBase` (append `.<theme>.svg`), and
 the asset list.
+
+The search index (`_pagina/search.json`, and `.rendered/search.json` in a bundle) is the second
+such artefact: one document per `h2`/`h3` section, with the page's resolved description and every
+figure's `<title>`/`<desc>` folded in. `@pagina/core/search` is a subpath export so a browser can
+import the query half — ~4 kB gzipped — without the renderer behind it.
 
 ## Trust model
 

@@ -331,3 +331,35 @@ describe("the <model-viewer> module", () => {
     expect(html).not.toContain(DEFAULT_MODEL_VIEWER_URL);
   });
 });
+
+describe("search", () => {
+  const withSearch = { ...ctx, searchUrl: "/_pagina/search.json" };
+
+  it("renders nothing at all when the build wrote no index", () => {
+    const html = renderPageHtml(article, "/", ctx);
+    expect(html).not.toContain("pg-search");
+    expect(html).not.toContain("data-pg-search");
+  });
+
+  it("tells the client where the index is, and what base its hrefs are missing", () => {
+    const html = renderPageHtml(article, "/", { ...withSearch, base: "/docs/" });
+    expect(html).toContain(`data-pg-search="/_pagina/search.json"`);
+    expect(html).toContain(`data-pg-base="/docs/"`);
+  });
+
+  it("renders the trigger disabled, so a page without script says so rather than lying", () => {
+    // The client removes both attributes. Rendered enabled, a reader with scripting off gets a
+    // button that looks live and does nothing — which is worse than no button.
+    const html = renderPageHtml(article, "/", withSearch);
+    expect(html).toContain(`data-pg-search-open disabled title="Search needs JavaScript"`);
+    expect(html).toContain(`<kbd>/</kbd>`);
+  });
+
+  it("goes with the header when a host brings its own chrome", () => {
+    // A host that suppressed pagina's header wants its own search control in its own bar; the
+    // keys still work, and anything it marks `data-pg-search-open` is wired.
+    const html = renderPageHtml(article, "/", { ...withSearch, chrome: false });
+    expect(html).not.toContain("pg-search-trigger");
+    expect(html).toContain(`data-pg-search="/_pagina/search.json"`);
+  });
+});

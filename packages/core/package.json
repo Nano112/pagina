@@ -7,7 +7,13 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./search": {
+      "types": "./dist/search.d.ts",
+      "development": "./src/search.ts",
+      "import": "./dist/search.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

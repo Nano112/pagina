@@ -6,13 +6,13 @@ import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { BundleError, PaginaBuildError } from "@pagina/core";
 
 const USAGE = [
-  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--strict-assets] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
+  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--strict-assets] [--no-search] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
   "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>]",
   "       pagina unpack <article.pgz> [dir] [--force]",
 ].join("\n");
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "no-search"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -28,6 +28,7 @@ try {
       // Turns the unreferenced-file report into a refusal. For the build that publishes something
       // you would mind leaking: nothing reaches the file, so nothing explains why it is going out.
       "strict-assets": { type: "boolean" },
+      "no-search": { type: "boolean" },
       "site-url": { type: "string" },
       "mirror-of": { type: "string" },
       created: { type: "string" },
@@ -117,6 +118,10 @@ const theming = {
   ...(values["no-chrome"] === true ? { chrome: false } : {}),
 };
 
+// `--no-search`: write no `_pagina/search.json` and render no search control. For a host that
+// indexes its whole site itself — two search boxes on one page is worse than either of them.
+const search = values["no-search"] === true ? { search: false } : {};
+
 // Port precedence: `--port` flag > `PORT` env var > 4321, ignoring blank/non-numeric values
 // (e.g. `PORT=""`). `gerry run`/`gerry dev` injects the sticky port it granted as the `PORT`
 // env var, so a plain `pagina dev <folder>` run under gerry picks it up without needing the flag.
@@ -190,6 +195,7 @@ if (cmd === "pack") {
       shell: staticShell,
       md: md!,
       ...theming,
+      ...search,
       ...seo,
     });
     for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);

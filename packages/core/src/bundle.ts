@@ -17,6 +17,7 @@ import type { ArticleConfig, ContentFs, Diagnostic, Manifest, RenderedArticle } 
 import { pageSlug } from "./render-page.js";
 import { SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";
 import { walkReferences } from "./references.js";
+import { SEARCH_INDEX_BUNDLE_PATH } from "./search.js";
 
 /**
  * The bundle format version.
@@ -329,6 +330,15 @@ export interface RenderedOutput {
   readonly pages: Readonly<Record<string, string>>;
   /** Figure id → theme name → the standalone SVG. */
   readonly figures: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /**
+   * The serialised search index, if the packer built one.
+   *
+   * It travels *inside* the bundle rather than being rebuilt by the importing host, for the same
+   * reason the pages do: the host may be PHP, and the index is built from inlined HTML by the same
+   * renderer that produced those pages. A host that has the bundle has search; a host that rebuilds
+   * it has a second implementation to keep in step. See `search.ts`.
+   */
+  readonly search?: string;
 }
 
 export interface BuildBundleOptions {
@@ -494,6 +504,8 @@ export async function buildBundleContents(o: BuildBundleOptions): Promise<BuiltB
   for (const [id, themes] of Object.entries(o.rendered.figures))
     for (const [theme, svg] of Object.entries(themes))
       add(`${BUNDLE_RENDERED_DIR}/figures/${id}.${theme}.svg`, bytes(svg), "rendered figure");
+  if (o.rendered.search !== undefined)
+    add(`${BUNDLE_RENDERED_DIR}/${SEARCH_INDEX_BUNDLE_PATH}`, bytes(o.rendered.search), "search index");
 
   for (const url of external)
     diagnostics.push({ severity: "warning", code: "bundle-external-ref", message: `${url} is outside the bundle and will not survive an air gap` });

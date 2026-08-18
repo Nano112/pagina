@@ -223,6 +223,7 @@ describe("packBundle", () => {
       ".rendered/pages/guide-figures.html",
       ".rendered/pages/guide-tabs.html",
       ".rendered/pages/index.html",
+      ".rendered/search.json",
       "article.yaml",
       "guide/figures.md",
       "guide/tabs.md",

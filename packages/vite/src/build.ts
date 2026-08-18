@@ -3,7 +3,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, serializeSearchIndex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { gitIgnoredPaths } from "./gitignore.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
@@ -55,6 +55,13 @@ export interface BuildOptions {
    * site containing a file nobody asked for, and the fix is to name it in `exclude` or delete it.
    */
   readonly strictAssets?: boolean;
+  /**
+   * Write `_pagina/search.json` and let the shell offer search. Default `true`.
+   *
+   * Off is for a host that indexes the article itself — one search box over a whole site is better
+   * than one per article, and two boxes on one page is worse than either.
+   */
+  readonly search?: boolean;
 }
 
 export interface BuildResult {
@@ -273,8 +280,18 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
     files.push(asset);
   }
   const urls = await bundleClient(o.outDir, base, o.shell.clientEntry);
+  // Built from the *inlined* article, so the figures' `<title>`/`<desc>` are in the HTML by the
+  // time it is read — a diagram's description is indexable only in this window, between inlining
+  // and the shell turning the article into files.
+  let searchUrl: string | undefined;
+  if (o.search !== false) {
+    await write(o.outDir, SEARCH_INDEX_PATH, serializeSearchIndex(buildSearchIndex(inlined.article)));
+    files.push(SEARCH_INDEX_PATH);
+    searchUrl = `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`;
+  }
   const pages = await o.shell.render(inlined.article, {
     base, ...urls, dev: false,
+    ...(searchUrl === undefined ? {} : { searchUrl }),
     ...(o.theme === undefined ? {} : { theme: o.theme }),
     ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
     ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),

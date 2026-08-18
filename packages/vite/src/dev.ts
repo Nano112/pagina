@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { inlineArticleFigures, parseArticleConfig, renderArticle, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
+import { SEARCH_INDEX_PATH, buildSearchIndex, inlineArticleFigures, parseArticleConfig, renderArticle, serializeSearchIndex, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
@@ -53,11 +53,23 @@ const EDIT_PAGE_BASE = "/__edit";
  * `dist/editor.js` instead, which is why the entry is resolved separately below.
  */
 function resolveEditorRoot(): string | undefined {
+  return resolvePaginaPackage("editor");
+}
+
+/**
+ * A sibling `@pagina/*` package's directory, the same three ways the editor is found.
+ *
+ * `@pagina/core` needs one too, and for a reason that is easy to miss: the client bundle imports
+ * the search runtime from `@pagina/core`, whose `development` condition resolves to
+ * `packages/core/src/index.ts` — a file outside every path in `server.fs.allow` below. In a build
+ * that is Rollup's problem and it never asks; in dev it is a 403 on a module the page needs.
+ */
+function resolvePaginaPackage(name: string): string | undefined {
   const here = resolve(fileURLToPath(import.meta.url), "..");
   const candidates = [
-    resolve(here, "../../editor"),          // packages/vite/{src,dist} → packages/editor
-    resolve(here, "../node_modules/@pagina/editor"),
-    resolve(process.cwd(), "node_modules/@pagina/editor"),
+    resolve(here, `../../${name}`),          // packages/vite/{src,dist} → packages/<name>
+    resolve(here, `../node_modules/@pagina/${name}`),
+    resolve(process.cwd(), `node_modules/@pagina/${name}`),
   ];
   return candidates.find((dir) => existsSync(resolve(dir, "package.json")));
 }
@@ -86,6 +98,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
   const folder = resolve(o.folder);
   const kgWebEntry = resolveKineglyphBundle("development");
   const editorRoot = o.edit === true ? resolveEditorRoot() : undefined;
+  const coreRoot = resolvePaginaPackage("core");
 
   /** The folder-relative posix path of `file`, or `undefined` if it is outside the folder.
    *  A plain `startsWith(folder)` would also match a sibling like `<folder>-backup/x.mjs`. */
@@ -112,6 +125,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       ...(o.port === undefined ? {} : { port: o.port }),
       fs: {
         allow: [folder, kineglyphRoot(), resolve(o.shell.clientEntry, ".."),
+          ...(coreRoot === undefined ? [] : [coreRoot]),
           ...(editorRoot === undefined ? [] : [editorRoot])],
       },
       watch: { ignored: ["**/node_modules/**"] },
@@ -247,6 +261,30 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 return;
               }
 
+              if (path === `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`) {
+                // Every figure, not the current page's: the index covers the article, and a
+                // diagram's `<title>`/`<desc>` is only in the HTML once the figure is inlined. On
+                // a big article the first search of a session therefore waits for the figures it
+                // has not drawn yet — once, and only if someone searches. A build pays this cost
+                // anyway, and a dev server that indexed less than a build would be a dev server
+                // that hides the difference.
+                const a = await getArticle();
+                const drawn = new Map<string, DrawnFigure>();
+                for (const page of Object.values(a.pages)) {
+                  for (const fig of page.figures) {
+                    if (fig.kind === "static") continue;
+                    const d = drawnFigure(await renderFigure(fig.id));
+                    if (d !== undefined) drawn.set(fig.id, d);
+                  }
+                }
+                const withFigures = inlineArticleFigures(a, (id) => drawn.get(id)).article;
+                res.setHeader("content-type", "application/json; charset=utf-8");
+                // Never cached in dev: the article behind it changes on every save.
+                res.setHeader("cache-control", "no-store");
+                res.end(serializeSearchIndex(buildSearchIndex(withFigures)));
+                return;
+              }
+
               if (path.startsWith(`${base.replace(/\/$/, "")}/_pagina/figures/`)) {
                 const m = FIGURE_URL.exec(path);
                 if (m === null) return next();
@@ -289,6 +327,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 cssUrl: `/@fs${resolve(o.shell.clientEntry, "../pagina.css")}`,
                 tokensCssUrl: `/@fs${resolve(o.shell.clientEntry, "../tokens.css")}`,
                 kineglyphRuntimeUrl: `/@fs${kgWebEntry}`,
+                searchUrl: `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`,
                 ...(o.theme === undefined ? {} : { theme: o.theme }),
                 ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
                 ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),

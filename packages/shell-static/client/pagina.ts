@@ -62,6 +62,48 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
 
 wireTabs(document);
 
+// --- search -----------------------------------------------------------------------------------
+// Wired here, loaded elsewhere. This block is a listener and a dynamic `import()`; the dialog, its
+// styles' behaviour and — much the largest part — the index itself are fetched the first time a
+// reader asks for search and never on a page they only read. See `client/search.ts`.
+//
+// `data-pg-search` is the page telling us an index exists. Without it there is nothing to search,
+// the shell rendered no trigger, and the keys stay unbound: `/` still types a slash.
+
+const searchUrl = root.dataset.pgSearch;
+if (searchUrl !== undefined && searchUrl !== "") {
+  const wiring = { url: searchUrl, base: root.dataset.pgBase ?? "/" };
+  // The chunk is fetched once and shared; a second press while the first is in flight awaits it.
+  let chunk: Promise<typeof import("./search.js")> | undefined;
+  const open = (initial = ""): void => {
+    chunk ??= import("./search.js");
+    void chunk.then((m) => { m.openSearch(wiring, initial); }).catch((e: unknown) => {
+      console.warn("pagina: search failed to load", e);
+    });
+  };
+
+  // Anything the shell — or a host with its own chrome — marked as a trigger.
+  for (const trigger of document.querySelectorAll<HTMLButtonElement>("[data-pg-search-open]")) {
+    // Rendered `disabled` with a `title` explaining that it needs script. It has script now.
+    trigger.disabled = false;
+    trigger.removeAttribute("title");
+    trigger.addEventListener("click", () => { open(); });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    // ⌘K / Ctrl-K anywhere, `/` only when the reader is not already typing into something. A
+    // shortcut that eats a slash inside a form field is a shortcut that broke the field.
+    const target = event.target;
+    const typing = target instanceof HTMLElement
+      && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
+    const combo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+    const slash = event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey;
+    if (!combo && !slash) return;
+    event.preventDefault();
+    open();
+  });
+}
+
 // --- code-copy buttons ---------------------------------------------------------------------
 
 for (const pre of document.querySelectorAll<HTMLElement>(".pg-content pre")) {

@@ -22,6 +22,12 @@ export { DEFAULT_EXCLUDE, articleExcluder, makeExcluder } from "./exclude.js";
 export { toFolderPath, walkReferences, type ReferenceWalk, type WalkReferencesOptions } from "./references.js";
 export { parseFrontMatter, splitFrontMatter, FRONT_MATTER_RE } from "./front-matter.js";
 export {
+  SEARCH_INDEX_BUNDLE_PATH, SEARCH_INDEX_PATH, SEARCH_INDEX_VERSION,
+  buildSearchIndex, parseSearchIndex, searchIndex, serializeSearchIndex, tokenize,
+  type BuildSearchIndexOptions, type SearchDoc, type SearchHit, type SearchIndex,
+  type SearchOptions, type SnippetPart,
+} from "./search.js";
+export {
   DESCRIPTION_MAX, absoluteUrl, deploymentDiagnostics, deploymentUrl, escapeAttr, firstParagraph,
   jsonLdScript, pageSeo, renderSeoHtml, robotsPlacement, robotsTxt, sitemapXml, truncateWords,
   type MetaTag, type PageSeo, type RobotsPlacement, type SeoOptions,

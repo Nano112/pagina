@@ -59,6 +59,15 @@ export interface ShellContext {
    * theme, which is the case where following the host is the right answer.
    */
   readonly kineglyphTheme?: KineglyphThemeColors;
+  /**
+   * Site URL of the search index the build wrote — `/_pagina/search.json` for a pagina build, or
+   * wherever a host serves its own copy from.
+   *
+   * A shell that gets one may offer search; a shell that does not must not, because there is
+   * nothing behind the box. Absent is therefore not "search is off by configuration" but "no index
+   * exists", which is the only thing a page can honestly act on.
+   */
+  readonly searchUrl?: string;
 }
 
 /**

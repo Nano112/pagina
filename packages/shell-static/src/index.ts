@@ -21,6 +21,7 @@ export const staticShell: Shell = {
       ...(ctx.kineglyphTheme === undefined ? {} : { kineglyphTheme: ctx.kineglyphTheme }),
       ...(siteUrl === undefined ? {} : { siteUrl }),
       ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
+      ...(ctx.searchUrl === undefined ? {} : { searchUrl: ctx.searchUrl }),
     };
     return {
       ...Object.fromEntries(

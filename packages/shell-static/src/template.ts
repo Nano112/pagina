@@ -25,6 +25,14 @@ export interface ShellCtx {
   modelViewerUrl?: string;
   /** Absolute site origin, for canonical/`og:url`/`og:image`. Absent, those tags are omitted. */
   siteUrl?: string;
+  /**
+   * Site URL of the search index, e.g. `/_pagina/search.json`.
+   *
+   * Present, the header gets a search trigger and the client binds `/` and ⌘K. Absent, none of
+   * that is rendered and the reading page is byte-for-byte what it was — search is a feature a
+   * build opts into by having written an index, not a box that appears and answers nothing.
+   */
+  searchUrl?: string;
   /** Absolute URL of the deployment this build mirrors; canonical and `og:url` point there. */
   mirrorOf?: string;
 }
@@ -159,6 +167,26 @@ function articleHeaderHtml(
   return `<header class="pg-article-header">${cover}${titleHtml}${metaRow}</header>`;
 }
 
+/**
+ * The header's search button.
+ *
+ * Rendered **`disabled`**, and enabled by the client bundle. That is the whole degradation story:
+ * the dialog is script, so with scripting off — or with the bundle blocked, or still in flight —
+ * the control is visibly inert and its `title` says why, instead of being a box that swallows a
+ * reader's question. A control that looks live and does nothing is worse than no control.
+ *
+ * The hint is `/` rather than `⌘K` because the shell renders one HTML file for every reader and
+ * cannot know which keyboard is in front of it; `/` is the shortcut that is true everywhere. ⌘K and
+ * Ctrl-K work too — the client binds both — they are simply not the ones printed on the key.
+ *
+ * A host with its own chrome renders its own trigger: anything carrying `data-pg-search-open` is
+ * wired by the client, and its `disabled` attribute (if any) removed. See `docs/search.md`.
+ */
+function searchTriggerHtml(ctx: ShellCtx): string {
+  if (ctx.searchUrl === undefined) return "";
+  return `<button type="button" class="pg-search-trigger" data-pg-search-open disabled title="Search needs JavaScript"><span class="pg-search-trigger__label">Search</span><kbd>/</kbd></button>`;
+}
+
 /** A leading `<h1>…</h1>`, if the rendered page opens with one. */
 const LEADING_H1 = /^\s*<h1\b[^>]*>[\s\S]*?<\/h1>/;
 
@@ -209,7 +237,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   // sidebar, TOC and pager stay, because they are the article's own navigation.
   const header = ctx.chrome === false
     ? ""
-    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>`;
+    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>`;
   // The article header, above the content and under the breadcrumbs, on the pages `cover_on`
   // names. `?? "root"` is for a manifest assembled by hand rather than by `renderArticle` — the
   // default has to be the same one `article.yaml` documents, wherever the manifest came from.
@@ -229,7 +257,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
   }));
   return `<!doctype html>
-<html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
+<html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}${ctx.searchUrl === undefined ? "" : ` data-pg-search="${esc(ctx.searchUrl)}" data-pg-base="${esc(ctx.base)}"`}>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${seo}

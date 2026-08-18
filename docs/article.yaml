@@ -58,3 +58,4 @@ nav:
     children:
       - { title: Article bundles, page: bundles.md }
       - { title: Deploying, page: deploying.md }
+      - { title: Search, page: search.md }
