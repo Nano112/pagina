@@ -65,7 +65,11 @@ function audit(pkgs) {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
     });
-    const meta = JSON.parse(raw)[0];
+    // npm 11 prints an array of results; npm 12 prints an object keyed by package name.
+    // Same fields either way, so take whichever shape arrived rather than pinning an npm.
+    const parsed = JSON.parse(raw);
+    const meta = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+    if (!meta?.files) throw new Error(`npm pack --json gave no file list for ${p.json.name}`);
     const files = meta.files.map((f) => f.path);
     const has = (re) => files.some((f) => re.test(f));
 
