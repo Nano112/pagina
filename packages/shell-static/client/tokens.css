@@ -141,47 +141,60 @@
     --pg-figure-max: 100%;
   }
 
-  /* Dark redefines colours only: geometry, type and measure are scheme-independent. */
-  [data-theme="dark"] {
-    --pg-bg: #14161a;
-    --pg-bg-raised: #1c1f26;
-    --pg-bg-sunken: #0f1115;
-    --pg-fg: #e7e9ee;
-    --pg-muted: #9aa1ac;
-    --pg-accent: #7c9bff;
-    --pg-accent-fg: #0d1117;
-    --pg-line: #2b2f38;
-    --pg-line-strong: #3d434f;
-    --pg-note: #7c9bff;
-    --pg-note-surface: #1b2130;
-    --pg-note-fg: #a8bcff;
-    --pg-tip: #3ddc84;
-    --pg-tip-surface: #16241d;
-    --pg-tip-fg: #6ee7a8;
-    --pg-info: #4dc4d9;
-    --pg-info-surface: #14242a;
-    --pg-info-fg: #7fd8e8;
-    --pg-warning: #e0b34c;
-    --pg-warning-surface: #2a2317;
-    --pg-warning-fg: #edc76e;
-    --pg-danger: #ff7b7b;
-    --pg-danger-surface: #2c1b1c;
-    --pg-danger-fg: #ff9d9d;
-    --pg-example: #b197fc;
-    --pg-example-surface: #221c33;
-    --pg-example-fg: #c9b6ff;
-    --pg-quote: #9aa1ac;
-    --pg-quote-surface: #1e2027;
-    --pg-quote-fg: #b6bcc6;
-    --pg-code-bg: #1c1f26;
-    --pg-shiki-bg: #1c1f26;
+  /* Dark redefines colours only: geometry, type and measure are scheme-independent.
+   *
+   * `@media screen` is the whole of pagina's print palette, and it is a wrapper rather than a second
+   * set of values on purpose. Paper is white whatever the screen was, so a reader who chose dark
+   * and pressed ⌘P was, before this line, asking for near-white ink: Chrome prints `color` but
+   * drops backgrounds, so the page came out blank-looking with faint grey text. Excluding the dark
+   * block from the print medium leaves `:root` — the light palette, already correct — in effect,
+   * with nothing duplicated to drift. The shell's inline `--kg-color-*` block does the same, so a
+   * figure's palette follows the page's. See `docs/theming.md`. */
+  @media screen {
+    [data-theme="dark"] {
+      --pg-bg: #14161a;
+      --pg-bg-raised: #1c1f26;
+      --pg-bg-sunken: #0f1115;
+      --pg-fg: #e7e9ee;
+      --pg-muted: #9aa1ac;
+      --pg-accent: #7c9bff;
+      --pg-accent-fg: #0d1117;
+      --pg-line: #2b2f38;
+      --pg-line-strong: #3d434f;
+      --pg-note: #7c9bff;
+      --pg-note-surface: #1b2130;
+      --pg-note-fg: #a8bcff;
+      --pg-tip: #3ddc84;
+      --pg-tip-surface: #16241d;
+      --pg-tip-fg: #6ee7a8;
+      --pg-info: #4dc4d9;
+      --pg-info-surface: #14242a;
+      --pg-info-fg: #7fd8e8;
+      --pg-warning: #e0b34c;
+      --pg-warning-surface: #2a2317;
+      --pg-warning-fg: #edc76e;
+      --pg-danger: #ff7b7b;
+      --pg-danger-surface: #2c1b1c;
+      --pg-danger-fg: #ff9d9d;
+      --pg-example: #b197fc;
+      --pg-example-surface: #221c33;
+      --pg-example-fg: #c9b6ff;
+      --pg-quote: #9aa1ac;
+      --pg-quote-surface: #1e2027;
+      --pg-quote-fg: #b6bcc6;
+      --pg-code-bg: #1c1f26;
+      --pg-shiki-bg: #1c1f26;
+    }
   }
 }
 
 @layer pagina.reset {
   * { box-sizing: border-box; }
   html { color-scheme: light; }
-  [data-theme="dark"] { color-scheme: dark; }
+  /* Screens only, for the reason the palette above is: see the note there. */
+  @media screen {
+    [data-theme="dark"] { color-scheme: dark; }
+  }
   body {
     margin: 0;
     background: var(--pg-bg);

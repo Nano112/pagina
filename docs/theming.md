@@ -142,6 +142,13 @@ rest keep their defaults.
 Dark values apply under `[data-theme="dark"]` on the root element, which pagina's theme toggle
 sets. Tokens with no dark column are scheme-independent.
 
+The dark block is inside `@media screen`, which is the whole of pagina's print palette. Paper is
+white whatever the reader chose, and a browser prints `color` while dropping backgrounds — so a
+dark-theme page printed as authored was near-white ink on nothing. Excluding one block from the
+print medium leaves `:root` in effect, with no second set of values to drift. If you define your own
+dark palette, scope it the same way; if you re-define `--pg-*` unconditionally, your values apply on
+paper too, which may be what you want.
+
 The editor uses the same contract — there is no second palette. Its own `--pge-*` properties are
 only the tool's geometry (`--pge-1`, `--pge-2`, `--pge-sidebar`, `--pge-split`).
 

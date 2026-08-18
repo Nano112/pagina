@@ -395,9 +395,90 @@
      a host the same handle on the light surface (the dark rule below is more specific, so it
      still wins under `[data-theme="dark"]`). */
   .shiki { background-color: var(--pg-shiki-bg) !important; }
-  [data-theme="dark"] .shiki,
-  [data-theme="dark"] .shiki span {
-    color: var(--shiki-dark) !important;
-    background-color: var(--shiki-dark-bg) !important;
+  /* `@media screen` for the reason the dark palette in `tokens.css` carries it: on paper the page is
+     the light theme, and shiki's dark ink would be the one thing that did not follow it. */
+  @media screen {
+    [data-theme="dark"] .shiki,
+    [data-theme="dark"] .shiki span {
+      color: var(--shiki-dark) !important;
+      background-color: var(--shiki-dark-bg) !important;
+    }
+  }
+
+  /* Print: the content column on paper ------------------------------------------------------------
+   *
+   * There is no `pagina pdf`, and this is why there does not need to be one. A docs page is already
+   * a single column of prose with figures in it; what stood between it and a good PDF was not a
+   * renderer but four specific defects, and they are what this block fixes:
+   *
+   *   1. **Things split across the page break.** A code block, a table, an admonition or a figure
+   *      cut in half by a page boundary is the difference between a printout and a deliberate
+   *      document. `break-inside: avoid` on each, and `break-after: avoid` on headings so a section
+   *      never opens at the foot of a page with its first line overleaf.
+   *   2. **Anything that scrolls, doesn't.** `overflow: auto` is a screen affordance; on paper it
+   *      is a crop. Long code lines wrap here instead, and a figure that would have scrolled its
+   *      frame is allowed to shrink to the page (`min-width` is what stopped it — see `.kg-frame`).
+   *   3. **Links become dead text.** A URL a reader cannot click and cannot see is worth printing
+   *      once, after the words. Only absolute ones: `#anchor` and `/guide/` resolve against a page
+   *      the paper does not carry, so printing them is noise, and neither is printed.
+   *   4. **Controls printed as furniture.** The copy button is script; on paper it is a grey word
+   *      sitting in the corner of every listing.
+   *
+   * The chrome half of this — header, sidebar, TOC rail, pager, the search trigger — is in
+   * `pagina.css` and `search.css`, where those elements are styled. A host at `theme: "tokens"`
+   * gets neither, which is right: it prints its own page.
+   *
+   * What is deliberately *not* here: tabs are not expanded and collapsed admonitions are not
+   * opened. What the reader chose on screen is what they asked to print, and a page that quietly
+   * prints three copies of a tabbed example is a page that lied about what it was showing. */
+  @media print {
+    /* The measure is a reading aid for a screen the reader controls the width of. A print page is
+       already 16-18cm of text; holding it to 34rem would leave a third of the sheet blank. */
+    .pg-content { max-width: none; }
+    .pg-content p { orphans: 3; widows: 3; }
+    .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
+      break-after: avoid; break-inside: avoid;
+    }
+    .pg-content pre,
+    .pg-content table,
+    .pg-content blockquote,
+    .pg-content figure,
+    .pg-admonition,
+    figure.kg,
+    .kg-frame { break-inside: avoid; }
+    /* A table longer than a page has to break somewhere; break it between rows, and repeat the
+       header on the sheet that follows. `break-inside: avoid` above is a preference, not a law:
+       a browser overrides it rather than leave a page empty. */
+    .pg-content tr, .pg-content img { break-inside: avoid; }
+    .pg-content thead { display: table-header-group; }
+
+    /* Scrollers become wrappers. `overflow: visible` alone would clip; the wrap is what keeps a
+       120-column line on the sheet. `border` because the sunken background will not print. */
+    .pg-content pre {
+      overflow: visible;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid var(--pg-line-strong);
+    }
+    .pg-copy { display: none; }
+
+    /* Figures. `min-width` is the rule that makes a wide drawing scroll its frame instead of
+       shrinking (see `.kg-frame > svg`), and a frame that scrolls on paper is a drawing with its
+       right-hand side cut off — so on paper the drawing shrinks. `max-height` keeps a tall one
+       from claiming a sheet of its own. */
+    .kg-frame { overflow: visible; }
+    .kg-frame > svg { min-width: 0; max-width: 100%; height: auto; max-height: 20cm; }
+    figure.kg { width: 100%; margin-inline: 0; }
+
+    /* A URL, once, after the words that linked to it — and only when it is one a reader could
+       type back in. Never inside a code listing, where the text is the point. */
+    .pg-content a[href^="http"]::after {
+      content: " <" attr(href) ">";
+      font-size: 0.85em;
+      word-break: break-all;
+      font-family: var(--pg-font-mono);
+    }
+    .pg-content pre a[href^="http"]::after,
+    .pg-content code a[href^="http"]::after { content: none; }
   }
 }

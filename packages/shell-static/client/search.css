@@ -55,6 +55,13 @@
     .pg-search-trigger kbd { display: none; }
   }
 
+  /* A control that opens a dialog, and a dialog, on a sheet of paper. Both are hidden rather than
+     left to the chance that neither happened to be showing when ⌘P was pressed — a reader can
+     print with the search dialog open, and `position: fixed` would put it over the first page. */
+  @media print {
+    .pg-search-trigger, .pg-search { display: none !important; }
+  }
+
   /* Dialog -------------------------------------------------------------------------------------- */
   .pg-search[hidden] { display: none; }
   .pg-search {

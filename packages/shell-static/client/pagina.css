@@ -130,4 +130,31 @@
   .pg-toc__item a { display: block; padding: 0.15rem 0; font-size: 0.85rem; color: var(--pg-muted); text-decoration: none; }
   .pg-toc__item a:hover { color: var(--pg-accent); }
   .pg-toc__item--3 { padding-left: 0.75rem; }
+
+  /* Print: the chrome, on paper --------------------------------------------------------------------
+   *
+   * Everything in this layer is a way of *moving around* a site — the brand row, the sidebar, the
+   * TOC rail, the breadcrumbs, the pager, the theme toggle. None of it can be used on paper, and
+   * every one of them costs a column or a strip of the sheet, so the printed page is the article
+   * and nothing else. The content column's own print rules are in `reading.css`, and the search
+   * trigger's in `search.css`, each next to the rules they override.
+   *
+   * `@page` is inside the layer with everything else in this file, so a host that wants different
+   * margins writes an unlayered `@page` and wins, the way it does for every other rule here. */
+  @media print {
+    @page { margin: 18mm 16mm; }
+
+    .pg-header, .pg-nav, .pg-toc, .pg-pager, .pg-crumbs { display: none; }
+
+    /* The three-column grid becomes the one column that is left. `position: sticky` is measured
+       against a viewport, and a sheet of paper is not one — left in place it pins the element to
+       the first page and leaves a hole on the rest. */
+    .pg-shell { display: block; max-width: none; margin: 0; }
+    .pg-main { padding: 0; }
+
+    /* The cover is the author's picture, not chrome, so it prints — but a hero sized for a screen
+       will otherwise take most of the first sheet before a word of the article. */
+    .pg-cover__img { max-height: 7cm; }
+    .pg-article-header { break-inside: avoid; break-after: avoid; }
+  }
 }

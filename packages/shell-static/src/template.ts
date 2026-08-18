@@ -110,13 +110,18 @@ const varBlock = (palette: { readonly colors?: Readonly<Record<string, string>> 
  *
  * Both palettes are written, keyed on the same `data-theme` the page toggle sets, so switching
  * theme moves the pre-rendered frame and the live stage together and without JavaScript.
+ *
+ * The dark half is scoped to `@media screen` for the same reason `tokens.css`'s is: paper is white
+ * whatever the reader chose on screen, so the print medium keeps the light palette, and a figure
+ * has to be repainted by the same rule that repaints the page around it. Without this line a
+ * reader in dark mode printed a page of light prose with dark diagrams in it.
  */
 function kineglyphThemeCss(ctx: ShellCtx): string {
   if (ctx.kineglyphTheme === undefined || (ctx.theme ?? "full") === "none") return "";
   const light = varBlock(ctx.kineglyphTheme.light);
   const dark = varBlock(ctx.kineglyphTheme.dark);
   if (light === "" && dark === "") return "";
-  return `\n<style>:root{${light}}:root[data-theme="dark"]{${dark}}</style>`;
+  return `\n<style>:root{${light}}@media screen{:root[data-theme="dark"]{${dark}}}</style>`;
 }
 
 /**

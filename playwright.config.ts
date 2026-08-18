@@ -49,7 +49,9 @@ export default defineConfig({
       // `theme-lab.spec.ts` too: it drives the showcase and the lab over a *built* site page, and
       // its central claim — a pre-rendered figure re-tints when a `--pg-*` moves — is a fact about
       // inline SVG in a real artefact that no dev server and no jsdom can be asked about.
-      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo|theme-lab|not-found|search)\.spec\.ts/,
+      // `print.spec.ts` too: what a reader prints is the built stylesheet on a real server, and
+      // `page.pdf()` needs a page a browser actually laid out.
+      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo|theme-lab|not-found|search|print)\.spec\.ts/,
       use: { baseURL: `http://127.0.0.1:${String(STATIC_PORT)}` },
     },
   ],

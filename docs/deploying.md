@@ -175,6 +175,28 @@ they are addressed by name on purpose, by hosts and by agents — so give those 
 `pagina dev` is unaffected: the dev server serves the client from source through Vite, which has its
 own invalidation and no cache to go stale.
 
+## Every page prints
+
+There is no `pagina pdf`. A print stylesheet is the honest 80% of one and needs no new dependency,
+so ⌘P — or **Save as PDF** — produces something deliberate:
+
+- **No chrome.** The header, the sidebar, the TOC rail, the breadcrumbs, the pager, the theme
+  toggle, the search trigger and the per-listing copy buttons are all ways of moving around a site,
+  and none of them can be used on paper.
+- **Nothing splits.** A code block, a table, an admonition, a figure and a heading-plus-its-opening
+  never straddle a page break. A table longer than a sheet breaks between rows and repeats its
+  header.
+- **Nothing scrolls, so nothing is cropped.** Long code lines wrap instead of running off the sheet,
+  and a diagram that would have scrolled its frame on screen shrinks to the page instead.
+- **URLs where they help.** An absolute link prints its address after the words. A `#anchor` or a
+  `/guide/` link does not: it resolves against a page the paper does not carry.
+- **The light palette, always.** pagina's dark tokens live in `@media screen`, so a reader who chose
+  dark and pressed ⌘P gets black ink on white — prose, code and diagrams together — rather than the
+  near-white text Chrome would otherwise print onto a background it drops.
+
+Margins are `@page { margin: 18mm 16mm }`, inside pagina's cascade layer like every other rule, so
+an unlayered `@page` of your own wins without `!important`.
+
 ## Publishing from CI
 
 A deploy is the moment a mistake stops being reversible, so two things belong in the pipeline
