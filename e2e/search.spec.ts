@@ -147,16 +147,23 @@ test.describe("keys", () => {
   test("traps Tab inside the dialog", async ({ page }) => {
     await page.goto(SITE);
     await page.keyboard.press("/");
-    const focused = async () =>
-      page.evaluate(() => document.activeElement?.className ?? "");
-    expect(await focused()).toContain("pg-search__input");
+    // The dialog is a dynamic `import()`: the key schedules it, and focus lands a tick later when
+    // the chunk resolves. Every other test in this file waits for the dialog before asserting, and
+    // this one read `document.activeElement` straight after the press — which is why it, alone, was
+    // failing about one run in four, on CI and locally, both before and after this branch. Polled
+    // rather than slept on: the assertion is "focus ends up here", and that is what is now written.
+    await expect(page.locator(dialog)).toBeVisible();
+    const focusIs = async (cls: string): Promise<void> => {
+      await expect.poll(() => page.evaluate(() => document.activeElement?.className ?? "")).toContain(cls);
+    };
+    await focusIs("pg-search__input");
     await page.keyboard.press("Tab");
-    expect(await focused()).toContain("pg-search__close");
+    await focusIs("pg-search__close");
     // Past the last focusable element, round to the first — never out into the page behind.
     await page.keyboard.press("Tab");
-    expect(await focused()).toContain("pg-search__input");
+    await focusIs("pg-search__input");
     await page.keyboard.press("Shift+Tab");
-    expect(await focused()).toContain("pg-search__close");
+    await focusIs("pg-search__close");
   });
 });
 
