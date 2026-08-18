@@ -86,6 +86,28 @@ export const kineglyphColorVars = (colors: Readonly<Record<string, string>> | un
   return out;
 };
 
+/**
+ * `kineglyph.widths`, checked.
+ *
+ * Every width is a full copy of every figure in the page it appears on, so the cap is not a
+ * formality: eight variants of a six-figure page is a megabyte of SVG to save a reader one pinch.
+ * Five leaves room above the four defaults and is still bounded.
+ */
+const MAX_FIGURE_WIDTHS = 5;
+
+function figureWidths(value: unknown): readonly number[] {
+  if (!Array.isArray(value)) fail("kineglyph.widths", "must be a list of pixel widths");
+  const widths = (value as unknown[]).map((w, i) => {
+    if (typeof w !== "number" || !Number.isFinite(w) || w <= 0)
+      fail(`kineglyph.widths[${i}]`, "must be a positive number of pixels");
+    return w as number;
+  });
+  if (widths.length === 0) fail("kineglyph.widths", "must name at least one width");
+  if (widths.length > MAX_FIGURE_WIDTHS)
+    fail("kineglyph.widths", `must name at most ${MAX_FIGURE_WIDTHS} widths (each one is another copy of every figure)`);
+  return [...new Set(widths)].sort((a, b) => b - a);
+}
+
 export function parseArticleConfig(text: string): ArticleConfig {
   const raw = parse(text) as unknown;
   if (raw === null || typeof raw !== "object") fail("(root)", "must be a mapping");
@@ -124,7 +146,7 @@ export function parseArticleConfig(text: string): ArticleConfig {
     ...(o.site_url === undefined || o.site_url === null ? {} : { siteUrl: str(o.site_url, "site_url") }),
     ...optionalDate(o.published, "published"),
     ...optionalDate(o.updated, "updated"),
-    ...(kg === undefined ? {} : { kineglyph: { ...(kg.theme === undefined ? {} : { theme: str(kg.theme, "kineglyph.theme") }), ...(typeof kg.width === "number" ? { width: kg.width } : {}) } }),
+    ...(kg === undefined ? {} : { kineglyph: { ...(kg.theme === undefined ? {} : { theme: str(kg.theme, "kineglyph.theme") }), ...(typeof kg.width === "number" ? { width: kg.width } : {}), ...(kg.widths === undefined ? {} : { widths: figureWidths(kg.widths) }) } }),
     snippets: { roots },
     nav: parseNav(o.nav ?? [], "nav"),
   };

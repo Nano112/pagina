@@ -6,7 +6,7 @@ import { build as viteBuild } from "vite";
 import { PaginaBuildError, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, sitemapXml, type Diagnostic, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
-import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
+import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 
 // `Shell`/`ShellContext` are defined in `@pagina/core` so a shell package can type itself
 // against the contract without depending on this builder; re-exported here for compatibility.
@@ -130,12 +130,12 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
 
   const config = parseArticleConfig(await fs.read("article.yaml"));
   const themes = await loadKineglyphThemes(o.folder, config);
-  const prerendered = await prerenderFigures(article, o.folder, themes, config.kineglyph?.width, base);
+  const prerendered = await prerenderFigures(article, o.folder, themes, figureWidths(config), base);
   const diagnostics: Diagnostic[] = [...article.diagnostics, ...prerendered.diagnostics];
   for (const [id, results] of prerendered.figures) {
     const meta = article.manifest.figures[id];
     if (meta === undefined) continue;
-    for (const r of results) {
+    for (const r of widestPerTheme(results)) {
       const rel = `${stripBase(meta.staticBase, base)}.${r.theme}.svg`;
       await write(o.outDir, rel, r.svg);
       files.push(rel);
@@ -147,8 +147,7 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   // part of the document instead of a subresource: an `<img>` is a separate document, and no host
   // CSS — nor any screen reader — crosses that boundary.
   const inlined = inlineArticleFigures(article, (id) => {
-    const first = prerendered.figures.get(id)?.[0];
-    return first === undefined ? undefined : { svg: first.inlineSvg, needsRuntime: first.needsRuntime };
+    return drawnFigure(prerendered.figures.get(id));
   });
   diagnostics.push(...inlined.diagnostics);
   for (const asset of article.manifest.assets) {

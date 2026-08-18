@@ -3,10 +3,10 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { inlineArticleFigures, parseArticleConfig, renderArticle, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
+import { inlineArticleFigures, parseArticleConfig, renderArticle, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
-import { loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
+import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
 import { viteEditMiddleware, type EditWatcher } from "./edit-middleware.js";
 import { pagePathForHref, renderEditPage } from "./edit-page.js";
 
@@ -133,14 +133,14 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       configureServer(s) {
         const contentFs = new NodeContentFs(folder);
         let article: Promise<RenderedArticle> | undefined;
-        let themes: Promise<{ themes: KineglyphThemes; width?: number }> | undefined;
+        let themes: Promise<{ themes: KineglyphThemes; widths: readonly number[] }> | undefined;
         const figCache = new Map<string, PrerenderedFigure[]>();
         const getArticle = (): Promise<RenderedArticle> =>
           (article ??= renderArticle({ fs: contentFs, strict: false, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) }));
-        const getThemes = (): Promise<{ themes: KineglyphThemes; width?: number }> =>
+        const getThemes = (): Promise<{ themes: KineglyphThemes; widths: readonly number[] }> =>
           (themes ??= (async () => {
             const cfg = parseArticleConfig(await contentFs.read("article.yaml"));
-            return { themes: await loadKineglyphThemes(folder, cfg), ...(cfg.kineglyph?.width === undefined ? {} : { width: cfg.kineglyph.width }) };
+            return { themes: await loadKineglyphThemes(folder, cfg), widths: figureWidths(cfg) };
           })());
 
         /**
@@ -158,7 +158,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
           if (page === undefined || fig === undefined || fig.kind === "static") return undefined;
           const t = await getThemes();
           const one: RenderedArticle = { ...a, pages: { [page.href]: { ...page, figures: [fig] } } };
-          const { figures, diagnostics } = await prerenderFigures(one, folder, t.themes, t.width, base);
+          const { figures, diagnostics } = await prerenderFigures(one, folder, t.themes, t.widths, base);
           for (const d of diagnostics) s.config.logger.error(`[pagina] ${d.code}: ${d.message}`);
           const results = figures.get(id);
           if (results !== undefined) figCache.set(id, results);
@@ -254,12 +254,11 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
               // Figures are inlined into the page here as they are in a build, so dev shows the
               // same document a reader gets — themed by the host's CSS, and legible with the
               // runtime turned off. Only this page's figures are rendered, and each is cached.
-              const rendered = new Map<string, { svg: string; needsRuntime: boolean }>();
+              const rendered = new Map<string, DrawnFigure>();
               for (const fig of requested.figures) {
                 if (fig.kind === "static") continue;
-                const first = (await renderFigure(fig.id))?.[0];
-                if (first !== undefined)
-                  rendered.set(fig.id, { svg: first.inlineSvg, needsRuntime: first.needsRuntime });
+                const drawn = drawnFigure(await renderFigure(fig.id));
+                if (drawn !== undefined) rendered.set(fig.id, drawn);
               }
               const withFigures = inlineArticleFigures(a, (id) => rendered.get(id)).article;
               // The tokens the figures above were drawn with, so the page paints them the same way.

@@ -43,7 +43,16 @@ export interface ArticleConfig {
   /** ISO-8601 publication / last-modified dates for the article as a whole. */
   readonly published?: string;
   readonly updated?: string;
-  readonly kineglyph?: { readonly theme?: string; readonly width?: number };   // theme = path to module exporting {light,dark}
+  /**
+   * `theme` is a path to a module exporting `{light,dark}`. `width` is the single container width
+   * figures are drawn at; `widths` draws one variant per width and lets the page pick the one that
+   * fits (see `FIGURE_WIDTHS` in `figures.ts`), which is what makes a figure readable on a phone.
+   */
+  readonly kineglyph?: {
+    readonly theme?: string;
+    readonly width?: number;
+    readonly widths?: readonly number[];
+  };
   readonly snippets: { readonly roots: readonly string[] };                    // default ["."]
   readonly nav: readonly NavEntry[];
 }

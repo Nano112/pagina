@@ -59,6 +59,31 @@ describe("parseArticleConfig", () => {
     expect(() => parseArticleConfig(`slug: a\ntitle: A\nsite_url: []\nnav: []`)).toThrow(/site_url/);
     expect(() => parseArticleConfig(`slug: a\ntitle: A\npublished: []\nnav: []`)).toThrow(/published/);
   });
+  describe("kineglyph.widths", () => {
+    const cfg = (kg: string) =>
+      parseArticleConfig(`slug: a\ntitle: A\nform: docs\nnav: []\nkineglyph:\n${kg}`);
+
+    it("sorts the widths widest first and drops duplicates", () => {
+      // Widest first is the order the page inlines them in, and the order that makes the
+      // no-container-query fallback show the widest drawing rather than an arbitrary one.
+      expect(cfg("  widths: [320, 960, 600, 320]").kineglyph?.widths).toEqual([960, 600, 320]);
+    });
+
+    it("leaves a single `width` alone", () => {
+      const c = cfg("  width: 960");
+      expect(c.kineglyph?.width).toBe(960);
+      expect(c.kineglyph?.widths).toBeUndefined();
+    });
+
+    it("refuses a list that is not widths, or one long enough to bloat every page", () => {
+      expect(() => cfg("  widths: 960")).toThrow(/kineglyph\.widths/);
+      expect(() => cfg("  widths: []")).toThrow(/at least one/);
+      expect(() => cfg('  widths: [960, "wide"]')).toThrow(/kineglyph\.widths\[1\]/);
+      expect(() => cfg("  widths: [-1]")).toThrow(/kineglyph\.widths\[0\]/);
+      expect(() => cfg("  widths: [960, 800, 700, 600, 500, 400]")).toThrow(/at most 5/);
+    });
+  });
+
   it("rejects missing slug and unknown form with field names", () => {
     expect(() => parseArticleConfig(`title: A\nform: docs\nnav: []`)).toThrow(/slug/);
     expect(() => parseArticleConfig(`slug: a\ntitle: A\nform: post\nnav: []`)).toThrow(/form/);

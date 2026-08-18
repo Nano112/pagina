@@ -127,21 +127,24 @@ export function figureChrome(element: HTMLElement): FigureChrome | null {
   if (element.dataset.controls === undefined) chrome.controls = wanted;
   if (element.dataset.readout === undefined) chrome.readout = wanted;
   /*
-   * A quiet figure is mounted at the width its geometry was decided at, so the live drawing is
-   * the *same* drawing the reader was already looking at rather than a re-layout of it.
+   * A quiet figure with only *one* drawing is mounted at the width that drawing was measured at,
+   * so the live figure is the same picture the reader was already looking at rather than a
+   * re-layout of it. Left to measure its container the runtime re-resolves the scene, the boxes
+   * narrow, the labels wrap, and the diagram rearranges itself the moment JavaScript lands — a
+   * hydration jump with nothing to justify it when the frame beside it cannot follow.
    *
-   * Left to measure its container, the runtime re-resolves the scene at the column width: boxes
-   * narrow, labels wrap, and the diagram silently rearranges itself — and gets taller — the
-   * moment JavaScript lands. That is the last of the hydration jump once the chrome is gone. It
-   * also drags the runtime back into the failure the pre-rendered frame was fixed for: at 390px a
-   * re-laid-out figure is scaled to 0.41 and its 16px type lands at 6px, while the frame beside it
-   * scrolls at 0.7. Fixing the width makes the live figure keep the frame's scroll-don't-shrink
-   * behaviour, which is what `--pg-figure-min-scale` has meant all along.
+   * A figure that carries *variants* is the opposite case, and the width is deliberately not
+   * pinned. Its frame already answers for its own width — CSS picks the drawing measured for this
+   * container — so a runtime that measures the same container resolves the same scene at the same
+   * width and draws the same picture. Pinning it here would be the disagreement: the reader would
+   * be shown the 320px drawing and then have the 960px one dropped on top of it. Leaving it free
+   * also buys the thing a baked drawing can never have — a figure that re-lays-out when the phone
+   * is turned, rather than one that keeps the width it happened to load at.
    *
-   * An opted-in figure keeps the responsive layout: it is a thing to be driven, its chrome
-   * already reflows, and nobody reading it is mid-sentence.
+   * An opted-in figure keeps the responsive layout for the same reason it always did: it is a
+   * thing to be driven, its chrome already reflows, and nobody reading it is mid-sentence.
    */
-  if (wanted === false) {
+  if (wanted === false && element.dataset.kgVariants === undefined) {
     const width = naturalWidth(element);
     if (width !== undefined) chrome.width = width;
   }

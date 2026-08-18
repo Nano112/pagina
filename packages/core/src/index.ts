@@ -14,7 +14,7 @@ export {
 } from "./bundle.js";
 export { ADMONITION_KINDS } from "./plugins/admonition.js";
 export { slugify } from "./plugins/anchors.js";
-export { extractFigures, inlineArticleFigures, inlineFigureSvgs, type DrawnFigure, type FigureSvg } from "./figures.js";
+export { extractFigures, inlineArticleFigures, inlineFigureSvgs, FIGURE_WIDTHS, type DrawnFigure, type FigureSvg, type FigureVariant } from "./figures.js";
 export { hrefOf, resolveRelative, rewriteLinks } from "./links.js";
 export { renderPage, pageSlug } from "./render-page.js";
 export { renderArticle, PaginaBuildError } from "./render-article.js";

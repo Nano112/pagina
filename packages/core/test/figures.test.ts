@@ -103,4 +103,71 @@ describe("inlineFigureSvgs", () => {
     // A bare string is the old signature: no opinion, so no mark and no behaviour change.
     expect(inlineFigureSvgs(framed(), () => svg()).html).not.toContain("data-kg-inert");
   });
+
+  describe("variants", () => {
+    const at = (w: number, h: number): string =>
+      `<svg viewBox="0 0 ${w} ${h}" role="img" style="--kg-accent:red"><title>A</title><desc>D</desc></svg>`;
+    const three = {
+      svg: at(960, 240),
+      needsRuntime: false,
+      variants: [
+        { containerWidth: 960, svg: at(960, 240) },
+        { containerWidth: 600, svg: at(600, 380) },
+        { containerWidth: 320, svg: at(320, 700) },
+      ],
+    };
+
+    it("inlines every drawing, widest first, each tagged with the width it was measured for", () => {
+      const { html } = inlineFigureSvgs(framed(), () => three);
+      expect([...html.matchAll(/<svg[^>]*data-kg-variant="(\d+)"/g)].map((m) => m[1])).toEqual([
+        "960",
+        "600",
+        "320",
+      ]);
+      // Widest first is what makes the no-container-query fallback correct: `:first-of-type` is
+      // the drawing such a browser is left with. Measured inside the frame, because the generated
+      // stylesheet names the same widths ahead of it.
+      const frame = /<div class="kg-frame".*?<\/div>/s.exec(html)?.[0] ?? "";
+      expect(frame.indexOf('data-kg-variant="960"')).toBeLessThan(frame.indexOf('data-kg-variant="320"'));
+    });
+
+    it("gives each drawing its own geometry, merged into the style it already had", () => {
+      const { html } = inlineFigureSvgs(framed(), () => three);
+      // Merged, not appended: two `style` attributes on one tag is one attribute and a silent loss
+      // of the theme's palette. And the floor is a fraction of *this* drawing's width, so the
+      // 320px drawing must not inherit the 960px one's.
+      expect(html).toContain(`style="--kg-w:320;--kg-h:700;--kg-accent:red" data-kg-variant="320"`);
+      expect(html).toContain(`style="--kg-w:960;--kg-h:240;--kg-accent:red" data-kg-variant="960"`);
+      for (const tag of html.match(/<svg[^>]*>/g) ?? [])
+        expect((tag.match(/style="/g) ?? []).length).toBeLessThan(2);
+    });
+
+    it("marks the figure and emits the queries that pick exactly one", () => {
+      const { html } = inlineFigureSvgs(framed(), () => three);
+      expect(html).toContain(`data-kg-variants="3"`);
+      // Narrowest first and claiming everything down to zero, so the last query that matches is
+      // the widest drawing that fits and a container below them all still gets the smallest.
+      expect(html).toContain("@container kg-frame (min-width:0px)");
+      expect(html).toContain(`.kg-frame>svg[data-kg-variant="320"]{display:block}`);
+      expect(html).toContain("@container kg-frame (min-width:600px)");
+      expect(html).toContain("@container kg-frame (min-width:960px)");
+      expect(html).not.toContain("(min-width:320px)");
+      expect(html).toContain("@supports (container-type:inline-size)");
+      expect(html.indexOf("min-width:0px")).toBeLessThan(html.indexOf("min-width:960px"));
+    });
+
+    it("keeps the figure's own size at the widest drawing's", () => {
+      // Read by the empty stage's reservation and by the mount width, both of which are about the
+      // picture before CSS has chosen one.
+      expect(inlineFigureSvgs(framed(), () => three).html).toContain(`style="--kg-w:960;--kg-h:240"`);
+    });
+
+    it("changes nothing at all for a figure with one drawing", () => {
+      const one = { svg: at(960, 240), needsRuntime: false, variants: [{ containerWidth: 960, svg: at(960, 240) }] };
+      const plain = inlineFigureSvgs(framed(), () => ({ svg: at(960, 240), needsRuntime: false }));
+      expect(inlineFigureSvgs(framed(), () => one).html).toBe(plain.html);
+      expect(plain.html).not.toContain("data-kg-variant");
+      expect(plain.html).not.toContain("<style>");
+    });
+  });
 });

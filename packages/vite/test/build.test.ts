@@ -59,8 +59,14 @@ describe("buildStatic", () => {
     const html = await readFile(join(outDir, "guide/figures/index.html"), "utf8");
     // The figure is *in* the page, not linked from it. That is what lets the host's CSS and a
     // screen reader reach it, and it is why the SVG carries no XML declaration here.
-    expect(html).toContain(`style="--kg-w:960;--kg-h:152"><div class="kg-frame" data-kg-static data-kg-frame="kg-guide-figures-1"><svg`);
-    expect(html).toContain(`id="kg-guide-figures-1-light" class="kg-scene"`);
+    // `--kg-w`/`--kg-h` are the widest drawing's; `data-kg-variants` says the figure answers for
+    // its own width, which is what stops the stylesheet and the client pinning it to that one.
+    expect(html).toContain(`style="--kg-w:960;--kg-h:152" data-kg-variants="4"><div class="kg-frame" data-kg-static data-kg-frame="kg-guide-figures-1"><svg`);
+    // One drawing per width, and each one's ids are its own: four copies sharing an id prefix in
+    // one document would leave every copy's gradients and markers pointing at the last one's defs.
+    expect(html).toContain(`id="kg-guide-figures-1-light-960" class="kg-scene"`);
+    expect(html).toContain(`id="kg-guide-figures-1-light-320" class="kg-scene"`);
+    expect([...html.matchAll(/data-kg-variant="(\d+)"/g)].map((m) => m[1])).toContain("320");
     expect(html).not.toContain("<?xml");
     expect(html).not.toContain("kg-export-background");
     // Colour is the page's to decide; the value it was drawn with is only the fallback.

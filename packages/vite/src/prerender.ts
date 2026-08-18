@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { defaultTheme, type ThemeTokens } from "@kineglyph/core";
 import { prerender, rewriteImports } from "@kineglyph/export";
+import { FIGURE_WIDTHS } from "@pagina/core";
+import type { DrawnFigure } from "@pagina/core";
 import type { ArticleConfig, Diagnostic, RenderedArticle } from "@pagina/core";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 
@@ -50,11 +52,13 @@ export interface PrerenderedFigure {
   readonly inlineSvg: string;
   /** `sceneNeedsRuntime` for the resolved scene — see `@kineglyph/export`. */
   readonly needsRuntime: boolean;
+  /** The container width this drawing was measured for. */
+  readonly containerWidth: number;
 }
 
 export interface PrerenderedFigures {
   /**
-   * Figure id → one entry per theme. Only figures that rendered successfully appear.
+   * Figure id → one entry per theme per width, widest first. Only figures that rendered appear.
    *
    * `svg` is the standalone document written to `_pagina/figures/…`; `inlineSvg` is the same
    * frame as an HTML fragment, which is what goes into the page.
@@ -75,9 +79,10 @@ export async function prerenderFigures(
   article: RenderedArticle,
   folder: string,
   themes: KineglyphThemes,
-  width = 960,
+  widths: number | readonly number[] = FIGURE_WIDTHS,
   base = "/",
 ): Promise<PrerenderedFigures> {
+  const widthList = typeof widths === "number" ? [widths] : [...widths];
   const figures = new Map<string, PrerenderedFigure[]>();
   const diagnostics: Diagnostic[] = [];
   const themeList = [{ name: "light", tokens: themes.light }, { name: "dark", tokens: themes.dark }];
@@ -98,10 +103,10 @@ export async function prerenderFigures(
         // `@kineglyph/export` appends the theme name, so the SVG's root id is `${fig.id}-light`.
         // That matters now the SVG is inlined: its ids share a namespace with the `<figure>` that
         // holds it, and `fig.id` is already taken by the figure element.
-        const results = await prerender(source, { themes: themeList, width, baseUrl, idPrefix: fig.id });
+        const results = await prerender(source, { themes: themeList, widths: widthList, baseUrl, idPrefix: fig.id });
         figures.set(
           fig.id,
-          results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg, needsRuntime: r.needsRuntime })),
+          results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg, needsRuntime: r.needsRuntime, containerWidth: r.containerWidth })),
         );
       } catch (error) {
         diagnostics.push({
@@ -114,4 +119,54 @@ export async function prerenderFigures(
     }
   }
   return { figures, diagnostics };
+}
+
+/**
+ * The drawing a page inlines: the widest variant, and every variant for the stylesheet to pick from.
+ *
+ * Only one theme's drawings are kept. Colour is CSS's job now — every figure is painted from
+ * `--kg-color-*` at view time — so a second theme's copies are the same pictures with different
+ * numbers baked into attributes nothing reads, and inlining them would double the page for nothing.
+ * The themed SVGs are still written out as files, which is what `figures` in the manifest is for.
+ */
+export function drawnFigure(results: readonly PrerenderedFigure[] | undefined): DrawnFigure | undefined {
+  if (results === undefined || results.length === 0) return undefined;
+  const theme = results[0]!.theme;
+  const mine = results.filter((r) => r.theme === theme);
+  const widest = mine[0]!;
+  return {
+    svg: widest.inlineSvg,
+    needsRuntime: widest.needsRuntime,
+    ...(mine.length < 2
+      ? {}
+      : { variants: mine.map((r) => ({ containerWidth: r.containerWidth, svg: r.inlineSvg })) }),
+  };
+}
+
+/**
+ * The container widths an article's figures are drawn at.
+ *
+ * A bare `width` is honoured as a single drawing rather than folded into the defaults: it is the
+ * setting that existed before variants did, and it says "this article's figures are this size" —
+ * an article that pinned them keeps them pinned, and adds `widths` when it wants the choice.
+ */
+export function figureWidths(config: ArticleConfig): readonly number[] {
+  const kg = config.kineglyph;
+  if (kg?.widths !== undefined && kg.widths.length > 0) return kg.widths;
+  if (kg?.width !== undefined) return [kg.width];
+  return FIGURE_WIDTHS;
+}
+
+/**
+ * One drawing per theme — the widest — for the standalone SVG files.
+ *
+ * `_pagina/figures/<id>.<theme>.svg` is the figure as a *file*: something to link to, download, or
+ * open on its own. A file has no container to answer to, so the question the variants exist to
+ * answer does not arise and the fullest drawing is the right one. Results arrive widest first, so
+ * the first of each theme is that theme's widest.
+ */
+export function widestPerTheme(results: readonly PrerenderedFigure[]): PrerenderedFigure[] {
+  const seen = new Map<string, PrerenderedFigure>();
+  for (const r of results) if (!seen.has(r.theme)) seen.set(r.theme, r);
+  return [...seen.values()];
 }

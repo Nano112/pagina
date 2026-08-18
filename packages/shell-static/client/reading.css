@@ -215,9 +215,30 @@
     width: var(--pg-figure-max, 100%);
     margin-inline: calc((100% - var(--pg-figure-max, 100%)) / 2);
   }
-  .kg-frame { max-width: 100%; }
+  /*
+   * The frame is the container the variants are chosen against.
+   *
+   * `inline-size`, not a media query, because what decides which drawing fits is the width
+   * available *to this figure* — and the same figure appears in a full-width article, in a narrow
+   * reading column, on a docs page beside a table of contents, and in the editor's split preview
+   * pane. Those are four different widths at one viewport width, so a media query gets three of
+   * them wrong. The container is the frame rather than the figure so the answer is the width the
+   * drawing actually gets, after `--pg-figure-max` has had its say.
+   */
+  .kg-frame { max-width: 100%; container-type: inline-size; container-name: kg-frame; }
   .kg-frame > svg {
     display: block; width: 100%; height: auto;
+    /*
+     * Re-stated here so it is a fraction of *this drawing's* width.
+     *
+     * `--kg-floor-w` is also computed on the `<figure>`, and a custom property inherits already
+     * resolved — so a variant that sets its own `--kg-w` would still have been floored against the
+     * widest drawing's, and the 320px drawing would have been held at 672px and scaled to 2.1.
+     * Recomputing it where `--kg-w` is read makes the floor mean the same thing for every variant.
+     * A figure with a single drawing has no `--kg-w` of its own here, inherits the figure's, and
+     * lands on exactly the number it had before.
+     */
+    --kg-floor-w: calc(var(--kg-w) * var(--pg-figure-min-scale, 0.7) * 1px);
     /*
      * A diagram is laid out once, at a fixed width, and scaled to fit after that — so shrinking it
      * to a phone shrinks the type with it, and 16px lands at 6px. Below the point where the type
@@ -230,9 +251,54 @@
      * `max(100%, …)` and deliberately not `min(…)`: the drawing is as wide as the box it is in,
      * and never narrower than the floor. A `min()` would collapse to the frame's width and the
      * floor could never be crossed.
+     *
+     * With variants this is a backstop rather than the everyday case: a drawing measured for a
+     * container this narrow is normally chosen before the floor is anywhere near. It still matters
+     * below the narrowest variant — a 280px container has no drawing of its own — and `--kg-w` is
+     * read off the drawing there, so the floor is a fraction of *its* width and not the widest's.
      */
     min-width: max(100%, var(--kg-floor-w));
   }
+  /*
+   * One figure, drawn at several widths, of which the page shows exactly one.
+   *
+   * Geometry has to be measured at publish time — SVG cannot wrap text, so a drawing cannot reflow
+   * in the reader's browser the way a paragraph does. That is why a single drawing is wrong on a
+   * phone: it can only be scaled, and scaling a 960px diagram into a 326px column takes 12px
+   * labels to 4px. Drawing the figure more than once moves the choice to the only place it can be
+   * made honestly, and leaves the page choosing between finished pictures.
+   *
+   * The rule is "the widest drawing that is not wider than the frame". The generated queries run
+   * narrowest first and each one hides every variant and then shows its own, so at any frame width
+   * the last query that matches has the final say — and that is the widest drawing that fits. A
+   * drawing is therefore only ever scaled *up*, never down: a label can be larger than the size it
+   * was measured at, never smaller, which is what makes the author's type size a floor rather than
+   * a starting point. The narrowest variant's query is `min-width: 0`, so a container narrower than
+   * anything that was drawn still gets the smallest drawing rather than nothing.
+   *
+   * Every selector involved is deliberately the same weight — one class, one element, one
+   * attribute — so order decides and nothing has to out-specify anything. That is why `:not()`
+   * and `:last-of-type` are absent from the generated half: either would quietly outrank the
+   * plain selectors and pin one variant on.
+   *
+   * A browser without container queries drops all of it, which would leave every variant showing
+   * at once. The `@supports not` rule below is the answer to exactly that: it hides all but the
+   * first, and since the variants are inlined widest first, such a browser gets the widest drawing
+   * alone — precisely what it was given before variants existed.
+   */
+  @supports not (container-type: inline-size) {
+    .kg-frame > svg[data-kg-variant]:not(:first-of-type) { display: none; }
+  }
+  /*
+   * The per-width half of that rule is *generated*, not written here, and inlined with the page
+   * that needs it — see `variantStyle` in `@pagina/core`'s `figures.ts`.
+   *
+   * The widths are the article's (`kineglyph.widths`), so a stylesheet that named them would be a
+   * stylesheet that silently disagreed with any article that chose its own: no rule would match,
+   * every frame would fall through to the base rule above, and every figure on a wide screen would
+   * quietly show its phone drawing. Emitting the thresholds beside the drawings they select keeps
+   * the two impossible to get out of step, and costs a few hundred bytes on a page with figures.
+   */
   /*
    * The live stage holds back exactly the space the pre-rendered frame was occupying, so swapping
    * one for the other does not move the page under the reader.
@@ -270,7 +336,9 @@
    * Scoped to a chromeless figure because an opted-in one is deliberately responsive: it re-lays
    * out to the column, so a floor written for a 960-wide layout would make it scroll for nothing.
    */
-  figure.kg .kg-figure:not(:has(.kg-figure__controls, .kg-figure__readout, .kg-figure__machine)) svg {
+  figure.kg:not([data-kg-variants])
+    .kg-figure:not(:has(.kg-figure__controls, .kg-figure__readout, .kg-figure__machine))
+    svg {
     min-width: max(100%, var(--kg-floor-w));
   }
   figure.kg > figcaption {

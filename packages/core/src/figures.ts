@@ -71,7 +71,52 @@ export interface InlineFiguresResult { readonly html: string; readonly diagnosti
  * than in the browser — deciding it in the browser would mean fetching and resolving the scene
  * module first, which is the whole of the cost the decision exists to avoid.
  */
-export interface DrawnFigure { readonly svg: string; readonly needsRuntime?: boolean }
+/**
+ * The container widths a figure is drawn at when the article does not say.
+ *
+ * A frame shows the widest drawing that is no wider than it is, so a drawing is only ever scaled
+ * *up* — a label can end up larger than it was measured at, never smaller, which is what makes the
+ * author's type size a floor. The cost of that guarantee is the gap between two widths: a frame
+ * just under one of them wears the next one down scaled up by the ratio between them.
+ *
+ * So the widths are chosen to keep that ratio near 1.5, against the containers pagina actually
+ * puts a figure in rather than against a list of handset sizes:
+ *
+ *   - **960** — a figure that has broken out of the reading measure on a wide page.
+ *   - **640** — a full reading column.
+ *   - **440** — a column with a table of contents beside it, which is most docs pages.
+ *   - **320** — the narrowest container worth drawing for: a 390px phone, less the page's own
+ *     padding, leaves a figure about 326px, and a drawing measured at 320 fits it at full size.
+ *
+ * Three would be cheaper and was tried first; it left 320 covering everything up to 639, so a
+ * 576px column — an ordinary desktop docs page — showed the phone drawing at 1.8x, with 22px
+ * labels next to 16px prose. The fourth copy costs well under a kilobyte gzipped and removes the
+ * whole band.
+ */
+export const FIGURE_WIDTHS: readonly number[] = [960, 640, 440, 320];
+
+/** One drawing of a figure, measured for containers at least `containerWidth` wide. */
+export interface FigureVariant {
+  readonly containerWidth: number;
+  readonly svg: string;
+}
+
+export interface DrawnFigure {
+  readonly svg: string;
+  readonly needsRuntime?: boolean;
+  /**
+   * The same figure drawn at several container widths, widest first.
+   *
+   * A figure's geometry is measured once, at publish time, because SVG cannot wrap text — which is
+   * what makes a single drawing wrong on a phone: shrink it and the labels go with it, scroll it
+   * and the reader is dragging a diagram sideways to read a sentence. Drawing it more than once
+   * answers that at the only moment the text can be measured, and lets the page choose between
+   * finished pictures rather than scale one of them.
+   *
+   * When present and longer than one, every variant is inlined and CSS picks exactly one.
+   */
+  readonly variants?: readonly FigureVariant[];
+}
 /** A bare string is a figure with no opinion about hydration, which is how it always behaved. */
 export type FigureSvg = string | DrawnFigure;
 const svgOf = (drawn: FigureSvg): string => (typeof drawn === "string" ? drawn : drawn.svg);
@@ -101,6 +146,7 @@ export function inlineFigureSvgs(
   page?: string,
 ): InlineFiguresResult {
   const diagnostics: Diagnostic[] = [];
+  const widths = new Set<number>();
   const out = html.replace(
     /(<figure\b[^>]*>)<div class="kg-frame" data-kg-static data-kg-frame="([^"]+)"><\/div>/g,
     (whole, openTag: string, id: string) => {
@@ -118,12 +164,81 @@ export function inlineFigureSvgs(
           message: `figure "${id}" has no description, so assistive technology gets only its title; add \`description\` to the scene`,
           ...(page === undefined ? {} : { page }),
         });
+      const variants = typeof drawn === "string" ? undefined : drawn.variants;
+      const many = variants !== undefined && variants.length > 1;
+      if (many) for (const v of variants) widths.add(v.containerWidth);
+      const drawings = many ? variants.map(tagVariant) : [svg];
+      // The figure's own `--kg-w`/`--kg-h` stay the widest drawing's, because the two things that
+      // read them off the figure — the empty stage's reservation and the mount width — are both
+      // about the picture before CSS has picked one, and the widest is the one a wide page keeps.
       const box = VIEW_BOX.exec(svg);
       const size = box === null ? undefined : `--kg-w:${box[1]};--kg-h:${box[2]}`;
-      return `${size === undefined ? open : withStyle(open, size)}${frame(id, svg)}`;
+      const sized = size === undefined ? open : withStyle(open, size);
+      // `data-kg-variants` is how the rest of the page knows this figure answers for its own width:
+      // the stylesheet stops applying the single-drawing legibility floor to the live stage, and
+      // the client stops pinning the mount to one width. Both would otherwise hold a figure that
+      // is now responsive to the widest drawing's geometry.
+      const marked = many ? withAttr(sized, "data-kg-variants", String(drawings.length)) : sized;
+      return `${marked}${frame(id, drawings.join(""))}`;
     },
   );
-  return { html: out, diagnostics };
+  return { html: variantStyle(widths) + out, diagnostics };
+}
+
+/**
+ * The container queries that pick one variant, for the widths this page actually drew.
+ *
+ * One `@container` per width, narrowest first, each claiming itself from its own width upward and
+ * switching off every wider drawing that follows it in the markup. The variants are inlined widest
+ * first, so at any frame width the last rule that matches is the widest drawing that fits, and the
+ * narrowest survives untouched below them all — which is the right answer for a container narrower
+ * than anything that was drawn.
+ *
+ * The narrowest width needs no rule of its own: the base rule in `reading.css` already leaves it
+ * showing, and a `min-width: 320px` query would only re-state that.
+ *
+ * `@supports` is not decoration. In a browser without container queries every `@container` block
+ * is dropped, so nothing here applies and `reading.css`'s unconditional
+ * `:not(:first-of-type) { display: none }` leaves the widest drawing alone — the single figure such
+ * a browser has always been shown.
+ */
+function variantStyle(widths: ReadonlySet<number>): string {
+  if (widths.size < 2) return "";
+  const ordered = [...widths].sort((a, b) => a - b);
+  const rules = ordered
+    .map((w, i) => {
+      // The narrowest claims every container down to zero: below the smallest drawing there is
+      // still a smallest drawing, and showing it is a better answer than showing none.
+      const at = i === 0 ? 0 : w;
+      return (
+        `@container kg-frame (min-width:${at}px){` +
+        `.kg-frame>svg[data-kg-variant]{display:none}` +
+        `.kg-frame>svg[data-kg-variant="${w}"]{display:block}}`
+      );
+    })
+    .join("");
+  return `<style>@supports (container-type:inline-size){${rules}}</style>`;
+}
+
+/**
+ * Marks one variant's root `<svg>` so the stylesheet can pick it, and stamps its own geometry on it.
+ *
+ * `data-kg-variant` is the container width the drawing was measured for; the container query in
+ * `reading.css` compares the frame's width against it. `--kg-w`/`--kg-h` go on the drawing rather
+ * than only on the `<figure>` because each variant has its own size, and the legibility floor is a
+ * fraction of *that* drawing's width — read off the figure it would be the widest variant's, and a
+ * narrow drawing would be floored to a width it was never measured at.
+ */
+function tagVariant(variant: FigureVariant): string {
+  const open = /^\s*<svg\b[^>]*>/.exec(variant.svg);
+  if (open === null) return variant.svg;
+  const box = VIEW_BOX.exec(variant.svg);
+  const geometry = box === null ? undefined : `--kg-w:${box[1]};--kg-h:${box[2]}`;
+  // The root tag already carries a `style` — the theme's palette — so the geometry is merged into
+  // it rather than added beside it: two `style` attributes are one attribute and a silent loss.
+  const tagged = withAttr(open[0], "data-kg-variant", String(variant.containerWidth));
+  const styled = geometry === undefined ? tagged : withStyle(tagged, geometry);
+  return styled + variant.svg.slice(open[0].length);
 }
 
 /** Adds declarations to a start tag's `style`, keeping any the author wrote. */

@@ -17,7 +17,7 @@ import {
   type BundleEntry, type BundleLimits, type BundleManifest, type Diagnostic, type RenderedOutput,
 } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
-import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
+import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 import { readZip, writeZip } from "./zip.js";
 import { paginaTempRoot } from "./tmp.js";
 
@@ -100,20 +100,19 @@ export async function packBundle(o: PackOptions): Promise<PackResult> {
   const config = parseArticleConfig(articleYaml);
   const article = await renderArticle({ fs, strict: true, base, ...(o.md === undefined ? {} : { md: o.md }) });
   const themes = await loadKineglyphThemes(o.folder, config);
-  const prerendered = await prerenderFigures(article, o.folder, themes, config.kineglyph?.width, base);
+  const prerendered = await prerenderFigures(article, o.folder, themes, figureWidths(config), base);
   // A figure that cannot be drawn is a figure the importing host would show as an empty frame, so
   // it stops the pack the same way it stops a build.
   if (prerendered.diagnostics.some((d) => d.severity === "error"))
     throw new BundleError("bundle-format", prerendered.diagnostics.map((d) => `[${d.code}] ${d.page ?? ""}: ${d.message}`).join("\n"));
   const inlined = inlineArticleFigures(article, (id) => {
-    const first = prerendered.figures.get(id)?.[0];
-    return first === undefined ? undefined : { svg: first.inlineSvg, needsRuntime: first.needsRuntime };
+    return drawnFigure(prerendered.figures.get(id));
   });
   const rendered: RenderedOutput = {
     manifest: article.manifest,
     pages: Object.fromEntries(Object.entries(inlined.article.pages).map(([href, page]) => [href, page.html])),
     figures: Object.fromEntries(
-      [...prerendered.figures].map(([id, results]) => [id, Object.fromEntries(results.map((r) => [r.theme, r.svg]))]),
+      [...prerendered.figures].map(([id, results]) => [id, Object.fromEntries(widestPerTheme(results).map((r) => [r.theme, r.svg]))]),
     ),
   };
   const built = await buildBundleContents({

@@ -20,7 +20,14 @@ kineglyph:
   # no Kineglyph theme is painted by whatever `--pg-*` tokens its host has set, so these figures
   # follow this page — light, dark, or a host's own palette. It is the contract `theming.md`
   # describes, exercised by the article that describes it.
-  width: 960
+  #
+  # `widths` rather than `width`: every figure is drawn four times, and the page shows the drawing
+  # measured for the width its frame actually has. A diagram cannot reflow in the browser the way a
+  # paragraph can — SVG has no text wrapping, so geometry is measured once, here — which is why one
+  # drawing is wrong on a phone: it can only be scaled, and scaling this page's 960px figures into
+  # a 326px column takes their 12px labels to 4px. Four drawings cost a couple of KB gzipped a page and
+  # buy a figure that is readable at full size on a handset instead of one to be scrolled sideways.
+  widths: [960, 640, 440, 320]
 
 snippets:
   # `..` is the repository root. The pages below quote pagina's real source — the token contract
