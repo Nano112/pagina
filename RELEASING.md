@@ -128,3 +128,20 @@ works from the registry, then add a `release.yml` triggered on a tag that runs
 Published versions are immutable and `npm unpublish` is only available for 72 hours. Fix, bump the
 patch version of whatever did not make it, and re-run — the publish step does not skip packages
 already on the registry, so anything already up must be bumped or it will fail on the duplicate.
+
+## If the account has two-factor authentication
+
+npm asks for a one-time password on publish, and its own prompt only appears on a TTY — which
+this script does not give it, because it publishes several packages in a row. Pass the code in
+instead; one code is valid long enough for the whole scope:
+
+```bash
+npm run release:publish -- --otp=123456
+```
+
+`NPM_CONFIG_OTP` works too, and is what CI would use. The durable answer for automation is a
+granular access token of type **Automation**, which is exempt from 2FA on publish — worth setting
+up before the next release, alongside `--provenance`.
+
+Nothing is published until every check passes, and packages go out in dependency order, so a
+failed OTP leaves the scope empty rather than half-filled.

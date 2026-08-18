@@ -156,9 +156,16 @@ if (step === "publish") {
     process.exit(1);
   }
   const dry = process.env.RELEASE_DRY_RUN === "1" ? ["--dry-run"] : [];
+  // A 2FA-protected account needs a one-time password. npm's own prompt only appears on a TTY,
+  // and this runs several publishes in a row, so take the code once and pass it to each — a
+  // single OTP is valid for a short window, which is long enough for the whole scope.
+  // `NPM_CONFIG_OTP` is npm's own variable name; the flag is here for a one-off invocation.
+  const flag = process.argv.find((a) => a.startsWith("--otp="));
+  const otpValue = flag ? flag.slice("--otp=".length) : process.env.NPM_CONFIG_OTP;
+  const otp = otpValue ? ["--otp", otpValue] : [];
   for (const p of pkgs) {
     console.log(`\n--- publish ${p.json.name}@${p.json.version}`);
-    execFileSync("npm", ["publish", "--access", "public", ...dry], { cwd: p.dir, stdio: "inherit" });
+    execFileSync("npm", ["publish", "--access", "public", ...otp, ...dry], { cwd: p.dir, stdio: "inherit" });
   }
   const stamp = pkgs.map((p) => `${p.json.name}@${p.json.version}`).join("\n  ");
   console.log(`\nAll published:\n  ${stamp}\n\nTag the release, naming the versions it carries:\n  git tag -a release-$(date +%Y-%m-%d) -m 'first npm release' && git push origin --tags`);
