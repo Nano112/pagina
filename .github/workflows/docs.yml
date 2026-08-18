@@ -16,6 +16,7 @@ on:
       - "packages/**"
       - "tools/build-docs-site.sh"
       - ".github/workflows/docs.yml"
+      - ".github/kineglyph-ref"
       - "package.json"
       - "package-lock.json"
   pull_request:
@@ -24,6 +25,7 @@ on:
       - "packages/**"
       - "tools/build-docs-site.sh"
       - ".github/workflows/docs.yml"
+      - ".github/kineglyph-ref"
       - "package.json"
       - "package-lock.json"
   workflow_dispatch:
@@ -39,9 +41,6 @@ env:
   # The deployment URL, path and all. `tools/build-docs-site.sh` derives `--base` from it, so the
   # sub-path is stated once and the canonical and the asset URLs cannot disagree.
   PAGINA_SITE_URL: https://nano112.github.io/pagina/
-  # Kineglyph is consumed from source. Pinned, because an unpinned figure engine means the site's
-  # pictures can change without a commit here.
-  KINEGLYPH_REF: 9afebfa229c3e72cbc6efdc0113d1eb10cdac7e7
 
 jobs:
   build:
@@ -58,6 +57,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: pagina
+
+      # Kineglyph is consumed from source, pinned by SHA, because an unpinned figure engine means
+      # the site's pictures can change without a commit here. The SHA lives in one file that this
+      # workflow and `test.yml` both read: two copies of it are two things that can disagree, and
+      # a docs build against a Kineglyph the test lane never ran is exactly the disagreement that
+      # matters.
+      - name: Read the pinned Kineglyph ref
+        run: echo "KINEGLYPH_REF=$(cat pagina/.github/kineglyph-ref)" >> "$GITHUB_ENV"
 
       - name: Check out Kineglyph
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

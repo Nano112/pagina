@@ -1,0 +1,154 @@
+# The gate. Everything `npm test` runs, on every push and every pull request.
+#
+# Until this file existed, `docs.yml` was the only workflow: 715 unit tests and 80 Playwright
+# tests were on the honour system, and `npm test` meant `vitest run` alone — so the end-to-end
+# lane was one someone had to remember. That is not a hypothetical gap. In one week an agent
+# reported the suite green while eight e2e tests were red, and a false claim about figure
+# rendering reached a report because the lane it would have failed was never run.
+#
+# So the lanes are the same five things `npm test` runs locally, in the same order, and the
+# end-to-end one is not optional. No `paths:` filter either: a change to `eslint.config.js` or to
+# a test helper can break the build as thoroughly as a change to a package.
+#
+# Action versions are pinned by commit SHA, matching `docs.yml`: a tag is a moving target that
+# someone else controls.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out pagina
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pagina
+
+      # Kineglyph is a git dependency built from source — it supplies the figure engine and is not
+      # on npm. The ref lives in `.github/kineglyph-ref`, one file that both this workflow and
+      # `docs.yml` read, because two copies of a SHA are two things that can disagree and the one
+      # that would have drifted is the one nobody deploys from.
+      - name: Read the pinned Kineglyph ref
+        run: echo "KINEGLYPH_REF=$(cat pagina/.github/kineglyph-ref)" >> "$GITHUB_ENV"
+
+      - name: Check out Kineglyph
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Nano112/kineglyph
+          ref: ${{ env.KINEGLYPH_REF }}
+          path: kineglyph
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            pagina/package-lock.json
+            kineglyph/package-lock.json
+
+      - name: Build Kineglyph
+        working-directory: kineglyph
+        run: |
+          npm ci --no-audit --no-fund
+          npm run bootstrap
+
+      - name: Install pagina and link Kineglyph
+        working-directory: pagina
+        run: |
+          npm ci --no-audit --no-fund
+          # Direct symlinks rather than `npm link`: linking through the global prefix depends on
+          # machine state, and `npm ci` above has just pruned anything that was there. This is the
+          # same shape `npm run link:kineglyph` produces, without the global step — and it is the
+          # same block `docs.yml` runs, so the two lanes cannot resolve different figure engines.
+          mkdir -p node_modules/@kineglyph
+          for p in core svg anime plot scenes web export; do
+            rm -rf "node_modules/@kineglyph/$p"
+            ln -s "$GITHUB_WORKSPACE/kineglyph/packages/$p" "node_modules/@kineglyph/$p"
+          done
+
+      # Keyed on the resolved Playwright version rather than on the lockfile hash: the browser
+      # build only changes when Playwright does, and a lockfile-keyed cache would be thrown away
+      # by every unrelated dependency bump.
+      - name: Resolve the Playwright version
+        working-directory: pagina
+        run: echo "PLAYWRIGHT_VERSION=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_ENV"
+
+      - name: Restore the Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install Chromium
+        working-directory: pagina
+        # Only Chromium: the specs assert on one engine, and fetching three costs minutes per run.
+        # `install-deps` is separate so a cache hit still gets the system libraries, which live in
+        # /usr/lib and are not in the cached browser directory.
+        run: |
+          npx playwright install-deps chromium
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            npx playwright install chromium
+          fi
+
+      # From here down, the same five commands `npm test` runs, split into steps so a failure
+      # names itself in the job summary instead of hiding inside one shell script.
+      - name: Build
+        working-directory: pagina
+        run: npm run build
+
+      - name: Typecheck
+        working-directory: pagina
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: pagina
+        run: npm run lint
+
+      - name: Unit tests
+        working-directory: pagina
+        run: npm run test:unit
+
+      - name: End-to-end tests
+        working-directory: pagina
+        run: npm run test:e2e
+
+      # The suites carry their own working-directory guards — `test/setup.ts` and
+      # `e2e/cwd-guard.ts` — and this is the belt to their braces. Both guards compare a listing
+      # they took themselves; this asks git, which also notices a *modified* tracked file, and it
+      # notices anything the runners wrote outside the directories those guards watch. The bug
+      # behind all three put 442 MB into an unrelated repository, and CI is where the next one
+      # should be caught rather than on the machine it happens to be run on.
+      - name: The working directory is as it was found
+        working-directory: pagina
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The test run left the working directory dirty:"
+            git status --porcelain
+            exit 1
+          fi
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            pagina/playwright-report
+            pagina/test-results
+          if-no-files-found: ignore
+          retention-days: 7
