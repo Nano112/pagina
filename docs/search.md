@@ -80,14 +80,16 @@ live region.
 ## What it weighs
 
 Numbers from this site's own build, and from a 29-page Nucleation reference — about 1 MB of
-markdown, the largest article pagina has been pointed at.
+markdown, the largest article pagina has been pointed at. That article lives in another repository;
+only its nav is vendored here, so its row below is a record of a measurement rather than one you can
+repeat from this checkout.
 
 **On every page, whether or not anyone searches:**
 
 | | raw | gzip |
 |---|---|---|
-| the wiring in `pagina.js` (one listener, one dynamic import) | 805 B | 308 B |
-| the dialog's styles in `pagina.css` | 4.1 kB | 762 B |
+| the wiring in `pagina.js` (one listener, one dynamic import) | 988 B | 375 B |
+| the dialog's styles in `pagina.css` | 4.4 kB | 823 B |
 
 **On the first search of a session, and never again:**
 
@@ -97,7 +99,7 @@ markdown, the largest article pagina has been pointed at.
 | `search.json`, this site, 10 pages and 111 sections | 152 kB | 49 kB |
 | `search.json`, Nucleation, 29 pages and 687 sections | 602 kB | 188 kB |
 
-Parsing the 29-page index takes **1.9 ms**; a query against it runs in **0.1–2.2 ms** (the slow end
+Parsing the 29-page index takes 1.9 ms; a query against it runs in 0.1–2.2 ms (the slow end
 is a two-letter prefix, which matches nearly everything). The index is a plain static file with
 whatever cache headers the host sets, so a returning reader pays nothing.
 
@@ -106,7 +108,7 @@ snippets while indexing every word of it for matching. Recall is complete, and a
 700th character is simply shown with the section's opening lines instead of the matching sentence.
 And **code blocks are indexed but never quoted back**: an API name in a `pre` is exactly what people
 search for, but three lines of somebody's `let mut schematic = …` is not how anyone chooses between
-results, and on a code-heavy reference the code was 46% of the index by weight.
+results, and on a code-heavy reference the code was 46% of the text by weight.
 
 If an article ever outgrows this, the honest answer is [Pagefind](https://pagefind.app), not a
 bigger version of this. See below.
@@ -154,8 +156,8 @@ genuinely better than what is here; above a few hundred pages, decisively so. Bu
 binary that post-processes *a directory of built HTML*, and pagina's output is not always a
 directory: the Laravel package serves fragments out of a bundle, and a post-processor pointed at a
 folder cannot see them. Adopting it would also mean a second build tool with its own idea of what a
-page is, its own place for exclusions to be applied, and its own runtime, ~40 kB of WASM before
-any index, for a corpus where the whole index here is 49 kB gzipped. **The escape hatch is real, though:
+page is, its own place for exclusions to be applied, and its own WASM runtime to fetch before
+any index at all, for a corpus where the whole index here is 49 kB gzipped. **The escape hatch is real, though:
 if an article grows past the point where one file is sensible, run Pagefind over `dist/` and point
 `data-pg-search` somewhere else. Nothing about the shell assumes this implementation.**
 
@@ -167,7 +169,7 @@ serialised index larger than this one and its runtime in the reading bundle; wha
 removed is about 150 lines, of which the interesting ones are the tokeniser and the scoring — the
 two things most worth being able to read.
 
-**So: a hand-rolled index, no new build dependency.** It is roughly 500 lines in
+**So: a hand-rolled index, no new build dependency.** It is roughly 550 lines in
 `@pagina/core/search`, split so that a browser importing it gets only the query half: the builder,
 the HTML extraction and the tokeniser's indexing path are tree-shaken away, which is why the chunk
 is 4 kB gzipped and not 190.

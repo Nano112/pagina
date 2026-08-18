@@ -60,7 +60,7 @@ startDemo(document.getElementById("pagina-demo"));
 
 ## How this page works
 
-The demo is not a special build. It is `mountEditor` with one option changed:
+The demo is `mountEditor` with one option changed:
 
 ```js
 import { LocalStorageBackend, mountEditor } from "@pagina/editor";
@@ -118,7 +118,7 @@ recently there was no such control and the list was simply unreachable, which me
 the demo opened and nothing else.
 
 The full-screen editor is the better place to try any of this on a small screen: the inline frame
-above shares its 660 px between a document and a preview, which is enough to write a paragraph into
+above shares its 656 px between a document and a preview, which is enough to write a paragraph into
 and too cramped to work in.
 
 ## Wearing your own theme
