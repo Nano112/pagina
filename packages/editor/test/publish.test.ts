@@ -40,6 +40,7 @@ vi.mock("kineglyph", () => ({
     `<svg viewBox="0 0 960 240" data-id="${frame.id}" data-width="${String(frame.width)}" data-theme="${frame.theme.name}" data-font="${frame.theme.family ?? ""}" data-time="${String(frame.time)}" data-prefix="${options.idPrefix}"><desc>d</desc></svg>`,
   // The preview and node views reach for these; nothing here mounts anything.
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
   sceneFromSpec: (spec: unknown) => spec,
   validateSpec: () => ({ ok: true, errors: [] }),

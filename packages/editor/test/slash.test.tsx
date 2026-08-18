@@ -16,7 +16,7 @@ import { MemoryBackend } from "../src/store/memory-backend.js";
 import { filterInserts, INSERTS } from "../src/ui/inserts.js";
 import { settle } from "./settle.js";
 
-vi.mock("kineglyph", () => ({ mountAll: async () => [], defaultTheme: {} }));
+vi.mock("kineglyph", () => ({ mountAll: async () => [], mountAllKineglyphLabs: async () => [], defaultTheme: {} }));
 
 const ARTICLE = `slug: fixture
 title: Fixture Docs

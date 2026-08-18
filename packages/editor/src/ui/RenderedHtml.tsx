@@ -16,7 +16,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 // Must stay a bare specifier: the host page's import map (and `@pagina/vite`'s dev alias) points it
 // at the one runtime instance the site itself uses, and the editor bundle keeps it external.
-import { mountAll, type EmbeddedFigure } from "kineglyph";
+import { mountAll, mountAllKineglyphLabs, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
 import { wireTabs } from "@pagina/shell-static/interactive";
 import { applyThemeVars, currentThemeName, loadKineglyphThemes, onThemeChange, type KineglyphThemes } from "./kineglyph-theme.js";
 
@@ -33,6 +33,7 @@ export interface RenderedHtmlProps {
 export function RenderedHtml({ html, themeUrl, className = "pg-content" }: RenderedHtmlProps): ReactNode {
   const root = useRef<HTMLDivElement>(null);
   const figures = useRef<EmbeddedFigure[]>([]);
+  const labs = useRef<KineglyphLabController[]>([]);
   const themes = useRef<KineglyphThemes | undefined>(undefined);
   const themeSource = useRef<string | undefined>(undefined);
 
@@ -43,6 +44,8 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
     if (container === null) return;
     for (const figure of figures.current) figure.controller.destroy();
     figures.current = [];
+    for (const lab of labs.current) lab.destroy();
+    labs.current = [];
     // Before the await, so the tabs work even if the Kineglyph runtime is missing or throws — the
     // same order, and the same reason, as the site's own client entry.
     wireTabs(container);
@@ -56,11 +59,24 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
       }
       const resolved = themes.current;
       applyThemeVars(container, themeUrl === undefined ? undefined : resolved);
-      return await mountAll({ root: container, theme: () => resolved[currentThemeName()] });
+      const mountedFigures = await mountAll({
+        root: container,
+        selector: "figure.kg:not([data-kineglyph-lab]), [data-kineglyph]:not([data-kineglyph-lab])",
+        theme: () => resolved[currentThemeName()],
+      });
+      const mountedLabs = await mountAllKineglyphLabs({
+        root: container, theme: () => resolved[currentThemeName()], controls: "auto", readout: "auto", machineControls: "auto",
+      });
+      return { mountedFigures, mountedLabs };
     })()
-      .then((mounted) => {
-        if (cancelled) for (const figure of mounted) figure.controller.destroy();
-        else figures.current = mounted;
+      .then(({ mountedFigures, mountedLabs }) => {
+        if (cancelled) {
+          for (const figure of mountedFigures) figure.controller.destroy();
+          for (const lab of mountedLabs) lab.destroy();
+        } else {
+          figures.current = mountedFigures;
+          labs.current = mountedLabs;
+        }
       })
       .catch((e: unknown) => {
         console.warn("pagina: rendered figures failed to mount", e);
@@ -76,6 +92,8 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
     () =>
       onThemeChange(() => {
         if (root.current !== null && themeSource.current !== undefined) applyThemeVars(root.current, themes.current);
+        const theme = themes.current?.[currentThemeName()];
+        if (theme !== undefined) for (const lab of labs.current) lab.setTheme(theme);
       }),
     [],
   );
@@ -84,6 +102,8 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
     () => () => {
       for (const figure of figures.current) figure.controller.destroy();
       figures.current = [];
+      for (const lab of labs.current) lab.destroy();
+      labs.current = [];
     },
     [],
   );

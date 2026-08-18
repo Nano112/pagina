@@ -38,6 +38,7 @@ import { settle } from "./settle.js";
 
 vi.mock("kineglyph", () => ({
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
   defaultTheme: {},
 }));

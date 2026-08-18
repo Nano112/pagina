@@ -39,6 +39,7 @@ vi.mock("kineglyph", () => ({
     mounts.calls.push(options);
     return [];
   },
+  mountAllKineglyphLabs: async () => [],
   defaultTheme: RUNTIME_DEFAULT,
 }));
 

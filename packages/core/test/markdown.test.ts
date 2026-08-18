@@ -55,6 +55,31 @@ describe("tabs", () => {
   });
 });
 
+describe("live Kineglyph fences", () => {
+  const source = `import { defineScene } from "kineglyph";\nexport default defineScene({});`;
+  it("renders a live fence as a prerenderable inline figure", () => {
+    const html = renderMarkdown(md, `\`\`\`kineglyph live view=preview height=520 id=editable autoplay=true\n${source}\n\`\`\``).html;
+    expect(html).toContain('class="kg kg-lab"');
+    expect(html).toContain("data-kineglyph-lab");
+    expect(html).toContain('data-view="preview"');
+    expect(html).toContain('data-height="520"');
+    expect(html).toContain('id="editable"');
+    expect(html).toContain('data-autoplay="true"');
+    expect(html).toContain(`<script type="text/kineglyph">${source}</script>`);
+  });
+  it("keeps ordinary Kineglyph fences as highlighted code", () => {
+    const html = renderMarkdown(md, `\`\`\`kineglyph\n${source}\n\`\`\``).html;
+    expect(html).toContain('<code class="language-kineglyph">');
+    expect(html).not.toContain("data-kineglyph-lab");
+  });
+  it("falls back safely for unsupported metadata", () => {
+    const html = renderMarkdown(md, `\`\`\`kineglyph live view=sideways height=9999 id="not an id"\n${source}\n\`\`\``).html;
+    expect(html).toContain('data-view="split"');
+    expect(html).not.toContain("data-height");
+    expect(html).not.toContain('id="not an id"');
+  });
+});
+
 describe("admonitions", () => {
   it("renders !!! with a title and ??? as details", () => {
     const note = renderMarkdown(md, `!!! note "Heads up"\n    Body **here**.`).html;

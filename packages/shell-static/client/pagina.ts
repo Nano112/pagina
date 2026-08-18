@@ -11,7 +11,7 @@ import "./pagina.css";
 // can recover from) — everything below that does NOT depend on it resolving (tabs, code-copy,
 // theme toggle, HMR bridge) is wired up before the guarded `mountAll` call further down, so a
 // runtime load failure or a figure throwing doesn't take those features down with it.
-import { mountAll, defaultTheme, type ThemeTokens, type EmbeddedFigure } from "kineglyph";
+import { mountAll, mountAllKineglyphLabs, defaultTheme, type ThemeTokens, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
 // pagina's editorial default: a figure in prose is a picture, and the instrument is opted into
 // with `data-instrument="true"`. See the module for why that opinion lives here and not in the
 // library.
@@ -34,6 +34,7 @@ let themes: Themes = { light: defaultTheme, dark: defaultTheme };
 // Populated once `mountAll` (below) settles; starts empty so the toggle works immediately even
 // if mounting is slow, fails, or never resolves.
 let figures: EmbeddedFigure[] = [];
+let labs: KineglyphLabController[] = [];
 
 // --- theme toggle -------------------------------------------------------------------------
 // Wired before any await point: reads `themes`/`figures` through closures, so it works
@@ -48,6 +49,7 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
     /* private mode / storage disabled */
   }
   for (const f of figures) f.controller.setTheme(themes[next]);
+  for (const lab of labs) lab.setTheme(themes[next]);
   // Pre-rendered figures need nothing here. They are inline SVG whose every paint reads a
   // `--kg-color-*` that `tokens.css` maps onto `--pg-*`, so flipping `data-theme` above has
   // already re-tinted them — in the same repaint, with no second variant to swap in and no
@@ -143,7 +145,14 @@ if (kgThemeUrl !== undefined && kgThemeUrl !== "") {
 }
 
 try {
-  figures = await mountAll({ theme: () => themes[current()], mountOptions: figureChrome });
+  figures = await mountAll({
+    selector: "figure.kg:not([data-kineglyph-lab]), [data-kineglyph]:not([data-kineglyph-lab])",
+    theme: () => themes[current()],
+    mountOptions: figureChrome,
+  });
+  labs = await mountAllKineglyphLabs({
+    theme: () => themes[current()], controls: "auto", readout: "auto", machineControls: "auto",
+  });
 } catch (e) {
   console.warn("pagina: kineglyph mount failed", e);
 }

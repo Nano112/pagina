@@ -234,6 +234,19 @@ in the browser by Kineglyph's `mountAll()`. In `pagina dev`, saving a scene file
 figure in place — no reload. A page may set `data-controls="false"` / `data-readout="false"` on
 the host to hide Kineglyph's playback chrome.
 
+A fenced scene becomes a client-side live example while keeping the same build-time SVG fallback:
+
+````markdown
+```kineglyph live id=quickstart view=split height=480
+import { sceneFromSpec } from "kineglyph";
+export default sceneFromSpec({ /* … */ });
+```
+````
+
+`view` is `source`, `split` (the default), or `preview`; `height` is 240–1200 pixels. The browser
+loads the code editor only when a source pane is shown, updates after a short debounce, and leaves
+the last valid preview on screen when an edit is invalid. `Cmd/Ctrl+Enter` runs immediately.
+
 Everything else in the page can still be a plain `<script type="module">` — that is the escape
 hatch for fully custom, non-pre-renderable interactivity.
 

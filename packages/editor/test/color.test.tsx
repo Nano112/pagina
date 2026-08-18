@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ColorButton, ColorPicker, expandHex, paletteFrom, toHex } from "../src/ui/ColorPicker.js";
 
-vi.mock("kineglyph", () => ({ mountAll: async () => [], defaultTheme: {} }));
+vi.mock("kineglyph", () => ({ mountAll: async () => [], mountAllKineglyphLabs: async () => [], defaultTheme: {} }));
 
 afterEach(cleanup);
 

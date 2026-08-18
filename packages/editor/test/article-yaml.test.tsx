@@ -17,7 +17,7 @@ import { MemoryBackend } from "../src/store/memory-backend.js";
 import { addNavEntry, navSections, readArticleFields, removeNavEntry, setArticleFields } from "../src/ui/article-yaml.js";
 import { settle } from "./settle.js";
 
-vi.mock("kineglyph", () => ({ mountAll: async () => [], defaultTheme: {} }));
+vi.mock("kineglyph", () => ({ mountAll: async () => [], mountAllKineglyphLabs: async () => [], defaultTheme: {} }));
 
 const ARTICLE = `slug: fixture
 title: Fixture Docs

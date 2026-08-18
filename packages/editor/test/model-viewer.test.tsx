@@ -20,7 +20,7 @@ import { uploadAndInsert } from "../src/ui/uploads.js";
 import { settle } from "./settle.js";
 import { DEFAULT_MODEL_VIEWER_URL } from "../src/ui/context.js";
 
-vi.mock("kineglyph", () => ({ mountAll: async () => [], defaultTheme: {} }));
+vi.mock("kineglyph", () => ({ mountAll: async () => [], mountAllKineglyphLabs: async () => [], defaultTheme: {} }));
 
 const PAGE = `# Models
 

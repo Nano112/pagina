@@ -20,6 +20,7 @@ import type { Editor } from "@tiptap/core";
 // no import map for — and mounting real figures is not what any of this is testing.
 vi.mock("kineglyph", () => ({
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
   defaultTheme: {},
 }));

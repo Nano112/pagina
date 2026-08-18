@@ -27,6 +27,7 @@ vi.mock("kineglyph", () => ({
   sceneNeedsRuntime: () => false,
   renderSvg: () => "<svg></svg>",
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
 }));
 

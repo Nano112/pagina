@@ -25,6 +25,7 @@ vi.mock("kineglyph", async () => ({
   ...(await vi.importActual<Record<string, unknown>>("kineglyph")),
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
 }));
 
 const SPEC: SimpleSceneSpec = {

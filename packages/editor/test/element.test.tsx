@@ -52,6 +52,7 @@ vi.mock("../src/store/http-backend.js", async () => {
 
 vi.mock("kineglyph", () => ({
   mountAll: async () => [],
+  mountAllKineglyphLabs: async () => [],
   mountKineglyph: () => ({ destroy() {}, setTheme() {}, setScene() {} }),
   defaultTheme: {},
 }));
