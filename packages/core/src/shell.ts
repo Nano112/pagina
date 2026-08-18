@@ -47,6 +47,10 @@ export interface ShellContext {
    *  Absent — and absent from `article.yaml` too — those tags are omitted rather than emitted
    *  relative, and the build warns. */
   readonly siteUrl?: string;
+  /** Absolute URL, path included, of the deployment this one mirrors. Set, every page's canonical
+   *  and `og:url` address the primary's copy of that page instead of this build's own. Absent for
+   *  a site that is nobody's copy, which is the usual case. */
+  readonly mirrorOf?: string;
   /**
    * The article's Kineglyph theme, already loaded — the same tokens the builder drew the
    * pre-rendered figures with. A shell publishes their colours as `--kg-color-*` so the page paints

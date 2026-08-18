@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { renderArticle, PaginaBuildError } from "../src/render-article.js";
+import { resolveRelative } from "../src/links.js";
 import type { ContentFs } from "../src/types.js";
 
 function nodeFs(root: string): ContentFs {   // test-only helper; the real one lives in @pagina/vite
@@ -15,6 +16,23 @@ function nodeFs(root: string): ContentFs {   // test-only helper; the real one l
   };
 }
 const fixture = new URL("./fixture/", import.meta.url).pathname;
+
+describe("resolveRelative", () => {
+  it("keeps a trailing slash, which is what says 'page' rather than 'file'", () => {
+    // Written in a raw `<a href>` — the form a hand-written HTML block uses, and the form that
+    // used to arrive downstream as a demand for a *file* named `features/basics`. `pack` then
+    // refused the bundle over a file that was never supposed to exist, while `build` emitted a
+    // slash-less href that only worked because hosts redirect.
+    expect(resolveRelative("illustrations.md", "../features/basics/")).toBe("features/basics/");
+    expect(resolveRelative("guide/a.md", "./b/")).toBe("guide/b/");
+  });
+
+  it("still resolves a file path without inventing one", () => {
+    expect(resolveRelative("illustrations.md", "../media/x.svg")).toBe("media/x.svg");
+    expect(resolveRelative("guide/a.md", "../index.md")).toBe("index.md");
+    expect(resolveRelative("a.md", "./")).toBe("");
+  });
+});
 
 describe("renderArticle", () => {
   it("renders the fixture: nav, prev/next, links, figures, assets", async () => {

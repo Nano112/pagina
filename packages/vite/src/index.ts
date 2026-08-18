@@ -1,7 +1,7 @@
 export { NodeContentFs } from "./node-fs.js";
 export { kineglyphRoot, resolveKineglyphBundle, type KineglyphBundleCondition } from "./kineglyph.js";
 export { loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure, type PrerenderedFigures } from "./prerender.js";
-export { buildStatic, bundleClient, type BuildOptions, type Shell, type ShellContext, type ThemeLevel } from "./build.js";
+export { buildStatic, bundleClient, type BuildOptions, type BuildResult, type Shell, type ShellContext, type ThemeLevel } from "./build.js";
 export { createDevServer, type DevServerOptions } from "./dev.js";
 export { crc32, readZip, writeZip, type ReadZipLimits } from "./zip.js";
 export {

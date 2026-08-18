@@ -6,13 +6,13 @@ import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { BundleError, PaginaBuildError } from "@pagina/core";
 
 const USAGE = [
-  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com]",
+  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
   "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>]",
   "       pagina unpack <article.pgz> [dir] [--force]",
 ].join("\n");
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string; created?: string; force?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -26,6 +26,7 @@ try {
       theme: { type: "string" },
       "no-chrome": { type: "boolean" },
       "site-url": { type: "string" },
+      "mirror-of": { type: "string" },
       created: { type: "string" },
       force: { type: "boolean" },
     },
@@ -47,7 +48,49 @@ if (folderArg === undefined && cmd !== "pack") {
   process.exit(2);
 }
 const folder = resolve(folderArg ?? ".");
-const base = values.base ?? "/";
+
+/** An absolute URL, or a usage error naming the flag that was wrong. */
+function absoluteUrlArg(flag: string, raw: string): URL {
+  try {
+    return new URL(raw);
+  } catch {
+    console.error(`${flag} must be an absolute URL (got "${raw}")`);
+    process.exit(2);
+  }
+}
+
+/** A URL path as a base: always leading and trailing `/`, and `/` for the root. */
+const asBase = (path: string): string => {
+  const inner = path.replace(/^\/+|\/+$/g, "");
+  return inner === "" ? "/" : `/${inner}/`;
+};
+
+// ---- where this build is going -----------------------------------------------------------------
+// One article now has more than one home — schemat.io and a GitHub Pages mirror — so *where a build
+// is served* is an input to the build, not a property of the folder. `--site-url` therefore takes
+// the full deployment URL, path and all, and the path **is** the base: `--site-url
+// https://user.github.io/Project/` alone produces both correct asset URLs and a correct canonical.
+// Before this, the path was silently discarded and the canonical for that command was
+// `https://user.github.io/` — a URL belonging to somebody else's site, with nothing in the output
+// to show for it.
+let siteUrlArg = values["site-url"];
+let base = values.base ?? "/";
+if (siteUrlArg !== undefined) {
+  const u = absoluteUrlArg("--site-url", siteUrlArg);
+  const fromUrl = asBase(u.pathname);
+  if (values.base === undefined) base = fromUrl;
+  else if (fromUrl !== "/" && asBase(values.base) !== fromUrl) {
+    // Two answers to one question. Guessing which the author meant is how a site ends up half
+    // deployed to a path it does not live at.
+    console.error(`--site-url path "${fromUrl}" and --base "${values.base}" disagree; give one or make them match`);
+    process.exit(2);
+  }
+  // The origin is what the SEO layer consumes; the path has been turned into `base` above.
+  siteUrlArg = u.origin;
+}
+// A mirror declares which copy of the article counts. See `docs/deploying.md` for why this and not
+// `noindex`: a page told not to be indexed is also never read, so it can never point at the primary.
+if (values["mirror-of"] !== undefined) absoluteUrlArg("--mirror-of", values["mirror-of"]);
 // `unpack` renders nothing, and the highlighter is the expensive part of starting up.
 const md = cmd === "unpack" ? undefined : await createHighlightedMarkdown();
 
@@ -60,16 +103,11 @@ if (values.theme !== undefined && !["full", "tokens", "none"].includes(values.th
 }
 // `--site-url` is what makes `link rel=canonical`, `og:url`, `og:image` and `sitemap.xml`
 // possible; `article.yaml`'s `site_url` is the fallback, and with neither those are omitted and
-// the build says so per page. Validated here so a typo is a usage error, not a broken tag.
-if (values["site-url"] !== undefined) {
-  try {
-    new URL(values["site-url"]);
-  } catch {
-    console.error(`--site-url must be an absolute URL (got "${values["site-url"]}")`);
-    process.exit(2);
-  }
-}
-const seo = values["site-url"] === undefined ? {} : { siteUrl: values["site-url"] };
+// the build says so per page.
+const seo = {
+  ...(siteUrlArg === undefined ? {} : { siteUrl: siteUrlArg }),
+  ...(values["mirror-of"] === undefined ? {} : { mirrorOf: values["mirror-of"] }),
+};
 
 const theming = {
   ...(values.theme === undefined ? {} : { theme: values.theme as ThemeLevel }),
@@ -152,6 +190,11 @@ if (cmd === "pack") {
     });
     for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);
     console.log(`pagina: wrote ${r.files.length} files`);
+    if (values["mirror-of"] !== undefined)
+      console.log(`pagina: mirror of ${values["mirror-of"]} — canonical and og:url point there, and no sitemap.xml was written`);
+    // Not a diagnostic: nothing is broken and nothing in the folder can be changed to fix it. It is
+    // a fact about the deployment that the person running the deploy has to act on once.
+    if (r.robots.reason !== undefined) console.log(`pagina: ${r.robots.reason}`);
   } catch (e) {
     if (e instanceof PaginaBuildError) {
       console.error(e.message);

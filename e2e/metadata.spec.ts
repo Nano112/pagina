@@ -62,13 +62,17 @@ test.describe("the published page's metadata", () => {
     expect(parsed["image"]).toEqual(["https://fixture.example/site/media/cover.svg"]);
   });
 
-  test("serves a sitemap and a robots.txt beside the pages", async ({ page }) => {
+  test("serves a sitemap beside the pages, and no robots.txt it has no right to", async ({ page }) => {
+    // This site is built at `/site/`. A sitemap may list any URL at or below its own directory, so
+    // it belongs exactly here.
     const xml = await (await page.request.get(`${SITE_BASE}sitemap.xml`)).text();
     expect(xml).toContain("<loc>https://fixture.example/site/</loc>");
     expect(xml).toContain("<loc>https://fixture.example/site/guide/tabs/</loc>");
-    const robots = await (await page.request.get(`${SITE_BASE}robots.txt`)).text();
-    expect(robots).toContain("Sitemap: https://fixture.example/site/sitemap.xml");
-    expect(robots).not.toContain("undefined");
+    expect(xml).not.toContain("undefined");
+    // `robots.txt` is read from `/robots.txt` and nowhere else, so `/site/robots.txt` would be a
+    // file no crawler ever requests. The build says so and writes nothing rather than shipping
+    // reassurance. See `docs/deploying.md`.
+    expect((await page.request.get(`${SITE_BASE}robots.txt`)).status()).toBe(404);
   });
 
   test("shows the cover, and the cover is a file that actually loads", async ({ page }) => {

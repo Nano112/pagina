@@ -15,8 +15,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  DESCRIPTION_MAX, absoluteUrl, escapeAttr, firstParagraph, jsonLdScript, pageSeo, renderSeoHtml,
-  robotsTxt, sitemapXml, truncateWords,
+  DESCRIPTION_MAX, absoluteUrl, deploymentDiagnostics, deploymentUrl, escapeAttr, firstParagraph,
+  jsonLdScript, pageSeo, renderSeoHtml, robotsPlacement, robotsTxt, sitemapXml, truncateWords,
 } from "../src/seo.js";
 import type { Manifest, PageMeta } from "../src/types.js";
 
@@ -357,6 +357,107 @@ describe("robots.txt", () => {
 
   it("addresses the sitemap through base", () => {
     expect(robotsTxt(manifest({ siteUrl: "https://x.test" }), { base: "/docs/" })).toContain("https://x.test/docs/sitemap.xml");
+  });
+});
+
+// ---------------------------------------------------------------------- a sub-path deployment
+
+describe("robots.txt placement", () => {
+  it("is this build's file to write when the build serves the origin root", () => {
+    const p = robotsPlacement(manifest({ siteUrl: "https://x.test" }));
+    expect(p.outPath).toBe("robots.txt");
+    expect(p.reason).toBeUndefined();
+    expect(p.content).toContain("Sitemap: https://x.test/sitemap.xml");
+  });
+
+  it("is nobody's to write under a sub-path, and says so instead of writing it anyway", () => {
+    // `/project/robots.txt` is never requested by anything. Writing it would be the one option
+    // that looks like the problem was handled.
+    const p = robotsPlacement(manifest({ siteUrl: "https://x.test" }), { base: "/project/" });
+    expect(p.outPath).toBeUndefined();
+    expect(p.reason).toContain("origin root");
+    expect(p.rootSitemapLine).toBe("Sitemap: https://x.test/project/sitemap.xml");
+  });
+
+  it("hands back no sitemap line when there is no sitemap to point at", () => {
+    expect(robotsPlacement(manifest({ status: "draft", siteUrl: "https://x.test" }), { base: "/p/" }).rootSitemapLine).toBeUndefined();
+    expect(robotsPlacement(manifest({}), { base: "/p/" }).rootSitemapLine).toBeUndefined();
+  });
+});
+
+describe("a mirror", () => {
+  const primary = "https://primary.test/docs/";
+  const mirrored = manifest({ siteUrl: "https://mirror.test", cover: "/copy/media/c.png" }, { "/guide/": {} });
+
+  it("hands its canonical and og:url to the primary, for every page", () => {
+    const root = pageSeo(mirrored, "/", { base: "/copy/", siteUrl: "https://mirror.test", mirrorOf: primary });
+    expect(root.canonical).toBe("https://primary.test/docs/");
+    const page = pageSeo(mirrored, "/guide/", { base: "/copy/", siteUrl: "https://mirror.test", mirrorOf: primary });
+    expect(page.canonical).toBe("https://primary.test/docs/guide/");
+    expect(page.meta.find((m) => m.property === "og:url")?.content).toBe("https://primary.test/docs/guide/");
+  });
+
+  it("keeps serving its own images, which only exist on its own origin", () => {
+    const seo = pageSeo(mirrored, "/guide/", { base: "/copy/", siteUrl: "https://mirror.test", mirrorOf: primary });
+    expect(seo.meta.find((m) => m.property === "og:image")?.content).toBe("https://mirror.test/copy/media/c.png");
+  });
+
+  it("stays indexable, because a page told not to be indexed is never read", () => {
+    // `noindex` and a cross-origin canonical are alternatives, not a pair: the second only works if
+    // the crawler reads the page.
+    const seo = pageSeo(mirrored, "/guide/", { base: "/copy/", siteUrl: "https://mirror.test", mirrorOf: primary });
+    expect(seo.noindex).toBe(false);
+    expect(seo.meta.find((m) => m.name === "robots")).toBeUndefined();
+  });
+
+  it("still gets a canonical when it has no site URL of its own", () => {
+    // The primary's origin is the only one this tag needs.
+    const seo = pageSeo(manifest({}, { "/guide/": {} }), "/guide/", { mirrorOf: primary });
+    expect(seo.canonical).toBe("https://primary.test/docs/guide/");
+    expect(seo.diagnostics[0]?.message).not.toContain("canonical");
+  });
+
+  it("submits no sitemap, and its robots.txt points at none", () => {
+    const opts = { base: "/copy/", siteUrl: "https://mirror.test", mirrorOf: primary };
+    expect(sitemapXml(mirrored, opts)).toBeUndefined();
+    expect(robotsTxt(mirrored, opts)).not.toContain("Sitemap");
+    expect(robotsPlacement(mirrored, opts).rootSitemapLine).toBeUndefined();
+  });
+
+  it("resolves the primary's URL whether or not the primary URL ends in a slash", () => {
+    expect(deploymentUrl("https://p.test/docs", "/guide/")).toBe("https://p.test/docs/guide/");
+    expect(deploymentUrl("https://p.test/docs/", "/guide/")).toBe("https://p.test/docs/guide/");
+    expect(deploymentUrl("https://p.test", "/")).toBe("https://p.test/");
+    expect(deploymentUrl("not a url", "/")).toBeUndefined();
+  });
+});
+
+describe("site_url against base", () => {
+  it("says nothing when the two agree, in either spelling", () => {
+    expect(deploymentDiagnostics("https://x.test", "/")).toEqual([]);
+    expect(deploymentDiagnostics("https://x.test/", "/")).toEqual([]);
+    // An origin-only site URL with a sub-path base is the documented spelling, not a mismatch.
+    expect(deploymentDiagnostics("https://x.test", "/docs/")).toEqual([]);
+    expect(deploymentDiagnostics("https://x.test/", "/docs/")).toEqual([]);
+    expect(deploymentDiagnostics("https://x.test/docs/", "/docs/")).toEqual([]);
+    expect(deploymentDiagnostics("https://x.test/docs", "/docs/")).toEqual([]);
+    expect(deploymentDiagnostics(undefined, "/docs/")).toEqual([]);
+  });
+
+  it("catches the site URL whose path is silently dropped", () => {
+    // The Nucleation trap: canonical becomes `https://x.test/`, which is a real page belonging to
+    // somebody else, and the built HTML looks perfectly fine.
+    const [d] = deploymentDiagnostics("https://x.test/Project/", "/");
+    expect(d?.code).toBe("seo-site-url-path-ignored");
+    expect(d?.message).toContain("--base /Project/");
+  });
+
+  it("catches two paths that simply disagree", () => {
+    expect(deploymentDiagnostics("https://x.test/a/", "/b/")[0]?.code).toBe("seo-site-url-path-ignored");
+  });
+
+  it("reports a site URL that is not a URL at all", () => {
+    expect(deploymentDiagnostics("example.com", "/")[0]?.code).toBe("seo-site-url-invalid");
   });
 });
 

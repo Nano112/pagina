@@ -98,13 +98,60 @@ describe("buildStatic", () => {
     expect(robots).not.toContain("undefined");
   }, 60_000);
 
-  it("lets --site-url override the folder, and honours base in both files", async () => {
+  it("lets --site-url override the folder, and honours base in the sitemap", async () => {
     const outDir = await mkdtemp(join(tmpdir(), "pagina-build-siteurl-"));
-    await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
+    const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
     const xml = await readFile(join(outDir, "sitemap.xml"), "utf8");
     expect(xml).toContain("<loc>https://host.example/docs/</loc>");
     expect(xml).not.toContain("fixture.example");
-    expect(await readFile(join(outDir, "robots.txt"), "utf8")).toContain("https://host.example/docs/sitemap.xml");
+    // The sitemap belongs here: it may list any URL at or below its own directory, and `/docs/` is
+    // exactly what this deployment owns.
+    expect(r.files).toContain("sitemap.xml");
+  }, 60_000);
+
+  it("writes no robots.txt under a sub-path, and says what to serve at the root instead", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-subpath-robots-"));
+    const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
+    // A crawler reads robots.txt from `/robots.txt` and nowhere else. `/docs/robots.txt` would be a
+    // file nothing ever requests — the one outcome that looks like coverage and provides none.
+    expect(existsSync(join(outDir, "robots.txt"))).toBe(false);
+    expect(r.files).not.toContain("robots.txt");
+    expect(r.robots.outPath).toBeUndefined();
+    expect(r.robots.rootSitemapLine).toBe("Sitemap: https://host.example/docs/sitemap.xml");
+    expect(r.robots.reason).toContain("origin root");
+    // Not a diagnostic: no edit to the folder could resolve it, so it must not fail a strict build.
+    expect(r.diagnostics.map((d) => d.code)).not.toContain("robots-skipped");
+    expect(r.diagnostics.map((d) => d.code)).not.toContain("seo-site-url-path-ignored");
+  }, 60_000);
+
+  it("points a mirror's canonical at the primary, and asks for no indexing of its own", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-mirror-"));
+    const r = await buildStatic({
+      folder: fixture, outDir, shell: staticShell, strict: true,
+      base: "/Project/", siteUrl: "https://user.github.io", mirrorOf: "https://primary.example/docs/",
+    });
+    const html = await readFile(join(outDir, "guide/tabs/index.html"), "utf8");
+    expect(html).toContain('<link rel="canonical" href="https://primary.example/docs/guide/tabs/">');
+    expect(html).toContain('<meta property="og:url" content="https://primary.example/docs/guide/tabs/">');
+    expect(html).not.toContain('canonical" href="https://user.github.io');
+    // Submitting the mirror's own URLs for indexing would argue with every page's own head.
+    expect(existsSync(join(outDir, "sitemap.xml"))).toBe(false);
+    expect(r.files).not.toContain("sitemap.xml");
+    // …and that is the intended outcome, so it is not reported as something that went wrong.
+    expect(r.diagnostics.map((d) => d.code)).not.toContain("sitemap-skipped");
+    // The mirror still serves its own images: og:image has to be fetchable from where the page is.
+    expect(html).toContain('property="og:image" content="https://user.github.io/Project/media/cover.svg"');
+  }, 60_000);
+
+  it("warns when site_url carries a path the build is not served at", async () => {
+    const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example", "site_url: https://fixture.example/docs/"));
+    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-pathmismatch-"));
+    // Built at the root while `site_url` names `/docs/`: every canonical would read
+    // `https://fixture.example/` — a plausible-looking URL that is not this article.
+    const r = await buildStatic({ folder, outDir, shell: stubShell, strict: true });
+    expect(r.diagnostics.map((d) => d.code)).toContain("seo-site-url-path-ignored");
+    const matching = await buildStatic({ folder, outDir: await mkdtemp(join(tmpdir(), "pagina-build-pathmatch-")), shell: stubShell, strict: true, base: "/docs/" });
+    expect(matching.diagnostics.map((d) => d.code)).not.toContain("seo-site-url-path-ignored");
   }, 60_000);
 
   it("disallows everything for a draft, and writes no sitemap", async () => {

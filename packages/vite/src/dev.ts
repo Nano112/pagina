@@ -34,6 +34,9 @@ export interface DevServerOptions {
   /** Absolute origin the site will be served from, overriding `article.yaml`'s `site_url`. Only
    *  affects the SEO tags — the dev server itself is always loopback. */
   readonly siteUrl?: string;
+  /** Absolute URL of the deployment this one mirrors, so canonical/`og:url` can be previewed as
+   *  they will be published rather than only seen after a deploy. */
+  readonly mirrorOf?: string;
 }
 
 const FIGURE_URL = /\/_pagina\/figures\/[^/]+\/(.+)\.(light|dark)\.svg$/;
@@ -272,6 +275,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 ...(o.theme === undefined ? {} : { theme: o.theme }),
                 ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
                 ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+                ...(o.mirrorOf === undefined ? {} : { mirrorOf: o.mirrorOf }),
                 ...(declaredTheme === undefined ? {} : { kineglyphTheme: declaredTheme }),
               });
               const rel = href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`;

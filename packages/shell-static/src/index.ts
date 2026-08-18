@@ -18,6 +18,7 @@ export const staticShell: Shell = {
       ...(kgThemeUrl === undefined ? {} : { kineglyphThemeUrl: kgThemeUrl }),
       ...(ctx.kineglyphTheme === undefined ? {} : { kineglyphTheme: ctx.kineglyphTheme }),
       ...(siteUrl === undefined ? {} : { siteUrl }),
+      ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
     };
     return Object.fromEntries(
       Object.keys(article.pages).map((href) => [

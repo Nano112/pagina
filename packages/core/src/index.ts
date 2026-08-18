@@ -20,6 +20,7 @@ export { renderPage, pageSlug } from "./render-page.js";
 export { renderArticle, PaginaBuildError } from "./render-article.js";
 export { parseFrontMatter, splitFrontMatter, FRONT_MATTER_RE } from "./front-matter.js";
 export {
-  DESCRIPTION_MAX, absoluteUrl, escapeAttr, firstParagraph, jsonLdScript, pageSeo, renderSeoHtml,
-  robotsTxt, sitemapXml, truncateWords, type MetaTag, type PageSeo, type SeoOptions,
+  DESCRIPTION_MAX, absoluteUrl, deploymentDiagnostics, deploymentUrl, escapeAttr, firstParagraph,
+  jsonLdScript, pageSeo, renderSeoHtml, robotsPlacement, robotsTxt, sitemapXml, truncateWords,
+  type MetaTag, type PageSeo, type RobotsPlacement, type SeoOptions,
 } from "./seo.js";

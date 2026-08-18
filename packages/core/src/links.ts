@@ -6,6 +6,17 @@ export function hrefOf(pagePath: string): string {
   return `/${p.replace(/\/index$/, "")}/`;
 }
 
+/**
+ * `target`, written relative to the page at `fromPage`, as a folder-relative path.
+ *
+ * **A trailing slash survives.** It is the whole difference between a directory URL and a file
+ * path, and everything downstream reads it that way: a page's href ends in `/` and an asset's
+ * never does, which is how the bundler tells a link to another page from a link to a file. Dropping
+ * it turned `../features/basics/` — a perfectly good link to a page — into a demand for a file
+ * called `features/basics`, so the page rendered with a slash-less href that only worked because
+ * the host redirected, and `pack` refused the whole bundle over a file that was never meant to
+ * exist.
+ */
 export function resolveRelative(fromPage: string, target: string): string {
   const dir = fromPage.includes("/") ? fromPage.slice(0, fromPage.lastIndexOf("/")) : "";
   const parts = (dir === "" ? [] : dir.split("/"));
@@ -14,7 +25,8 @@ export function resolveRelative(fromPage: string, target: string): string {
     if (seg === "..") { parts.pop(); continue; }
     parts.push(seg);
   }
-  return parts.join("/");
+  const joined = parts.join("/");
+  return target.endsWith("/") && joined !== "" ? `${joined}/` : joined;
 }
 
 const SKIP = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;

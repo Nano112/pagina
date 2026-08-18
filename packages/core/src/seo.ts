@@ -145,10 +145,26 @@ export interface SeoOptions {
    * Absolute URL the site is served from. Any path in it is discarded — the site-absolute paths
    * pagina produces already carry `base` — so both `https://example.com` and
    * `https://example.com/docs` behave identically for a site built with `--base /docs/`.
+   *
+   * Because the path is dropped rather than honoured, a site URL that carries one while `base` is
+   * still `/` is a silently wrong canonical. {@link deploymentDiagnostics} catches exactly that.
    */
   readonly siteUrl?: string;
   /** The site base every href is served under. Default `"/"`. */
   readonly base?: string;
+  /**
+   * The deployment this build is a **copy of** — an absolute URL, path included, of the primary
+   * copy's home (`https://schemat.io/docs/nucleation/`).
+   *
+   * Set, every page's `link rel=canonical` and `og:url` address the *primary's* URL for that page
+   * rather than this build's own, and no `sitemap.xml` is written. That is the whole of what
+   * makes a mirror a mirror: two public copies of one article otherwise compete with each other
+   * in search results, and the copy that wins is chosen by the crawler rather than by the author.
+   *
+   * Pages are still crawlable — a `noindex` mirror can never pass its signal to the primary,
+   * because a crawler that is told not to index also has no reason to read the canonical.
+   */
+  readonly mirrorOf?: string;
 }
 
 export interface PageSeo {
@@ -183,6 +199,55 @@ export function absoluteUrl(path: string | undefined, siteUrl: string | undefine
 const withBase = (base: string, href: string): string => `${base.replace(/\/$/, "")}${href}`;
 
 /**
+ * `href` (site-absolute, base-free) under the deployment `deployUrl` addresses.
+ *
+ * The mirror's page tree and the primary's are the same tree under two different roots, so the
+ * primary's URL for a page is its own root joined with the page's href. `deployUrl` is forced to
+ * end in `/` first: without that, `new URL` treats the last segment as a file and replaces it,
+ * turning `https://site/docs` + `/features/` into `https://site/features/`.
+ */
+export function deploymentUrl(deployUrl: string, href: string): string | undefined {
+  try {
+    const root = deployUrl.endsWith("/") ? deployUrl : `${deployUrl}/`;
+    return new URL(href.replace(/^\/+/, ""), root).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What is wrong with the *pair* `siteUrl` + `base`, if anything — reported once for the build
+ * rather than once per page, because it is a property of the deployment, not of a document.
+ *
+ * The one failure this exists for: `site_url: https://host/project/` with `base: "/"`. Every
+ * canonical then reads `https://host/` — a URL that is not the article, is very likely somebody
+ * else's page, and looks entirely plausible in the built HTML. It is the trap the Nucleation port
+ * hit, and nothing in the output betrayed it.
+ */
+export function deploymentDiagnostics(siteUrl: string | undefined, base = "/"): Diagnostic[] {
+  if (siteUrl === undefined || siteUrl === "") return [];
+  let path: string;
+  try {
+    path = new URL(siteUrl).pathname;
+  } catch {
+    return [{ severity: "warning", code: "seo-site-url-invalid", message: `site_url is not an absolute URL: "${siteUrl}"` }];
+  }
+  const norm = (p: string): string => `/${p.replace(/^\/+|\/+$/g, "")}/`.replace(/^\/\/$/, "/");
+  // An origin-only site URL is the documented way to write one — `https://host` with
+  // `--base /docs/` is right, and saying otherwise would make the correct spelling warn.
+  if (norm(path) === "/") return [];
+  if (norm(path) === norm(base)) return [];
+  return [{
+    severity: "warning",
+    code: "seo-site-url-path-ignored",
+    message:
+      `site_url is "${siteUrl}" but the site is built at base "${base}", and only the origin of ` +
+      `site_url is used — so canonical and og:url address "${new URL(siteUrl).origin}${base.replace(/\/$/, "")}/" ` +
+      `rather than the path site_url names. Build with --base ${norm(path)} to serve it there, or drop the path from site_url.`,
+  }];
+}
+
+/**
  * Everything a page's `<head>` needs, derived from the manifest alone.
  *
  * The manifest has already run the precedence chains (page front matter over `article.yaml`) and
@@ -202,7 +267,11 @@ export function pageSeo(manifest: Manifest, href: string, opts: SeoOptions = {})
   // article's here is belt and braces for a manifest assembled by hand or by an older build, so
   // that "the article has a description but this page's tag is empty" is not a reachable state.
   const description = page.description ?? article.description;
-  const canonical = absoluteUrl(withBase(base, href), siteUrl);
+  // A mirror's canonical points *away* from itself, at the primary's URL for the same page. It is
+  // therefore the one absolute URL here that does not need this deployment's own origin.
+  const canonical = opts.mirrorOf === undefined || opts.mirrorOf === ""
+    ? absoluteUrl(withBase(base, href), siteUrl)
+    : deploymentUrl(opts.mirrorOf, href);
   const image = absoluteUrl(page.cover ?? article.cover, siteUrl) ?? page.cover ?? article.cover;
   const noindex = page.noindex === true || article.status !== "published";
 
@@ -210,7 +279,11 @@ export function pageSeo(manifest: Manifest, href: string, opts: SeoOptions = {})
     diagnostics.push({
       severity: "warning",
       code: "seo-no-site-url",
-      message: "no site_url is configured, so canonical, og:url and og:image are omitted; set `site_url` in article.yaml or pass --site-url",
+      // A mirror gets its canonical from the primary, so only the image tags are lost there —
+      // naming tags that were in fact emitted would send the reader looking for a bug that is not.
+      message: canonical === undefined
+        ? "no site_url is configured, so canonical, og:url and og:image are omitted; set `site_url` in article.yaml or pass --site-url"
+        : "no site_url is configured, so og:image and twitter:image are omitted; set `site_url` in article.yaml or pass --site-url",
       page: href,
     });
 
@@ -290,12 +363,20 @@ export function renderSeoHtml(seo: PageSeo): string {
  * `sitemap.xml` for the built site, or `undefined` when there is no site URL to write into it.
  *
  * Draft articles and `noindex` pages are left out: a sitemap is a request to index, and asking for
- * something the very next tag forbids is worse than saying nothing.
+ * something the very next tag forbids is worse than saying nothing. A **mirror** is the same
+ * contradiction one level up — every page of it declares another URL canonical, so submitting its
+ * own URLs for indexing would argue with its own `<head>`.
+ *
+ * Note what is *not* a problem: under `--base /project/` this file belongs at `/project/sitemap.xml`
+ * and stays there. A sitemap may list any URL at or below its own directory, which is exactly the
+ * set of URLs a sub-path deployment owns. `robots.txt` is the one that cannot move — see
+ * {@link robotsTxt}.
  */
 export function sitemapXml(manifest: Manifest, opts: SeoOptions = {}): string | undefined {
   const siteUrl = opts.siteUrl ?? manifest.article.siteUrl;
   if (siteUrl === undefined || siteUrl === "") return undefined;
   if (manifest.article.status !== "published") return undefined;
+  if (opts.mirrorOf !== undefined && opts.mirrorOf !== "") return undefined;
   const base = opts.base ?? "/";
   const entries = Object.entries(manifest.pages)
     .filter(([, meta]) => meta.noindex !== true)
@@ -314,12 +395,69 @@ export function sitemapXml(manifest: Manifest, opts: SeoOptions = {}): string | 
  *
  * A draft article disallows everything — the `noindex` switch has to hold at the crawler's first
  * request, not only once it has read a page. A published one allows everything and points at the
- * sitemap, when there is a site URL to address it with.
+ * sitemap, when there is a site URL to address it with. A mirror gets no `Sitemap` line, because
+ * {@link sitemapXml} writes it no sitemap.
+ *
+ * **This file only works at the origin root.** `robots.txt` is fetched from `/robots.txt` and
+ * nowhere else, so a deployment under `--base /project/` cannot serve one: `/project/robots.txt`
+ * is a file no crawler will ever request. {@link robotsPlacement} says where a given build's
+ * belongs, and the builder writes it only where it will be read — emitting it into a sub-path
+ * would be a file that exists purely to look reassuring in a directory listing.
  */
 export function robotsTxt(manifest: Manifest, opts: SeoOptions = {}): string {
   const siteUrl = opts.siteUrl ?? manifest.article.siteUrl;
   const base = opts.base ?? "/";
   if (manifest.article.status !== "published") return "User-agent: *\nDisallow: /\n";
-  const sitemap = absoluteUrl(`${base.replace(/\/$/, "")}/sitemap.xml`, siteUrl);
+  const mirrored = opts.mirrorOf !== undefined && opts.mirrorOf !== "";
+  const sitemap = mirrored ? undefined : absoluteUrl(`${base.replace(/\/$/, "")}/sitemap.xml`, siteUrl);
   return `User-agent: *\nAllow: /\n${sitemap === undefined ? "" : `\nSitemap: ${sitemap}\n`}`;
+}
+
+/** Where a build's `robots.txt` belongs, and — when that is not this build — what to do instead. */
+export interface RobotsPlacement {
+  /** The `robots.txt` body, whether or not this build is the one that can serve it. */
+  readonly content: string;
+  /** Path within the output directory to write it to, or `undefined` when nothing should be written. */
+  readonly outPath?: string;
+  /**
+   * The single line the *origin root's* `robots.txt` — owned by whoever serves `/` — needs so this
+   * deployment's sitemap is discoverable. Absent when there is no sitemap, or no site URL to
+   * address it with, or when this build serves its own root.
+   */
+  readonly rootSitemapLine?: string;
+  /** Why nothing was written, in one sentence, for a builder to print. Absent when it was. */
+  readonly reason?: string;
+}
+
+/**
+ * Whether this build owns `/robots.txt`, and what the operator has to do when it does not.
+ *
+ * Served at `/`, the file is this build's to write. Served at `/project/`, it belongs to a root
+ * this build does not own — most concretely, a GitHub project page lives under
+ * `user.github.io/project/` while `user.github.io/robots.txt` is served by an entirely different
+ * repository. There is no path pagina can write that changes that, so it writes nothing and says
+ * so, and hands back the one line that root file actually needs.
+ *
+ * Nothing is lost by the omission: per-page `noindex` — which is what a draft article relies on —
+ * is emitted in the `<head>` of every page and is read wherever the page is served.
+ */
+export function robotsPlacement(manifest: Manifest, opts: SeoOptions = {}): RobotsPlacement {
+  const content = robotsTxt(manifest, opts);
+  const base = opts.base ?? "/";
+  const atRoot = base === "" || base === "/";
+  if (atRoot) return { content, outPath: "robots.txt" };
+  const siteUrl = opts.siteUrl ?? manifest.article.siteUrl;
+  const mirrored = opts.mirrorOf !== undefined && opts.mirrorOf !== "";
+  const sitemap = mirrored || manifest.article.status !== "published"
+    ? undefined
+    : absoluteUrl(`${base.replace(/\/$/, "")}/sitemap.xml`, siteUrl);
+  return {
+    content,
+    ...(sitemap === undefined ? {} : { rootSitemapLine: `Sitemap: ${sitemap}` }),
+    reason:
+      `no robots.txt was written: this site is served at "${base}", and crawlers read robots.txt only ` +
+      `from the origin root, which a sub-path deployment does not own. Every page carries its own ` +
+      `robots meta tag regardless.` +
+      (sitemap === undefined ? "" : ` Add this line to the root robots.txt: Sitemap: ${sitemap}`),
+  };
 }

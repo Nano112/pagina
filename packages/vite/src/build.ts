@@ -3,7 +3,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, inlineArticleFigures, parseArticleConfig, renderArticle, robotsTxt, sitemapXml, type Diagnostic, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, sitemapXml, type Diagnostic, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
@@ -31,6 +31,26 @@ export interface BuildOptions {
    * relative `og:image` is a guaranteed 404 on every consumer's origin. The build warns per page.
    */
   readonly siteUrl?: string;
+  /**
+   * Absolute URL, path included, of the deployment this build is a **copy of**.
+   *
+   * A static mirror of an article that is also published elsewhere is two public copies of one
+   * document, and search engines have to be told which one counts. Set, every page's canonical and
+   * `og:url` address the primary's URL for that page, and no `sitemap.xml` is written — this build
+   * asks to be read and not to be ranked.
+   */
+  readonly mirrorOf?: string;
+}
+
+export interface BuildResult {
+  readonly files: string[];
+  readonly diagnostics: Diagnostic[];
+  /**
+   * What became of `robots.txt` — written at the output root, or, for a sub-path deployment, not
+   * written at all, with {@link RobotsPlacement.reason} saying why and what to do instead. Handed
+   * back rather than logged so the CLI, a CI script and a host all say the same thing.
+   */
+  readonly robots: RobotsPlacement;
 }
 
 async function write(outDir: string, rel: string, data: string | Uint8Array): Promise<void> {
@@ -100,7 +120,7 @@ export async function bundleClient(
  * `_pagina/figures/<page-slug>/<id>.<theme>.svg`, the manifest and the client bundle in
  * `_pagina/`.
  */
-export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; diagnostics: Diagnostic[] }> {
+export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   const base = o.base ?? "/";
   const strict = o.strict ?? true;
   const fs = new NodeContentFs(o.folder);
@@ -142,6 +162,7 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
     ...(o.theme === undefined ? {} : { theme: o.theme }),
     ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
     ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+    ...(o.mirrorOf === undefined ? {} : { mirrorOf: o.mirrorOf }),
     // The very tokens the figures above were drawn with, so the page paints them the same way.
     ...(config.kineglyph?.theme === undefined ? {} : { kineglyphTheme: themes }),
   });
@@ -151,9 +172,19 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
   }
   // The two files a standalone static site needs and a hosted one does not: a host that mounts
   // pagina inside its own site serves its own robots and folds these pages into its own sitemap.
-  const seoOpts = { base, ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) };
+  const siteUrl = o.siteUrl ?? article.manifest.article.siteUrl;
+  const seoOpts = {
+    base,
+    ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+    ...(o.mirrorOf === undefined ? {} : { mirrorOf: o.mirrorOf }),
+  };
+  // A deployment's URL and its base have to agree, and only this layer knows both. Checked once
+  // for the build: it is a fact about where the site is going, not about any one page.
+  diagnostics.push(...deploymentDiagnostics(siteUrl, base));
   const sitemap = sitemapXml(article.manifest, seoOpts);
-  if (sitemap === undefined) {
+  // A mirror having no sitemap is the intended outcome of `mirrorOf`, not something that went
+  // wrong, so it is not reported — a warning a build cannot act on trains people to ignore warnings.
+  if (sitemap === undefined && o.mirrorOf === undefined) {
     diagnostics.push({
       severity: "warning",
       code: "sitemap-skipped",
@@ -161,13 +192,16 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
         ? "no site_url is configured, so no sitemap.xml was written; set `site_url` in article.yaml or pass --site-url"
         : "the article is a draft, so no sitemap.xml was written and robots.txt disallows everything",
     });
-  } else {
+  } else if (sitemap !== undefined) {
     await write(o.outDir, "sitemap.xml", sitemap);
     files.push("sitemap.xml");
   }
-  await write(o.outDir, "robots.txt", robotsTxt(article.manifest, seoOpts));
-  files.push("robots.txt");
+  const robots = robotsPlacement(article.manifest, seoOpts);
+  if (robots.outPath !== undefined) {
+    await write(o.outDir, robots.outPath, robots.content);
+    files.push(robots.outPath);
+  }
   await write(o.outDir, "_pagina/manifest.json", JSON.stringify(article.manifest, null, 2));
   files.push("_pagina/manifest.json");
-  return { files, diagnostics };
+  return { files, diagnostics, robots };
 }

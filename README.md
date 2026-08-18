@@ -185,6 +185,10 @@ a `pagina build` output.
 emitted relative: a relative canonical indexes nothing and a relative `og:image` is a guaranteed
 404 on every consumer's origin. Everything that is meaningful without an origin is still emitted.
 
+**Deployed under a sub-path, or as one of two copies?** `robotsPlacement` says whether this build
+is the one that can serve `/robots.txt` (a sub-path deployment is not), and `--mirror-of` hands
+canonicity to the primary copy. Both are covered in [Deploying](docs/deploying.md).
+
 ### Markdown dialect
 
 CommonMark + GFM + raw HTML, plus the MkDocs/pymdownx subset that existing docs tend to use:
@@ -233,8 +237,8 @@ hatch for fully custom, non-pre-renderable interactivity.
 ## CLI
 
 ```
-pagina dev    <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL]
-pagina build  <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL]
+pagina dev    <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL] [--mirror-of URL]
+pagina build  <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL] [--mirror-of URL]
 pagina pack   [folder] [-o article.pgz] [--base /] [--created ISO8601]
 pagina unpack <article.pgz> [dir] [--force]
 ```
@@ -247,9 +251,16 @@ pagina unpack <article.pgz> [dir] [--force]
 - `--base /repo/` produces site-absolute URLs under a sub-path (GitHub Pages project sites).
 - `--theme full|tokens|none` picks how much pagina CSS a page links and `--no-chrome` drops
   pagina's own header row — see [Theming](#theming).
-- `--site-url https://example.com` overrides `article.yaml`'s `site_url`, for a folder several
-  hosts publish. `build` also writes `sitemap.xml` and `robots.txt` at the output root; a draft
-  article gets `Disallow: /` and no sitemap.
+- `--site-url https://example.com/docs/` is the **deployment URL**, path included: the path becomes
+  `base`, so one flag gives both correct asset URLs and a correct canonical. It overrides
+  `article.yaml`'s `site_url`, which is what a folder with more than one home needs. `build` writes
+  `sitemap.xml` at `<base>`, and `robots.txt` only when the site is served at the origin root —
+  under a sub-path it prints the line to add to the root instead, because that is the only place a
+  crawler reads it. A draft article gets `Disallow: /` and no sitemap.
+- `--mirror-of https://primary.example/docs/` marks this build a **copy**: canonical and `og:url`
+  point at the primary's URL for each page and no sitemap is written, so two public copies of one
+  article do not compete. See [Deploying](docs/deploying.md) for the sub-path and mirror rules in
+  full, including why this rather than `noindex`.
 - `--edit` turns on the in-browser editor: `/__edit/` (and `/__edit/<page href>`) serves the
   editor, every page grows an "Edit this page" link, and the article folder is exposed for
   reading *and writing* over HTTP at `/__pagina/edit` (the same contract the Laravel package

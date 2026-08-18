@@ -25,6 +25,8 @@ export interface ShellCtx {
   modelViewerUrl?: string;
   /** Absolute site origin, for canonical/`og:url`/`og:image`. Absent, those tags are omitted. */
   siteUrl?: string;
+  /** Absolute URL of the deployment this build mirrors; canonical and `og:url` point there. */
+  mirrorOf?: string;
 }
 
 /**
@@ -210,7 +212,11 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     : "";
   // Every tag pagina emits for this page — title, description, robots, OpenGraph, Twitter,
   // canonical and the JSON-LD `Article` — already escaped for the context each one lands in.
-  const seo = renderSeoHtml(pageSeo(article.manifest, href, { base: ctx.base, ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }) }));
+  const seo = renderSeoHtml(pageSeo(article.manifest, href, {
+    base: ctx.base,
+    ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }),
+    ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
+  }));
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}>
 <head>
