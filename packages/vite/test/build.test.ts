@@ -42,6 +42,8 @@ describe("buildStatic", () => {
       "scenes/demo.mjs",
       "media/static.svg",
       "_pagina/manifest.json",
+      "llms.txt",
+      "_pagina/llms.json",
     ])
       expect((await stat(join(outDir, f))).isFile(), f).toBe(true);
     // The client artefacts carry a hash of their own bytes, so there is no fixed name to `stat`.
@@ -240,6 +242,47 @@ describe("buildStatic", () => {
 
     const strictOut = await tempDir("broken-strict");
     await expect(buildStatic({ folder, outDir: strictOut, shell: stubShell })).rejects.toThrow(/kg-guide-figures-1/);
+  }, 60_000);
+});
+
+/**
+ * The two files that hand an agent the site: `llms.txt` at the root by convention, and the same
+ * walk with sections kept, next to the manifest it is projected from. `llms.test.ts` in core owns
+ * the projection itself; what is asserted here is that a *build* writes them, at the right paths,
+ * under the right base — and that neither has been folded into `sitemap.xml`, which addresses
+ * crawlers looking for pages to rank rather than programs that were handed an address.
+ */
+describe("llms.txt and llms.json", () => {
+  it("are written, base-correct, and out of the sitemap", async () => {
+    const outDir = await tempDir("llms");
+    const r = await buildStatic({
+      folder: fixture, outDir, shell: staticShell, strict: true,
+      base: "/docs/", siteUrl: "https://example.com",
+    });
+    expect(r.files).toContain("llms.txt");
+    expect(r.files).toContain("_pagina/llms.json");
+
+    const txt = await readFile(join(outDir, "llms.txt"), "utf8");
+    expect(txt.startsWith("# ")).toBe(true);
+    // Every link in it is absolute and under the base — the two ways this file is read are "fetch
+    // each of these" and "paste this into something", and a relative link survives neither.
+    const links = [...txt.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]!);
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(link.startsWith("https://example.com/docs/"), link).toBe(true);
+
+    const json = JSON.parse(await readFile(join(outDir, "_pagina/llms.json"), "utf8")) as {
+      base: string; pages: { url: string; sections: { url: string }[] }[];
+    };
+    expect(json.base).toBe("/docs/");
+    // Every page in the JSON is a page the build actually wrote, reached through its own URL.
+    for (const page of json.pages) {
+      const file = join(outDir, page.url.replace("https://example.com/docs/", ""), "index.html");
+      expect(existsSync(file), `${page.url} is listed but ${file} was never written`).toBe(true);
+      for (const section of page.sections) expect(section.url.startsWith(page.url)).toBe(true);
+    }
+
+    const sitemap = await readFile(join(outDir, "sitemap.xml"), "utf8");
+    expect(sitemap).not.toContain("llms");
   }, 60_000);
 });
 

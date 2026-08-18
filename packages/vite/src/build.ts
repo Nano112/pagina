@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, llmsJson, llmsTxt, parseArticleConfig, renderArticle, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { gitIgnoredPaths } from "./gitignore.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
@@ -418,5 +418,14 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   }
   await write(o.outDir, "_pagina/manifest.json", JSON.stringify(article.manifest, null, 2));
   files.push("_pagina/manifest.json");
+  // The front door for a reader that is a program: `llms.txt` at the site root by convention, and
+  // the same walk with the sections kept next to the manifest it is projected from. Both are
+  // derived from data three files above already wrote, and neither is in `sitemap.xml` — they are
+  // for something that was handed the address, not for something crawling towards it.
+  const llmsOpts = { ...seoOpts, search: o.search !== false };
+  await write(o.outDir, LLMS_TXT_PATH, llmsTxt(article.manifest, llmsOpts));
+  files.push(LLMS_TXT_PATH);
+  await write(o.outDir, LLMS_JSON_PATH, serializeLlmsJson(llmsJson(article.manifest, llmsOpts)));
+  files.push(LLMS_JSON_PATH);
   return { files, diagnostics, robots };
 }

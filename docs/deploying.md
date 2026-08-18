@@ -197,6 +197,33 @@ so ⌘P — or **Save as PDF** — produces something deliberate:
 Margins are `@page { margin: 18mm 16mm }`, inside pagina's cascade layer like every other rule, so
 an unlayered `@page` of your own wins without `!important`.
 
+## `llms.txt`, for a reader that is a program
+
+Every build writes two more files, from data the manifest already carries:
+
+```
+llms.txt              at the site root, by the emerging convention
+_pagina/llms.json     the same walk, with the sections kept
+```
+
+`llms.txt` is a title, a one-line description, and a linked list of the pages, followed by pointers
+to the machine-readable files. `llms.json` is `{ version, title, description, base, siteUrl,
+manifest, search, pages[] }`, where each page carries its `href`, its URL, its title, its
+description, its reading time, and a `sections[]` of every `h2`/`h3` with the **stable anchor** the
+TOC and the search index already use — so an agent can enumerate the site, pick a section, and fetch
+exactly it.
+
+Both are correct under `--base`, and every URL in them is absolute when `site_url` is configured and
+site-absolute otherwise — never relative, because a file whose purpose is to be fetched out of
+context must not contain a link that resolves against whatever the fetcher was doing. Both honour
+the rules the rest of the build already applies: a `noindex` page is not listed, and a draft article
+lists nothing. Neither is in `sitemap.xml` — they address something that was handed the address, not
+a crawler looking for pages to rank.
+
+This is plumbing over data that already exists, and deliberately a stepping stone. If it proves
+useful, the follow-up is an MCP server over a [`.pgz` bundle](bundles.md), not more flavours of the
+same text at the site root.
+
 ## Publishing from CI
 
 A deploy is the moment a mistake stops being reversible, so two things belong in the pipeline

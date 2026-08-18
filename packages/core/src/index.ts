@@ -28,6 +28,10 @@ export {
   type SearchOptions, type SnippetPart,
 } from "./search.js";
 export {
+  LLMS_JSON_PATH, LLMS_JSON_VERSION, LLMS_TXT_PATH, llmsJson, llmsTxt, serializeLlmsJson,
+  type LlmsJson, type LlmsOptions, type LlmsPage, type LlmsSection,
+} from "./llms.js";
+export {
   DESCRIPTION_MAX, absoluteUrl, deploymentDiagnostics, deploymentUrl, escapeAttr, firstParagraph,
   jsonLdScript, pageSeo, renderSeoHtml, robotsPlacement, robotsTxt, sitemapXml, truncateWords,
   type MetaTag, type PageSeo, type RobotsPlacement, type SeoOptions,
