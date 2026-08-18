@@ -103,6 +103,26 @@ status), for the cases where a copy genuinely should not be found at all.
 is a canonical pointing at a 404. Deploy the mirror without `--mirror-of` until the primary is
 live, then turn it on.
 
+## Every build writes a 404
+
+`pagina build` emits `<base>404.html` alongside the pages, always and without configuration. GitHub
+Pages serves it for any address that matches nothing; Netlify, Cloudflare Pages and S3 do the same
+given the file, and an nginx or Caddy host is one `error_page 404` line away from it.
+
+It is not an apology page. The build knows exactly which pages exist — a nav entry pointing at a
+missing page is a build *error*, not a broken link on a published site — so the 404 prints that
+list: the article's nav, in reading order, as a table of contents, with the address the reader
+actually asked for typeset into it as the one entry that has no page. Which means the reader lands
+somewhere true instead of at a dead end.
+
+Two consequences worth knowing:
+
+- **It is served from an address nobody chose,** so every URL on it is absolute and base-prefixed.
+  It works at `/404.html`, at `/docs/anything/at/all/`, and under any `--base`.
+- **It is not a page of the article.** It is in no nav, in no `sitemap.xml`, and it carries
+  `<meta name="robots" content="noindex, follow">`. It needs no JavaScript: the address is the only
+  part a script fills in, and the HTML ships a truthful sentence in its place.
+
 ## Summary
 
 | | root deployment | sub-path deployment | mirror |
@@ -110,5 +130,6 @@ live, then turn it on.
 | `--site-url` | origin, or origin + `/` | full deployment URL (path becomes `base`) | its own deployment URL |
 | `sitemap.xml` | written at `/` | written at `<base>` | **not written** |
 | `robots.txt` | written | **not written**; line printed for the root's owner | not written under a sub-path |
+| `404.html` | written at `/` | written at `<base>` | written |
 | `canonical` / `og:url` | its own URL | its own URL, base included | the **primary's** URL |
 | `og:image` | its own | its own | its own |

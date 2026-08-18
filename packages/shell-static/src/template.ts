@@ -40,11 +40,22 @@ export interface ShellCtx {
 export const DEFAULT_MODEL_VIEWER_URL = "https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]!);
+/** Not public API: shared with `not-found.ts`, which is a page this shell renders too. */
+export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ESCAPES[c]!);
 /** A string inside a raw-text `<script>` element: HTML escapes are NOT decoded there, so the
  *  value must be JSON-escaped (not HTML-escaped) and only `</script` needs neutralising. */
 const escInScriptJson = (s: string) => JSON.stringify(s).slice(1, -1).replace(/<\/script/gi, "<\\/script");
-const withBase = (base: string, href: string) => `${base.replace(/\/$/, "")}${href}`;
+/** Not public API — see {@link esc}. */
+export const withBase = (base: string, href: string) => `${base.replace(/\/$/, "")}${href}`;
+
+/**
+ * The theme, decided before the first paint.
+ *
+ * In `<head>` and blocking on purpose: it runs before the body exists, so a reader who chose dark
+ * never sees a white flash of the default. The key is the one the client bundle writes, so the
+ * toggle on any page — including the 404, which carries its own small toggle — agrees with this.
+ */
+export const THEME_INIT_SCRIPT = `<script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>`;
 
 /**
  * Where the tokens-only sheet lives. A builder that emits one says so explicitly; otherwise it
@@ -54,8 +65,8 @@ const withBase = (base: string, href: string) => `${base.replace(/\/$/, "")}${hr
 const tokensUrl = (ctx: ShellCtx): string =>
   ctx.tokensCssUrl ?? ctx.cssUrl.replace(/pagina\.css(?=$|[?#])/, "pagina.tokens.css");
 
-/** The `<link>` (if any) for pagina's own CSS at this theme level. */
-function stylesheetHtml(ctx: ShellCtx): string {
+/** The `<link>` (if any) for pagina's own CSS at this theme level. Not public API — see {@link esc}. */
+export function stylesheetHtml(ctx: ShellCtx): string {
   const theme = ctx.theme ?? "full";
   if (theme === "none") return "";
   return `<link rel="stylesheet" href="${esc(theme === "tokens" ? tokensUrl(ctx) : ctx.cssUrl)}">`;
@@ -222,7 +233,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${seo}
-<script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+${THEME_INIT_SCRIPT}
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
 ${stylesheetHtml(ctx)}${kineglyphThemeCss(ctx)}
 </head>

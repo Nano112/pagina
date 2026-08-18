@@ -382,8 +382,18 @@ createServer((req, res) => {
             res.setHeader("content-type", TYPES[extname(file)] ?? "application/octet-stream");
             res.end(bytes);
             return;
-          } catch { /* fall through to 404 */ }
+          } catch { /* fall through to the site's own 404 */ }
         }
+        // What GitHub Pages does with an address that matches nothing: the site's `404.html`, under
+        // a 404 status, from whatever depth was asked for. It is the only way the page is ever
+        // actually served, and the only way a relative URL on it would be caught.
+        try {
+          const bytes = await readFile(resolve(root, "404.html"));
+          res.statusCode = 404;
+          res.setHeader("content-type", TYPES[".html"]);
+          res.end(bytes);
+          return;
+        } catch { /* fall through to the bare 404 below */ }
       }
       res.statusCode = 404;
       res.end("not found");

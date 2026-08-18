@@ -93,6 +93,27 @@ describe("buildStatic", () => {
     expect((await stat(join(outDir, "media/cover.svg"))).isFile()).toBe(true);
   }, 60_000);
 
+  /**
+   * A 404 is served from an address nobody chose — GitHub Pages answers a request for
+   * `/docs/any/depth/at/all/` with this one file — so the two things it must be are *emitted* and
+   * *absolute*. It is not a page of the article, so it is in no nav and in no sitemap.
+   */
+  it("emits a base-correct 404.html that lists the real pages and stays out of the sitemap", async () => {
+    const outDir = await tempDir("build-404");
+    const r = await buildStatic({ folder: fixture, outDir, shell: staticShell, strict: true, base: "/docs/" });
+    expect(r.files).toContain("404.html");
+    const html = await readFile(join(outDir, "404.html"), "utf8");
+    expect(html).toContain(`<meta name="robots" content="noindex, follow">`);
+    expect(html).toContain(`href="/docs/guide/tabs/"`);
+    expect(html).toContain(`href="/docs/_pagina/pagina.css"`);
+    // The one defect that only shows up at depth: a single relative URL and the page is broken
+    // everywhere it is actually used.
+    for (const url of [...html.matchAll(/(?:href|src)="([^"]*)"/g)].map((m) => m[1]!)) {
+      expect(url.startsWith("/docs/"), url).toBe(true);
+    }
+    expect(await readFile(join(outDir, "sitemap.xml"), "utf8")).not.toContain("404");
+  }, 60_000);
+
   it("skips the sitemap and warns rather than writing a relative one", async () => {
     const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example\n", ""));
     const outDir = await tempDir("build-nosite");
