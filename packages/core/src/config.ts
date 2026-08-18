@@ -41,6 +41,51 @@ function parseNav(v: unknown, path: string): NavEntry[] {
   });
 }
 
+/**
+ * Where the article's Kineglyph theme module is served from, or `undefined` when it declares none.
+ *
+ * One function rather than one expression per consumer, because the consumers have to agree: the
+ * page shell puts this URL on `<html data-kg-theme>`, and the editor's preview loads the same
+ * module so that a figure being edited is painted in the colours it will be published in. They
+ * disagreed once — the preview simply had no theme — and a figure that changes colour between the
+ * editor and the page is a bug a reader sees before its author does.
+ */
+export const kineglyphThemeHref = (article: { readonly kineglyph?: { readonly theme?: string } | undefined }, base: string): string | undefined => {
+  const theme = article.kineglyph?.theme;
+  if (theme === undefined) return undefined;
+  // A theme that already names where it lives — an absolute URL, a scheme, a root-relative path —
+  // is not a file inside the article, and prefixing the site base would break it.
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(theme)) return theme;
+  return `${base.replace(/\/$/, "")}/${theme}`;
+};
+
+/** Kineglyph's own token-name convention: `surfaceRaised` → `surface-raised`. */
+const cssName = (token: string): string => token.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+
+/**
+ * An article theme's colours as the CSS custom properties a figure is actually painted from.
+ *
+ * A Kineglyph figure paints every fill as `var(--kg-color-<role>, <literal>)`: the literal comes
+ * from the theme the figure was *drawn* with, and the variable — if the page defines one — wins.
+ * That is Kineglyph's contract, and it is how a host retints a figure it did not draw. pagina takes
+ * it up in `pagina.css`, where every `--kg-color-*` is pointed at the matching `--pg-*` token.
+ *
+ * Which means an article that declares its own theme module gets it applied to the *drawing* and
+ * then overruled at *paint*: the served SVG says teal and the reader sees pagina's blue. The
+ * declaration has to reach the page as variables too, or it does not really reach the page. This
+ * turns a theme's `colors` into exactly those variables; the shell emits them after `pagina.css`
+ * so that a declared theme outranks the default bridge, and an article that declares no theme is
+ * untouched and still follows its host.
+ */
+export const kineglyphColorVars = (colors: Readonly<Record<string, string>> | undefined): Record<string, string> => {
+  const out: Record<string, string> = {};
+  // A theme module is the article's own code, and a runtime is something a host may substitute:
+  // neither is required to hand back a palette, and "no variables" is the answer when it does not.
+  if (colors === null || typeof colors !== "object") return out;
+  for (const [token, value] of Object.entries(colors)) if (typeof value === "string") out[`--kg-color-${cssName(token)}`] = value;
+  return out;
+};
+
 export function parseArticleConfig(text: string): ArticleConfig {
   const raw = parse(text) as unknown;
   if (raw === null || typeof raw !== "object") fail("(root)", "must be a mapping");

@@ -148,6 +148,14 @@ lays the figure out in it, which is the supported way to get your own type into 
 Left undefined entirely — a host on `theme: "none"`, say — a figure still paints exactly the
 colours it was drawn with. The tokens re-tint; they are never required.
 
+**An article that ships its own theme keeps it.** `article.yaml`'s `kineglyph.theme` names a module
+exporting `light` and `dark` token sets; the builder draws every figure with it, and the shell then
+publishes that theme's colours as the `--kg-color-*` variables, after the stylesheet, so they
+outrank the table above. Drawn and painted are the same palette, in both themes, with or without
+JavaScript — before this, an article's declared teal was drawn into the SVG and then repainted in
+the host's blue, and only a reader ever saw it. The bridge is unchanged for the far more common
+article that declares no theme: it still follows its host.
+
 A figure wider than the column **scrolls rather than shrinks**, the same treatment `pre` gets,
 because a diagram scaled to a phone takes its 16px type down to 6px with it.
 `--pg-figure-min-scale` is the floor: below `0.7` of its natural width a figure keeps its size and

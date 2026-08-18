@@ -31,6 +31,9 @@ const API = "/api/articles/fixture";
 /** The built site `e2e/setup.ts` produces, and the base it was built for. Keep the two in step. */
 const SITE = resolve(here, ".tmp/site");
 const SITE_BASE = "/site/";
+/** The same article built again with a Kineglyph theme of its own; `figure-theme.spec.ts` reads it. */
+const THEMED_SITE = resolve(here, ".tmp/themed-site");
+const THEMED_BASE = "/themed/";
 
 /**
  * Exactly the files `sync-assets.sh` copies into the Laravel package.
@@ -295,12 +298,13 @@ createServer((req, res) => {
         res.end(await hostPage());
         return;
       }
-      // The published site, served as flat files at its own base — no rewriting, no index
+      // The published sites, served as flat files at their own bases — no rewriting, no index
       // synthesis beyond the directory index every static host does.
-      if (path.startsWith(SITE_BASE)) {
-        const rel = path.slice(SITE_BASE.length) + (path.endsWith("/") ? "index.html" : "");
-        const file = resolve(SITE, rel);
-        if (file.startsWith(`${SITE}/`)) {
+      for (const [prefix, root] of [[SITE_BASE, SITE], [THEMED_BASE, THEMED_SITE]]) {
+        if (!path.startsWith(prefix)) continue;
+        const rel = path.slice(prefix.length) + (path.endsWith("/") ? "index.html" : "");
+        const file = resolve(root, rel);
+        if (file.startsWith(`${root}/`)) {
           try {
             const bytes = await readFile(file);
             res.setHeader("content-type", TYPES[extname(file)] ?? "application/octet-stream");

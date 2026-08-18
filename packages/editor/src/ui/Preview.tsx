@@ -4,14 +4,19 @@
  * `@pagina/core` is pure, so the preview is the *real* renderer running in the browser over the
  * store's mirror — unsaved text included — not an approximation and not a server round trip. The
  * result goes into a `.pg-content` container so the site's own stylesheet lays it out exactly as it
- * will on the page, and Kineglyph figures are then hydrated by the same `mountAll` the shell uses.
+ * will on the page, and Kineglyph figures are then hydrated by the same `mountAll` the shell uses —
+ * with the same theme, taken from the article's own `article.yaml`. Without it the preview painted
+ * every figure in the runtime's default palette, so an author edited a blue diagram and published a
+ * teal one.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 // Must stay a bare specifier: the host page's import map (and `@pagina/vite`'s dev alias) points it
 // at the one runtime instance the site itself uses, and the editor bundle keeps it external.
 import { mountAll, type EmbeddedFigure } from "kineglyph";
+import { kineglyphThemeHref } from "@pagina/core";
 import type { ArticleStore } from "../store/index.js";
 import { useStoreRevision } from "./useStore.js";
+import { applyThemeVars, currentThemeName, loadKineglyphThemes, onThemeChange, type KineglyphThemes } from "./kineglyph-theme.js";
 
 /** Quiet period after an edit before the page is re-rendered. */
 const RENDER_DEBOUNCE_MS = 300;
@@ -29,6 +34,11 @@ export function Preview({ store, path }: PreviewProps): ReactNode {
   const [error, setError] = useState<string | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null);
   const figures = useRef<EmbeddedFigure[]>([]);
+  // The article's declared theme, re-read whenever `article.yaml` changes — editing the `kineglyph:`
+  // block is exactly when a preview must stop showing the old colours.
+  const themeUrl = store.article === undefined ? undefined : kineglyphThemeHref(store.article, store.base);
+  const themes = useRef<KineglyphThemes | undefined>(undefined);
+  const themeSource = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +69,17 @@ export function Preview({ store, path }: PreviewProps): ReactNode {
     for (const figure of figures.current) figure.controller.destroy();
     figures.current = [];
     let cancelled = false;
-    void mountAll({ root: container })
+    void (async () => {
+      // Loaded once per theme URL and kept, so a keystroke does not re-import the module; the
+      // `theme` callback itself stays live, so the light/dark toggle still repaints.
+      if (themes.current === undefined || themeSource.current !== themeUrl) {
+        themes.current = await loadKineglyphThemes(themeUrl);
+        themeSource.current = themeUrl;
+      }
+      const resolved = themes.current;
+      applyThemeVars(container, themeUrl === undefined ? undefined : resolved);
+      return await mountAll({ root: container, theme: () => resolved[currentThemeName()] });
+    })()
       .then((mounted) => {
         if (cancelled) for (const figure of mounted) figure.controller.destroy();
         else figures.current = mounted;
@@ -70,7 +90,17 @@ export function Preview({ store, path }: PreviewProps): ReactNode {
     return () => {
       cancelled = true;
     };
-  }, [html]);
+  }, [html, themeUrl]);
+
+  // The light/dark toggle moves the whole page; the preview's figures have to move with it, and the
+  // variables that paint them are set by hand rather than by a stylesheet, so nothing else would.
+  useEffect(
+    () =>
+      onThemeChange(() => {
+        if (root.current !== null && themeSource.current !== undefined) applyThemeVars(root.current, themes.current);
+      }),
+    [],
+  );
 
   useEffect(
     () => () => {

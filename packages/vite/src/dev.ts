@@ -259,6 +259,8 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                   rendered.set(fig.id, { svg: first.inlineSvg, needsRuntime: first.needsRuntime });
               }
               const withFigures = inlineArticleFigures(a, (id) => rendered.get(id)).article;
+              // The tokens the figures above were drawn with, so the page paints them the same way.
+              const declaredTheme = a.manifest.article.kineglyph?.theme === undefined ? undefined : (await getThemes()).themes;
               const pages = await o.shell.render(withFigures, {
                 base,
                 dev: true,
@@ -270,6 +272,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
                 ...(o.theme === undefined ? {} : { theme: o.theme }),
                 ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
                 ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+                ...(declaredTheme === undefined ? {} : { kineglyphTheme: declaredTheme }),
               });
               const rel = href === "/" ? "index.html" : `${href.replace(/^\/|\/$/g, "")}/index.html`;
               const html = await s.transformIndexHtml(path, String(pages[rel] ?? ""));

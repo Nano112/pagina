@@ -142,6 +142,8 @@ export async function buildStatic(o: BuildOptions): Promise<{ files: string[]; d
     ...(o.theme === undefined ? {} : { theme: o.theme }),
     ...(o.chrome === undefined ? {} : { chrome: o.chrome }),
     ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+    // The very tokens the figures above were drawn with, so the page paints them the same way.
+    ...(config.kineglyph?.theme === undefined ? {} : { kineglyphTheme: themes }),
   });
   for (const [rel, data] of Object.entries(pages)) {
     await write(o.outDir, rel, data);
