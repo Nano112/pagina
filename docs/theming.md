@@ -1,100 +1,60 @@
 # Theming
 
-pagina is meant to drop into a site you already have and look like it belongs there. The default
-sheet is deliberately plain, everything it draws goes through ~20 custom properties, and every
-rule it ships sits in a **cascade layer** — so your CSS wins over pagina's without `!important`
-and without knowing anything about pagina's selectors.
+pagina has one theme. Everything else on this page is a way of overriding it.
 
-Four layers of control, from "change nothing" to "keep only the markup":
+That is not a simplification for the introduction — it is the whole design. Every colour, font and
+radius pagina draws goes through about twenty CSS custom properties named `--pg-*`. A default set
+ships in `tokens.css`. A host, an article, a page and a figure may each redefine any subset of them,
+each at its own range, and **a level that says nothing inherits the level above it**. There is no
+second mechanism to learn at any level, because there is nothing else to write: it is the same
+tokens all the way down.
 
-| Layer | What it gives you | Default | How you take it over |
-|---|---|---|---|
-| **Structure** | Semantic markup with stable `pg-*` / `pge-*` class names | always on | it *is* the contract — nothing to override |
-| **Tokens** | The `--pg-*` custom properties below | on, neutral defaults | redefine any subset in one place |
-| **Reading** | The content column: measure, headings, code, admonitions, tabs, tables, figures | on | override rules, or drop the layer with `theme: "tokens"` |
-| **Chrome** | Header, nav sidebar, TOC, pager, theme toggle, layout grid | on | `chrome: false` drops pagina's header row for yours |
+## The cascade
 
-If you are dropping pagina into an application that already has a layout and a CSS reset, read
-[Integrating under a host layout](#integrating-under-a-host-layout) first — it is one page and it
-covers the two things that are not obvious.
+<figure class="kg" data-scene="scenes/theme-cascade.mjs"><figcaption>Five levels, each optional. What travels between them is not configuration — it is the same twenty custom properties, redefined by whoever had something to say about them.</figcaption></figure>
 
-## Six identities, one article
+| Level | Where it is written | Scope |
+|---|---|---|
+| **1. pagina's default** | `tokens.css` | every page, when nothing else says otherwise |
+| **2. the host** | a stylesheet mapping `--pg-*` | every page pagina renders inside that host |
+| **3. the article** | `article.yaml` — `theme:` | every page of that article |
+| **4. the page** | front matter — `theme:` | that page alone |
+| **5. the figure** | a Kineglyph theme | that figure alone |
 
-Everything below this section is a contract described in words. This is the same contract with the
-words taken out: **one page of an article, rendered six times**, each in a real document linking a
-real pagina stylesheet, each wearing exactly the CSS printed under it — and the line count beside
-each name is counted from that CSS rather than typed next to it.
+Two rules govern all five, and they are the only two:
 
-They are not three tints of one look. Type, corner rhythm, density, measure and colour all move,
-one of them is deliberately nothing like pagina's default, and the last two stop at different rungs
-of [the ladder](#the-four-escape-hatches-in-order): *Broadsheet* keeps the reading layer and
-overrules five of its rules, *Bare column* drops the reading layer altogether and writes its own.
+- **Every level writes the same `--pg-*`.** A host's file and an article's file are the same kind
+  of file. Neither knows about the other, and neither needs to.
+- **Silence is inheritance, not absence.** A page with no `theme:` is not un-themed; it is wearing
+  the article's. An article with no `theme:` is wearing the host's.
 
-The diagram inside each frame is this page's own, cloned in. Six palettes are re-tinting **one
-drawing**, with no re-render and no second copy — which is the figure half of the contract,
-demonstrated rather than asserted.
+Most sites use exactly one level. Reach for a second when something genuinely varies at that range —
+a launch page that is dark on an otherwise light site is a page-level theme; a design system is a
+host-level one.
 
-Each frame is a real page and is taller than the box it is in, so the frames scroll; they are all
-cropped to the same height on purpose, because six identities are only comparable at the same crop.
+### Saying "inherit" out loud
 
-<div data-pg-theme-showcase></div>
+Levels 3, 4 and 5 all accept the word `inherit`, and it means exactly what omitting the key means:
 
-## The theme lab
+```yaml
+# article.yaml
+theme: inherit          # follow the host
 
-There is a **Theme** button in the corner of this page. It opens a panel of live controls that
-change this page as you move them — presets, including a dark accent-led one, and a field for every
-token in the table below.
+# a page's front matter
+---
+theme: inherit          # follow the article
+---
+```
 
-It has one rule, and the rule is the point: **every control writes a documented `--pg-*` and nothing
-else.** No control reaches past the contract, because a control that had to would be a hole in the
-contract rather than a feature of the widget. So everything follows at once — prose, code, callouts,
-tables, [the editor](demo.md), and the diagrams, which re-tint because
-[`tokens.css` points each `--kg-color-*` at the `--pg-*` that means the same thing](#kineglyph-figures).
-Scroll a figure into view and move the accent; the figure moves with it.
+It exists because omission is silence and silence is not a decision anyone can point at. In a folder
+of pages that each set a theme, the one page that should follow the article needs a way to *say* so —
+otherwise the next person to read the folder cannot tell "deliberately plain" from "forgotten".
 
-What the panel prints is what the page is wearing — the panel *is* the `<style>` element, not a
-description of one — so **Copy the CSS** hands you a file that reproduces what you are looking at.
-Your choice is remembered on this browser, and **Reset** puts it back.
-
-Two things the export deliberately does *not* do, both because they are outside the token contract
-and a widget that quietly stepped outside it would be lying about what tokens can do:
-
-- **It does not set `color-scheme`.** A dark palette pasted into a plain `:root` leaves the browser
-  drawing light scrollbars, light form controls and a light `<select>` over it. pagina ties
-  `color-scheme` to `[data-theme]`, which its toggle sets; a host whose site is dark all the time
-  should say `:root { color-scheme: dark }` itself, once.
-- **It does not restyle syntax highlighting.** `--pg-shiki-bg` is the code block's ground and it
-  follows; the colours *of the code* are shiki's, written as inline styles that pagina has to meet
-  with `!important` (see [Override rules](#2-override-rules)). Changing those means choosing a
-  different shiki theme, not a different token.
-
-<div data-pg-theme-lab></div>
-
-<script type="module">
-/*
- * The showcase's and the lab's bootstrap, and only their bootstrap.
- *
- * The implementation is `packages/shell-static/src/theming/`, built to `<base>_pagina/theming/` —
- * checked by `tsc`, eslint and `packages/shell-static/test/theming-lab.test.ts`, for the reason the
- * demo's was moved out of `docs/demo.md`: an inline script is the one executable thing in this
- * repository that every lane skips.
- *
- * What has to stay here is URL resolution, for the same two reasons as the demo's. `rewriteLinks`
- * in @pagina/core rewrites every relative `src` in a page to point at the article's own assets,
- * which is right for a page and wrong for a file the article does not contain; and `import.meta.url`
- * in an inline module is the document's own URL, so this resolves correctly whether the page is
- * served as `/pagina/theming/` or `/pagina/theming/index.html`, and whether the site sits at a
- * domain root or under a sub-path.
- */
-const { autoMount } = await import(new URL("../_pagina/theming/index.js", import.meta.url).href);
-autoMount();
-</script>
-
-## The token contract
+## Level 1 — pagina's default
 
 Every token is defined in the `pagina.tokens` layer with the neutral default below, and every
-colour, font and radius pagina draws reads one of them. Define the ones you care about and the
-rest keep their defaults.
+colour, font and radius pagina draws reads one of them. Define the ones you care about and the rest
+keep their defaults.
 
 | Token | Default (light) | Default (dark) | Controls |
 |---|---|---|---|
@@ -113,6 +73,9 @@ rest keep their defaults.
 | `--pg-font-mono` | system mono stack | — | Code type |
 | `--pg-font-display` | `var(--pg-font)` | — | Headings and the site title, so you can give them their own face |
 | `--pg-measure` | `72ch` | — | Width of the content column |
+| `--pg-cover-ratio` | `3 / 1` | — | The shape of the cover band |
+| `--pg-cover-max` | `22rem` | — | How tall the cover band may get on a wide window |
+| `--pg-cover-position` | `center` | — | Which part of a *cropped* cover survives (`object-position`) |
 | `--pg-note` | `#3b5bdb` | `#7c9bff` | `note` admonition hue: accent edge and glyph |
 | `--pg-note-surface` | `#eef1fd` | `#1b2130` | `note` admonition ground |
 | `--pg-note-fg` | `#2b3f9e` | `#a8bcff` | `note` admonition title text |
@@ -162,15 +125,159 @@ ships them, `packages/shell-static/client/tokens.css`, at the moment this page w
 If someone changes a default and forgets this page, the page changes with it — and if someone
 deletes the region, the build fails instead of publishing a table that has quietly gone wrong.
 
-### Kineglyph figures
+### Structure is not themeable, and that is the point
+
+Underneath every level sits something no level overrides: semantic markup with stable `pg-*` /
+`pge-*` class names, and five cascade layers whose order every pagina stylesheet declares. That is
+what makes the cascade work at all — **unlayered CSS beats layered CSS whatever its specificity**,
+so your rules win over pagina's without `!important` and without knowing pagina's selectors. See
+[How the layer trick works](#how-the-layer-trick-works).
+
+## Level 2 — the host
+
+Most sites stop here, and one file is usually the whole of it: a stylesheet loaded after pagina's
+that points pagina's tokens at variables you already have.
+
+```css
+/* pagina-theme.css — map our design system onto pagina's contract. */
+:root {
+  --pg-bg: var(--color-surface);
+  --pg-bg-raised: var(--color-surface-raised);
+  --pg-bg-sunken: var(--color-surface-sunken);
+  --pg-fg: var(--color-ink);
+  --pg-muted: var(--color-ink-muted);
+  --pg-accent: var(--color-accent);        /* ours is magenta, not pagina's blue */
+  --pg-accent-fg: var(--color-on-accent);
+  --pg-line: var(--color-border);
+  --pg-line-strong: var(--color-border-strong);
+  --pg-radius: 0.5rem;
+  --pg-radius-lg: 0.875rem;
+  --pg-font: var(--font-sans);
+  --pg-font-display: var(--font-display);
+  --pg-font-mono: var(--font-mono);
+  --pg-measure: 68ch;
+  --pg-code-bg: var(--color-surface-sunken);
+  --pg-shiki-bg: var(--color-surface-sunken);
+}
+[data-theme="dark"] {
+  --pg-bg: var(--color-surface-dark);
+  --pg-fg: var(--color-ink-dark);
+}
+```
+
+Nothing in pagina needs to change, and nothing in pagina knows your site exists.
+
+### When tokens are not enough: the ladder
+
+A host — and only a host — can also take over *how much of pagina's CSS exists at all*. These are
+not more levels of the cascade; they are one level deciding how much of level 1 to keep. They are a
+ladder, not a menu: each rung hands the host more control and pagina less. Take the first that works
+and stop there.
+
+<figure class="kg" data-scene="scenes/cascade.mjs"><figcaption>Each step down costs you something pagina was doing for you. Most hosts never leave the first rung, and the fourth is a decision rather than a preference.</figcaption></figure>
+
+#### 1. Map the tokens
+
+The file above. Where nearly everyone stops.
+
+#### 2. Override rules
+
+Ordinary CSS. Because pagina's rules are layered and yours are not, a plain selector beats them:
+
+```css
+.pg-content h2 { font-size: 2rem; letter-spacing: -0.02em; }
+```
+
+No `!important`, no specificity race, no `:where()` tricks. (Two exceptions where pagina itself
+uses `!important`: the shiki code colours, because shiki writes them as inline `style`
+attributes, and one ProseMirror outline in the editor, because prosemirror-view injects its own
+unlayered sheet. Both are documented at the rule.)
+
+#### 3. `theme: "tokens"` — keep the tokens, drop the reading layer
+
+```ts
+await buildStatic({ folder, outDir, shell: staticShell, theme: "tokens" });
+```
+
+The page links `pagina.tokens.css` (the token contract plus a minimal reset) instead of
+`pagina.css`. You get the markup and the variables; the content column is yours to style.
+
+#### 4. `theme: "none"` — structure only
+
+```ts
+await buildStatic({ folder, outDir, shell: staticShell, theme: "none", chrome: false });
+```
+
+No pagina stylesheet is linked at all — and neither are levels 3 and 4, since a host asking for no
+token contract has nothing for an article's `--pg-*` file to write into. The `pg-*` class names and
+the document structure are the entire contract.
+
+`chrome: false` is a separate axis, usable at any theme level: it drops pagina's own header row
+(site title + theme toggle) for a host that renders its own. The sidebar, TOC and pager stay —
+they are the article's navigation, not the host's.
+
+Both are available on `buildStatic` and `createDevServer`, and on the CLI as
+`--theme <full|tokens|none>` and `--no-chrome`.
+
+## Level 3 — the article
+
+An article carries its own theme the same way it carries its own cover: a path in `article.yaml`,
+relative to the folder.
+
+```yaml
+# article.yaml
+theme: theme/site.css
+```
+
+```css
+/* theme/site.css — this article, wherever it is published. */
+:root { --pg-accent: #237f74; --pg-font-display: "Söhne", sans-serif; }
+[data-theme="dark"] { --pg-accent: #67cbbb; }
+```
+
+The file is part of the article, so it travels with it: into a `.pgz` bundle, into a host that
+mounts the folder, into the editor's preview. An absolute URL works too, for a theme served from a
+CDN. A path that resolves to nothing is a build **error**, not a warning — a page that silently
+links no theme looks exactly like a page whose theme did not apply.
+
+This is the level for "our docs look like this". It is *not* the level for "our whole site looks
+like this" — that is the host, and an article that reaches down to restyle its host will fight
+every other article that host renders.
+
+## Level 4 — the page
+
+Same key, in a page's front matter, resolved relative to *that page*:
+
+```markdown
+---
+title: The 3.0 release
+theme: ./launch.css
+---
+
+# The 3.0 release
+```
+
+The page's sheet is linked **after** the article's, not instead of it. So a page that redefines one
+token keeps the article's answer for every other, which is what inheritance means one level down:
+
+```css
+/* launch.css — one page, one token. Everything else is still the article's. */
+:root { --pg-accent: #d6336c; }
+```
+
+Use it for a page that genuinely differs — a launch page, a landing page inside a docs set, a
+printed-handout page. A folder where most pages carry a `theme:` is a folder whose *article* wants
+one.
+
+## Level 5 — the figure
 
 A published figure is **inline SVG**, not an `<img>`, and every paint in it is written as
 `var(--kg-color-<role>, <the colour it was drawn with>)`. So a figure takes its palette from the
-page the way everything else does — and it does so in the reader's current theme, without a second
-rendering and without a per-host prerender.
+page the way everything else does — in the reader's current theme, with no second rendering and no
+per-host prerender.
 
-Nothing is required of a host. `tokens.css` already points each role at the `--pg-*` that means the
-same thing, so **a host that mapped pagina's tokens has themed its diagrams too**:
+Nothing is required of anyone. `tokens.css` already points each role at the `--pg-*` that means the
+same thing, so **whoever mapped pagina's tokens has themed the diagrams too**:
 
 | Figure token | Defaults to | Paints |
 |---|---|---|
@@ -193,14 +300,12 @@ same thing, so **a host that mapped pagina's tokens has themed its diagrams too*
 | `--kg-color-chart-negative` | `var(--pg-danger)` | A loss |
 | `--kg-color-chart-neutral` | `var(--pg-quote)` | A baseline |
 
-Set any of them directly to give diagrams a palette of their own:
+Set any of them directly to give diagrams a palette of their own, at whichever level you are
+writing:
 
 ```css
 :root { --kg-color-accent: var(--color-magenta); --kg-color-canvas: transparent; }
 ```
-
-The pairings match the swatches the Figure Builder shows an author, so the tone picked in the
-editor is the colour the published figure carries.
 
 **Two of these are not the obvious neighbour, on purpose.** `--kg-color-connector` paints the
 arrows in a flow diagram, and an arrow is the sentence's verb, not a rule between paragraphs;
@@ -227,30 +332,61 @@ because a node with no fill is an outline rather than an object:
 }
 ```
 
-**Colour is the whole contract.** Type and geometry are decided when a figure is rendered, not when
-it is read: SVG cannot wrap or reflow text, so each box is measured once against the text it will
-hold and the result is frozen with `textLength`. Re-fonting a figure from CSS would pull its text
-out of the boxes built for it, so `--kg-font-family` and `--kg-radius-*` are pinned on the figure
-and are not offered here. Publishing from the editor reads the host's *real* font off the page and
-lays the figure out in it, which is the supported way to get your own type into a diagram.
+### A declaration is an override, scoped to whatever declared it
+
+An article may ship a Kineglyph theme, and a single figure may declare one:
+
+```yaml
+# article.yaml
+kineglyph:
+  theme: theme/kineglyph.mjs     # a module the article ships…
+  # theme: midnight              # …or a theme by name
+  # theme: inherit               # …or the word, said out loud
+```
+
+The rule is the same as everywhere else on this page, with one Kineglyph-specific sharpening:
+**naming a colour claims it.** A theme that names three roles overrides those three and inherits the
+other seventeen from the page. The claim is pinned on the drawing's own root — the `<svg>` when
+rendered, the shell when live — so it reaches that figure and nothing outside it. The figure beside
+a declared one keeps the article's colours, and neither leaks upward.
+
+```js
+// theme/kineglyph.mjs — three roles claimed, everything else follows the page.
+export const light = { colors: { accent: "#237f74", canvas: "#f4f1e9" } };
+export const dark = { colors: { accent: "#67cbbb", canvas: "#101216" } };
+```
+
+That is a change of default from earlier versions, and it is the point of the change. A declared
+theme used to be published as `--kg-color-*` on `:root`, which beat pagina's bridge, beat the host's
+mapping and beat the page — so a figure declared with a light theme stayed light on a dark site, and
+"just follow the page" could only be said by deleting the declaration. Now the declaration is what
+the figure is *drawn* with (and the literal fallback that draws it on a page defining no tokens at
+all), and the page is what paints it, unless a role was claimed.
+
+Three ways to inherit, all meaning the same thing: omit the key, write `inherit`, or call
+`inheritTheme(theme)` in a module. To hold a palette against the page, claim everything with
+`overrideTheme(theme)`.
+
+!!! warning "`theme: default` inherits"
+    Kineglyph's `default` theme claims no roles, so naming it is the same as inheriting: the figure
+    follows the page. If you meant "pin Kineglyph's own built-in look regardless of the site around
+    it", say `overrideTheme(themes.default)` in a module and name that module instead.
+
+### What inheriting does not reach
+
+Three things stay baked into a figure at publish time, and no level of this cascade moves them:
+
+- **Shades derived from a colour** — anything a scene computed with `mixColor` or `withAlpha`.
+  Inheritance reaches the palette, not what was calculated downstream from it. To make a shade
+  re-tintable, name it as a role rather than deriving it.
+- **Fonts** and **radii**, because they change *geometry*. SVG cannot reflow text: each box is
+  measured once against the text it will hold and frozen with `textLength`, so re-fonting a figure
+  from CSS would pull its labels out of the boxes built for them. Publishing from the editor reads
+  the host's *real* font off the page and lays the figure out in it, which is the supported way to
+  get your own type into a diagram.
 
 Left undefined entirely — a host on `theme: "none"`, say — a figure still paints exactly the
 colours it was drawn with. The tokens re-tint; they are never required.
-
-**An article that ships its own theme keeps it.** `article.yaml`'s `kineglyph.theme` names a module
-exporting `light` and `dark` token sets; the builder draws every figure with it, and the shell then
-publishes that theme's colours as the `--kg-color-*` variables, after the stylesheet, so they
-outrank the table above. Drawn and painted are the same palette, in both themes, with or without
-JavaScript — before this, an article's declared teal was drawn into the SVG and then repainted in
-the host's blue, and only a reader ever saw it. The bridge is unchanged for the far more common
-article that declares no theme: it still follows its host.
-
-A figure wider than the column **scrolls rather than shrinks**, the same treatment `pre` gets,
-because a diagram scaled to a phone takes its 16px type down to 6px with it.
-`--pg-figure-min-scale` is the floor: below `0.7` of its natural width a figure keeps its size and
-its frame scrolls sideways. The live figure obeys the same floor, because a quiet figure is mounted
-at the width its geometry was decided at — the reader gets the picture they were already looking
-at, not a re-layout of it, and nothing moves when the runtime lands.
 
 ### How wide a figure may get: `--pg-figure-max`
 
@@ -273,6 +409,13 @@ inline margin that goes negative as it grows, so nothing but the figure is affec
 Guard the value against the viewport (`calc(100vw - …)`) so a wide figure cannot push the page
 sideways on a phone; below the measure the term collapses and the figure behaves exactly as before,
 scrolling at `--pg-figure-min-scale` rather than shrinking.
+
+A figure wider than the column **scrolls rather than shrinks**, the same treatment `pre` gets,
+because a diagram scaled to a phone takes its 16px type down to 6px with it.
+`--pg-figure-min-scale` is the floor: below `0.7` of its natural width a figure keeps its size and
+its frame scrolls sideways. The live figure obeys the same floor, because a quiet figure is mounted
+at the width its geometry was decided at — the reader gets the picture they were already looking
+at, not a re-layout of it, and nothing moves when the runtime lands.
 
 ### A figure in prose is a picture: `data-instrument`
 
@@ -309,6 +452,81 @@ forced-colours mode keeps it), and its hover transitions are dropped under `pref
 A figure with no chrome is drawn without the shell's box entirely — around a bare diagram that box
 is a second frame over a picture that already paints its own canvas.
 
+## Six identities, one article
+
+Everything above is a cascade described in words. This is the same cascade with the words taken out:
+**one page of an article, rendered six times**, each in a real document linking a real pagina
+stylesheet, each wearing exactly the CSS printed under it — and the line count beside each name is
+counted from that CSS rather than typed next to it.
+
+They are not three tints of one look. Type, corner rhythm, density, measure and colour all move,
+one of them is deliberately nothing like pagina's default, and the last two stop at different rungs
+of [the ladder](#when-tokens-are-not-enough-the-ladder): *Broadsheet* keeps the reading layer and
+overrules five of its rules, *Bare column* drops the reading layer altogether and writes its own.
+
+The diagram inside each frame is this page's own, cloned in. Six palettes are re-tinting **one
+drawing**, with no re-render and no second copy — which is level 5 inheriting level 2, demonstrated
+rather than asserted.
+
+Each frame is a real page and is taller than the box it is in, so the frames scroll; they are all
+cropped to the same height on purpose, because six identities are only comparable at the same crop.
+
+<div data-pg-theme-showcase></div>
+
+## The theme lab
+
+There is a **Theme** button in the corner of this page. It opens a panel of live controls that
+change this page as you move them — presets, including a dark accent-led one, and a field for every
+token in the table above.
+
+It has one rule, and the rule is the point: **every control writes a documented `--pg-*` and nothing
+else.** No control reaches past the contract, because a control that had to would be a hole in the
+contract rather than a feature of the widget. So everything follows at once — prose, code, callouts,
+tables, [the editor](demo.md), and the diagrams, which re-tint because
+[`tokens.css` points each `--kg-color-*` at the `--pg-*` that means the same thing](#level-5-the-figure).
+Scroll a figure into view and move the accent; the figure moves with it. That is the cascade running
+in front of you: one level writing tokens, and everything below it inheriting.
+
+What the panel prints is what the page is wearing — the panel *is* the `<style>` element, not a
+description of one — so **Copy the CSS** hands you a file that reproduces what you are looking at.
+Your choice is remembered on this browser, and **Reset** puts it back.
+
+Two things the export deliberately does *not* do, both because they are outside the token contract
+and a widget that quietly stepped outside it would be lying about what tokens can do:
+
+- **It does not set `color-scheme`.** A dark palette pasted into a plain `:root` leaves the browser
+  drawing light scrollbars, light form controls and a light `<select>` over it. pagina ties
+  `color-scheme` to `[data-theme]`, which its toggle sets; a host whose site is dark all the time
+  should say `:root { color-scheme: dark }` itself, once.
+- **It does not restyle syntax highlighting.** `--pg-shiki-bg` is the code block's ground and it
+  follows; the colours *of the code* are shiki's, written as inline styles that pagina has to meet
+  with `!important` (see [Override rules](#2-override-rules)). Changing those means choosing a
+  different shiki theme, not a different token.
+
+<div data-pg-theme-lab></div>
+
+<script type="module">
+/*
+ * The showcase's and the lab's bootstrap, and only their bootstrap.
+ *
+ * The implementation is `packages/shell-static/src/theming/`, built to `<base>_pagina/theming/` —
+ * checked by `tsc`, eslint and `packages/shell-static/test/theming-lab.test.ts`, for the reason the
+ * demo's was moved out of `docs/demo.md`: an inline script is the one executable thing in this
+ * repository that every lane skips.
+ *
+ * What has to stay here is URL resolution, for the same two reasons as the demo's. `rewriteLinks`
+ * in @pagina/core rewrites every relative `src` in a page to point at the article's own assets,
+ * which is right for a page and wrong for a file the article does not contain; and `import.meta.url`
+ * in an inline module is the document's own URL, so this resolves correctly whether the page is
+ * served as `/pagina/theming/` or `/pagina/theming/index.html`, and whether the site sits at a
+ * domain root or under a sub-path.
+ */
+const { autoMount } = await import(new URL("../_pagina/theming/index.js", import.meta.url).href);
+autoMount();
+</script>
+
+## Reference
+
 ### Admonitions
 
 `note tip info warning danger example quote` — the seven kinds `!!! kind` and `??? kind` accept —
@@ -337,115 +555,48 @@ A kind pagina does not know (`!!! spoiler`) still renders, with `note`'s glyph a
 setting `--pg-adm-hue`, `--pg-adm-surface` and `--pg-adm-fg` on that class, which is the same
 three-property shape as everything above.
 
-### The article header
+### The cover and the article header
 
-The header above the content — cover, title, then *date · author · reading time* — is drawn
-entirely from tokens already in the table above, so it needs no new ones:
+The cover is a band across the **whole page** — it is emitted outside the shell grid, above the
+sidebar — and the title and provenance row under it stay in the reading column. Both are drawn
+entirely from tokens already in the table above:
 
 | Part | Class | Tokens it uses |
 |---|---|---|
-| The whole header | `.pg-article-header` | `--pg-measure` |
-| The cover image | `.pg-cover`, `.pg-cover__img` | `--pg-radius-lg`, `--pg-line`, `--pg-bg-raised` |
+| The cover band | `.pg-cover`, `.pg-cover__img` | `--pg-cover-ratio`, `--pg-cover-max`, `--pg-cover-position`, `--pg-line`, `--pg-bg-raised` |
+| The header | `.pg-article-header` | `--pg-measure` |
 | The title | `.pg-article-header h1` | `--pg-font-display`, `--pg-fg` |
 | The meta row | `.pg-article-meta`, `.pg-article-meta__item` | `--pg-muted` |
 | Its separators | `.pg-article-meta__sep` | `--pg-line-strong` |
 
-Two things worth knowing before you restyle it. The title is the page's own `<h1>`, **moved** into
-the header by the shell rather than reprinted — so it is outside `.pg-content`, and a rule you wrote
-as `.pg-content h1` no longer reaches it. Under `theme: "tokens"` that matters: add
-`.pg-article-header h1` wherever you style headings, or the landing page's title arrives at whatever
-size your reset left it. And the cover carries no intrinsic `width`/`height` (pagina copies the file
-without decoding it), so `.pg-cover__img`'s `aspect-ratio` is the only thing holding the layout
+Three things worth knowing before you restyle it.
+
+**The cover does not crop by default.** pagina copies the image without decoding it, so it cannot
+tell a photograph (which a band may crop without losing anything) from a wordmark (where the first
+letters *are* the picture) — and only one of the two wrong guesses destroys something. So
+`.pg-cover--contain` is what an author gets when nothing chose, and `cover_fit: cover` in
+`article.yaml` or a page's front matter is the author saying "this one is a photograph, fill the
+band". `--pg-cover-position` decides which part of a cropped one survives.
+
+**The band carries no intrinsic size.** `--pg-cover-ratio` is the only thing holding the layout
 still while the image loads — replace it, do not simply remove it.
+
+**The title is the page's own `<h1>`, moved** into the header by the shell rather than reprinted, so
+it is outside `.pg-content` and a rule you wrote as `.pg-content h1` no longer reaches it. Under
+`theme: "tokens"` that matters: add `.pg-article-header h1` wherever you style headings, or the
+landing page's title arrives at whatever size your reset left it. A page that does *not* open with a
+heading keeps every heading it wrote, and the header falls back to printing the title from the
+manifest.
 
 Which pages get a header is the author's call, not the host's: `cover_on` in `article.yaml` is
 `root` (the landing page only, the default), `all`, or `none`.
 
-## The four escape hatches, in order
-
-They are a ladder, not a menu: each rung hands the host more control and pagina less, and the last
-one gives up pagina's styling entirely. Take the first that works and stop there.
-
-<figure class="kg" data-scene="scenes/cascade.mjs"><figcaption>Each step down costs you something pagina was doing for you. Most hosts never leave the first rung, and the fourth is a decision rather than a preference.</figcaption></figure>
-
-### 1. Map the tokens
-
-Most hosts stop here. One file, loaded after pagina's, that points pagina's tokens at variables
-you already have:
-
-```css
-/* pagina-theme.css — map our design system onto pagina's contract. */
-:root {
-  --pg-bg: var(--color-surface);
-  --pg-bg-raised: var(--color-surface-raised);
-  --pg-bg-sunken: var(--color-surface-sunken);
-  --pg-fg: var(--color-ink);
-  --pg-muted: var(--color-ink-muted);
-  --pg-accent: var(--color-accent);        /* ours is magenta, not pagina's blue */
-  --pg-accent-fg: var(--color-on-accent);
-  --pg-line: var(--color-border);
-  --pg-line-strong: var(--color-border-strong);
-  --pg-radius: 0.5rem;
-  --pg-radius-lg: 0.875rem;
-  --pg-font: var(--font-sans);
-  --pg-font-display: var(--font-display);
-  --pg-font-mono: var(--font-mono);
-  --pg-measure: 68ch;
-  --pg-code-bg: var(--color-surface-sunken);
-  --pg-shiki-bg: var(--color-surface-sunken);
-}
-[data-theme="dark"] {
-  --pg-bg: var(--color-surface-dark);
-  --pg-fg: var(--color-ink-dark);
-}
-```
-
-Nothing in pagina needs to change, and nothing in pagina knows your site exists.
-
-### 2. Override rules
-
-Ordinary CSS. Because pagina's rules are layered and yours are not, a plain selector beats them:
-
-```css
-.pg-content h2 { font-size: 2rem; letter-spacing: -0.02em; }
-```
-
-No `!important`, no specificity race, no `:where()` tricks. (Two exceptions where pagina itself
-uses `!important`: the shiki code colours, because shiki writes them as inline `style`
-attributes, and one ProseMirror outline in the editor, because prosemirror-view injects its own
-unlayered sheet. Both are documented at the rule.)
-
-### 3. `theme: "tokens"` — keep the tokens, drop the reading layer
-
-```ts
-await buildStatic({ folder, outDir, shell: staticShell, theme: "tokens" });
-```
-
-The page links `pagina.tokens.css` (the token contract plus a minimal reset) instead of
-`pagina.css`. You get the markup and the variables; the content column is yours to style.
-
-### 4. `theme: "none"` — structure only
-
-```ts
-await buildStatic({ folder, outDir, shell: staticShell, theme: "none", chrome: false });
-```
-
-No pagina stylesheet is linked at all. The `pg-*` class names and the document structure are the
-entire contract.
-
-`chrome: false` is a separate axis, usable at any theme level: it drops pagina's own header row
-(site title + theme toggle) for a host that renders its own. The sidebar, TOC and pager stay —
-they are the article's navigation, not the host's.
-
-Both are available on `buildStatic` and `createDevServer`, and on the CLI as
-`--theme <full|tokens|none>` and `--no-chrome`.
-
-## Integrating under a host layout
+### Integrating under a host layout
 
 Everything above is about *taste*. This section is about the two things that will otherwise cost
 you an afternoon, and what pagina now guarantees so they don't.
 
-### Link exactly one stylesheet per surface
+#### Link exactly one stylesheet per surface
 
 | What you are rendering | Link | Ships as |
 |---|---|---|
@@ -460,12 +611,17 @@ pagina's assets into your own `public/` directory (the Laravel package does), co
 and never from `client/` — `client/*.css` is source, held together by `@import`s that will 404
 next to your copy.
 
+Levels 3 and 4 are *the article's* files, not pagina's: a built site emits them where the folder put
+them, and `manifest.json` names them (`article.theme`, and `theme` on each page that has one) so a
+host that renders pagina's markup itself links the same sheets in the same order — the article's,
+then the page's, after its own.
+
 The editor's sheet is **self-sufficient**: it carries the token contract and the reading layer
 itself. A host that links only `editor.css` still gets a preview pane and a document surface that
 match the published page. If you render both an article page and the editor, link both sheets —
 **in any order**. Which comes first cannot change the cascade; see below.
 
-### The CSS-reset trap, and what pagina does about it
+#### The CSS-reset trap, and what pagina does about it
 
 Every reset — Tailwind's preflight, Bootstrap's, your own three lines — says something like
 
@@ -486,14 +642,14 @@ loads a preflight-shaped reset before pagina's assets (`e2e/host-theming.spec.ts
 Two caveats that remain yours:
 
 - A reset is *unlayered* by default in some setups. Unlayered CSS beats layered CSS at any
-  specificity, and pagina's rules are all layered — that asymmetry is the whole escape hatch, so
-  an unlayered `h1 { font-size: inherit }` will flatten pagina's headings and pagina cannot and
-  should not fight it. Put your reset in a layer (Tailwind's preflight already lives in
+  specificity, and pagina's rules are all layered — that asymmetry is what makes the whole cascade
+  work, so an unlayered `h1 { font-size: inherit }` will flatten pagina's headings and pagina cannot
+  and should not fight it. Put your reset in a layer (Tailwind's preflight already lives in
   `@layer base`), or scope it away from `.pg-content`.
 - pagina styles the content column, not your page. `body` background, colour and font come from
   the `pagina.reset` layer, which your own body rules outrank.
 
-### Link order does not matter
+#### Link order does not matter
 
 Each pagina stylesheet — `pagina.css`, `pagina.tokens.css`, `editor.css` — opens by declaring the
 *complete* layer order:
@@ -511,7 +667,7 @@ arguments inside the editor. Hosts had to know to order the links by hand. They 
 Your own layers sort relative to pagina's by whichever sheet declares them first, so if you care,
 declare yours before loading pagina — or leave them unlayered and win outright.
 
-### Cache-bust by content
+#### Cache-bust by content
 
 Stamp each pagina stylesheet with a hash of *that file's* bytes — `pagina.css?v=<sha of
 pagina.css>` — and stop there. That is enough because no pagina artefact imports another one: an
@@ -531,7 +687,7 @@ If you *read* a sheet's URL off a page to find its sibling — the theme showcas
 `pagina(\.tokens)?(\.[0-9a-f]{8})?\.css` and swap only the infix. The two names always share one
 hash, because the full sheet inlines the tokens sheet and so changes whenever it does.
 
-## How the layer trick works
+### How the layer trick works
 
 Every pagina stylesheet begins with
 
@@ -552,7 +708,7 @@ and every rule in every file lives inside one of those five. Two consequences:
    sheet never puts a rule in it. If you want to add to a layer yourself
    (`@layer pagina.reading { … }`), you land in the right slot.
 
-### Sources, and what actually ships
+#### Sources, and what actually ships
 
 `packages/shell-static/client/` holds three source files, and `pagina.css` is composed of the
 other two:

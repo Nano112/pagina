@@ -130,6 +130,18 @@
     --kg-color-chart-negative: var(--pg-danger);
     --kg-color-chart-neutral: var(--pg-quote);
 
+    /*
+     * The cover band.
+     *
+     * A cover spans the whole page, so it has a shape of its own — and pagina copies the image
+     * without decoding it, so the ratio box is also the only thing holding the layout still while
+     * the image loads. `--pg-cover-position` decides which part of a *cropped* cover survives; it
+     * does nothing under the default `cover_fit: contain`, which crops nothing.
+     */
+    --pg-cover-ratio: 3 / 1;
+    --pg-cover-max: 22rem;
+    --pg-cover-position: center;
+
     /* How far a figure may scale down before it scrolls instead. See `reading.css`. */
     --pg-figure-min-scale: 0.7;
     /*

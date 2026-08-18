@@ -55,8 +55,8 @@ The fields, in full:
 | `cover`, `cover_alt` | a path *relative to the folder*, and its alt text |
 | `cover_on` | `root` (default), `all` or `none` — which pages show the cover header |
 | `cover_fit` | `contain` (default) or `cover` — whether the cover may be cropped to fill its band |
-| `theme` | a CSS file of the article's own |
-| `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures |
+| `theme` | a CSS file of the article's own, writing `--pg-*`; or `inherit`. Level 3 of [the cascade](theming.md#the-cascade), and a page may override it in its front matter |
+| `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures, a theme by name, or `inherit`. A palette [claims the roles it names](theming.md#level-5-the-figure) and inherits the rest from the page |
 | `kineglyph.width` | the layout width figures are pre-rendered at |
 | `snippets.roots` | the directories `--8<--` may read from. Default `["."]` |
 | `exclude` | glob patterns for files that are **not** article content and must not be published |
