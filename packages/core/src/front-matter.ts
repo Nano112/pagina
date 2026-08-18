@@ -15,7 +15,8 @@
  * and the diagnostic names the page.
  */
 import { parse } from "yaml";
-import type { Diagnostic, PageFrontMatter } from "./types.js";
+import { COVER_FIT } from "./config.js";
+import type { CoverFit, Diagnostic, PageFrontMatter } from "./types.js";
 
 /** The opening `---` fence must be the first thing in the file, per the usual convention. */
 export const FRONT_MATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
@@ -86,6 +87,15 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     if (typeof o["cover_alt"] !== "string" || o["cover_alt"] === "") bad("front matter: cover_alt must be a non-empty string");
     else coverAlt = { coverAlt: o["cover_alt"] };
   }
+  // `cover_fit` is the page's half of the same key `article.yaml` carries, and it is validated the
+  // same way: a misspelt value is a warning and the article's answer stands, rather than a silent
+  // fall back to the default that would crop the very image the author was trying to protect.
+  let coverFit: Record<string, CoverFit> = {};
+  if (o["cover_fit"] !== undefined && o["cover_fit"] !== null) {
+    if (typeof o["cover_fit"] !== "string" || !COVER_FIT.includes(o["cover_fit"] as CoverFit))
+      bad(`front matter: cover_fit must be ${COVER_FIT.join("|")}`);
+    else coverFit = { coverFit: o["cover_fit"] as CoverFit };
+  }
   let noindex: Record<string, boolean> = {};
   if (o["noindex"] !== undefined && o["noindex"] !== null) {
     if (typeof o["noindex"] !== "boolean") bad("front matter: noindex must be true or false");
@@ -99,7 +109,7 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
   return {
     meta: {
       ...text_("title"), ...text_("description"), ...text_("cover"), ...text_("author"),
-      ...coverAlt, ...date("published"), ...date("updated"), ...noindex, ...tags,
+      ...coverAlt, ...coverFit, ...date("published"), ...date("updated"), ...noindex, ...tags,
     },
     body,
     diagnostics,

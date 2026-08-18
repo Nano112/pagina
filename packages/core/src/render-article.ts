@@ -127,6 +127,10 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     // Never empty and never the filename: an author's words if there are any, else the article
     // title, which is at least true about what the image is introducing.
     const coverAlt = (own === undefined ? undefined : fm.coverAlt) ?? config.coverAlt ?? config.title;
+    // How the cover is fitted follows the same rule as every other overridable field, and *not*
+    // the image: a page that supplies its own photograph but not its own `cover_fit` gets the
+    // article's answer, because that is the article's house style rather than a fact about a file.
+    const coverFit = fm.coverFit ?? config.coverFit;
     const author = fm.author ?? config.author;
     const published = fm.published ?? config.published;
     const updated = fm.updated ?? config.updated;
@@ -137,7 +141,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
       ...(i > 0 ? { prev: hrefOf(present[i - 1]!.page) } : {}),
       ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}),
       ...(description === undefined ? {} : { description: truncateWords(description) }),
-      ...(cover === undefined ? {} : { cover, coverAlt }),
+      ...(cover === undefined ? {} : { cover, coverAlt, ...(coverFit === undefined ? {} : { coverFit }) }),
       ...(author === undefined ? {} : { author }),
       ...(p.readingMinutes === undefined ? {} : { readingMinutes: p.readingMinutes }),
       ...(published === undefined ? {} : { published }),
@@ -172,6 +176,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     ...(totalMinutes === 0 ? {} : { readingMinutes: totalMinutes }),
     ...(config.category === undefined ? {} : { category: config.category }),
     ...(config.theme === undefined ? {} : { theme: config.theme }),
+    ...(config.coverFit === undefined ? {} : { coverFit: config.coverFit }),
     ...(articleCover === undefined ? {} : { cover: articleCover }),
     ...(config.coverAlt === undefined ? {} : { coverAlt: config.coverAlt }),
     ...(config.description === undefined ? {} : { description: config.description }),

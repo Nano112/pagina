@@ -32,12 +32,22 @@
 
 @layer pagina.chrome {
   /* Header ----------------------------------------------------------------------------------- */
+  /* The brand on one side, everything that acts on the other.
+   *
+   * `space-between` across four loose children was the bug: with a title, an "Edit this page" link,
+   * a search trigger and the toggle in one flex row, the free space is divided into three gaps that
+   * shrink to nothing before anything wraps — so on a narrow header the link sat hard against the
+   * site title with no space at all between them. Grouping the actions leaves exactly one elastic
+   * gap, and every child has a real `gap` under it, so nothing can touch. */
   .pg-header {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem;
     padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--pg-line);
     position: sticky; top: 0; background: var(--pg-bg); z-index: 10;
   }
-  .pg-header__title { font-weight: 600; text-decoration: none; color: var(--pg-fg); font-family: var(--pg-font-display); }
+  .pg-header__title { font-weight: 600; text-decoration: none; color: var(--pg-fg); font-family: var(--pg-font-display); margin-inline-end: auto; }
+  .pg-header__actions { display: flex; align-items: center; gap: 0.75rem; }
+  .pg-header__edit { color: var(--pg-muted); text-decoration: none; font-size: 0.85rem; white-space: nowrap; }
+  .pg-header__edit:hover { color: var(--pg-accent); }
 
   /* Theme toggle ------------------------------------------------------------------------------ */
   .pg-theme-toggle {
@@ -77,10 +87,47 @@
   .pg-crumbs a:hover { color: var(--pg-accent); }
   .pg-crumbs__sep { margin: 0 0.35rem; }
 
+  /* The cover ---------------------------------------------------------------------------------
+   *
+   * A band across the whole page, above the sidebar and the content column — the shell grid starts
+   * *below* it. That is the difference between a cover and an illustration that happens to be
+   * first: boxed inside the measure it was neither, and it is what the shell emits it outside
+   * `.pg-shell` for. Three tokens make it a host's:
+   *
+   *   --pg-cover-ratio     the band's shape, and the reflow guard while the image loads
+   *   --pg-cover-max       how tall it may get on a wide window, so a hero cannot eat the fold
+   *   --pg-cover-position  which part of a cropped photograph survives (`object-position`)
+   *
+   * **`contain` is the default fit.** pagina copies the cover without decoding it, so it cannot
+   * tell a photograph from a wordmark — and cropping a wordmark cuts the first letters off the
+   * name, which is the failure this replaced. Letterboxing a photograph is merely less pretty.
+   * `cover_fit: cover` is the author saying "this one is a photograph, fill the band".
+   *
+   * Under `contain` the image is padded off the edges, because a wordmark run edge to edge reads as
+   * a mistake, and given a ground of its own so the letterboxing is deliberate rather than a gap.
+   */
+  .pg-cover { margin: 0; }
+  .pg-cover__img {
+    display: block; width: 100%;
+    aspect-ratio: var(--pg-cover-ratio, 3 / 1);
+    max-height: var(--pg-cover-max, 22rem);
+    object-fit: cover; object-position: var(--pg-cover-position, center);
+    border-bottom: 1px solid var(--pg-line);
+    background: var(--pg-bg-raised);
+  }
+  .pg-cover--contain .pg-cover__img {
+    object-fit: contain;
+    padding: clamp(0.75rem, 3vw, 2rem) clamp(1rem, 6vw, 4rem);
+  }
+
   /* Article header ---------------------------------------------------------------------------------
-   * The cover, the title and the line of provenance, above the content and below the breadcrumbs.
-   * It renders on the article's landing page only, unless `cover_on` says otherwise — a cover
-   * belongs to the article, not to each of its pages. See `docs/theming.md`.
+   * The title and the line of provenance, above the content and below the breadcrumbs. It renders
+   * on the article's landing page only, unless `cover_on` says otherwise — a cover belongs to the
+   * article, not to each of its pages. See `docs/theming.md`.
+   *
+   * It stays inside the reading column while the cover above it is full-bleed, which is the point:
+   * the picture is the width of the page, the words under it are the width of the prose they
+   * introduce, and the two lines up with the paragraphs rather than with the window.
    *
    * The title element is the page's own `h1`, *moved* here by the template rather than reprinted,
    * so it is outside `.pg-content` and the reading layer's heading rules no longer reach it. That
@@ -88,20 +135,10 @@
    * `font-size: inherit; font-weight: inherit; margin: 0` on every heading) anything left unsaid
    * arrives flattened, which is exactly the class of bug `host-theming.spec.ts` exists for.
    *
-   * The cover is constrained to the reading measure rather than the full column so it does not
-   * tower over the text it introduces, and carries an explicit aspect ratio so the page does not
-   * reflow when the image lands — pagina copies the file without decoding it, so no intrinsic
-   * `width`/`height` is knowable at build time and the ratio box is the reflow guard.
-   *
-   * A host that brings its own hero drops `.pg-article-header` and loses nothing else.
+   * A host that brings its own hero drops `.pg-cover` and `.pg-article-header` and loses nothing
+   * else.
    */
   .pg-article-header { margin: 0 0 2rem; max-width: var(--pg-measure); }
-  .pg-cover { margin: 0 0 1.5rem; }
-  .pg-cover__img {
-    display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover;
-    border-radius: var(--pg-radius-lg); border: 1px solid var(--pg-line);
-    background: var(--pg-bg-raised);
-  }
   .pg-article-header h1 {
     font-family: var(--pg-font-display); font-size: 2.1rem; font-weight: 700;
     line-height: 1.2; letter-spacing: -0.01em; color: var(--pg-fg); margin: 0;

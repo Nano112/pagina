@@ -54,6 +54,7 @@ The fields, in full:
 | `site_url` | where the article lives, for canonical URLs. `--site-url` overrides it |
 | `cover`, `cover_alt` | a path *relative to the folder*, and its alt text |
 | `cover_on` | `root` (default), `all` or `none` — which pages show the cover header |
+| `cover_fit` | `contain` (default) or `cover` — whether the cover may be cropped to fill its band |
 | `theme` | a CSS file of the article's own |
 | `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures |
 | `kineglyph.width` | the layout width figures are pre-rendered at |
@@ -74,6 +75,15 @@ nav:
 
 The first page in nav order is the landing page — the one a reader arrives at, and the one
 `cover_on: root` means.
+
+The cover is a band across the **whole page**, above the sidebar and the content column, and the
+title and the meta row under it stay in the reading column. pagina copies the image without
+decoding it, so it never learns whether it is looking at a photograph or a wordmark — and it will
+not guess in the direction that cuts the first letters off a name. `cover_fit: contain` is the
+default: the whole image, letterboxed in the band. `cover_fit: cover` is you saying "this one is a
+photograph, fill the band", and `--pg-cover-ratio`, `--pg-cover-max` and `--pg-cover-position` are
+the host's three tokens for the band's shape, its height and which part of a cropped photograph
+survives.
 
 !!! tip "A cover is optional, and an invented one is worse than none"
     This article has no `cover`. There is no image in the repository that honestly represents the

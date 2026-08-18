@@ -18,6 +18,20 @@ export type NavEntry = NavPage | NavSection;
  */
 export type CoverOn = "root" | "all" | "none";
 
+/**
+ * How the cover fills its band.
+ *
+ * The cover spans the whole page, so it has a shape of its own and the image has to be fitted into
+ * it. pagina copies the file without decoding it, so it never learns what the picture *is* — and
+ * the two kinds of cover want opposite answers. A photograph cropped to a band loses nothing that
+ * was carrying meaning; a wordmark cropped to a band loses the start of the word, which is the
+ * failure that produced this option.
+ *
+ * `"contain"` is therefore the default: the whole image, letterboxed. `"cover"` is the author
+ * saying "this is a photograph, fill the band".
+ */
+export type CoverFit = "cover" | "contain";
+
 export interface ArticleConfig {
   readonly slug: string; readonly title: string; readonly form: "docs";
   readonly status: "draft" | "published"; readonly visibility: "public" | "members" | "authors";
@@ -29,6 +43,8 @@ export interface ArticleConfig {
   readonly coverAlt?: string;
   /** Where the cover header renders. `article.yaml` writes it as `cover_on`. Default `"root"`. */
   readonly coverOn: CoverOn;
+  /** How the cover fills its band. `article.yaml` writes it as `cover_fit`. Default `"contain"`. */
+  readonly coverFit?: CoverFit;
   /** Fallback meta description for every page that does not carry its own. */
   readonly description?: string;
   /** Byline. Emitted as `article:author` and as the JSON-LD `author`. */
@@ -96,6 +112,8 @@ export interface PageFrontMatter {
   readonly cover?: string;
   /** Alt text for this page's cover. Written `cover_alt` in the front-matter block. */
   readonly coverAlt?: string;
+  /** How this page's cover fills its band. Written `cover_fit`. See {@link CoverFit}. */
+  readonly coverFit?: CoverFit;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
@@ -134,6 +152,8 @@ export interface PageMeta {
   readonly cover?: string;
   /** Alt text for {@link cover}. Already resolved: the author's, else the article title. */
   readonly coverAlt?: string;
+  /** How {@link cover} fills its band. Already resolved: the page's, else the article's. */
+  readonly coverFit?: CoverFit;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;

@@ -1,8 +1,10 @@
 import { parse } from "yaml";
-import type { ArticleConfig, CoverOn, NavEntry } from "./types.js";
+import type { ArticleConfig, CoverFit, CoverOn, NavEntry } from "./types.js";
 
 /** Every value `cover_on` may take, in the order the doc lists them. */
 export const COVER_ON: readonly CoverOn[] = ["root", "all", "none"];
+/** Every value `cover_fit` may take. `contain` is the default — see {@link CoverFit}. */
+export const COVER_FIT: readonly CoverFit[] = ["contain", "cover"];
 
 function fail(field: string, why: string): never {
   throw new Error(`article.yaml: ${field} ${why}`);
@@ -126,6 +128,10 @@ export function parseArticleConfig(text: string): ArticleConfig {
   // header on every page and look exactly like the bug this option exists to fix.
   const coverOn = (o.cover_on ?? "root") as string;
   if (!COVER_ON.includes(coverOn as CoverOn)) fail("cover_on", `must be ${COVER_ON.join("|")} (got "${coverOn}")`);
+  // `contain` by default, for the reason `CoverFit` gives: pagina never decodes the image, so it
+  // cannot tell a photograph from a wordmark, and only one of the two answers is destructive.
+  const coverFit = (o.cover_fit ?? "contain") as string;
+  if (!COVER_FIT.includes(coverFit as CoverFit)) fail("cover_fit", `must be ${COVER_FIT.join("|")} (got "${coverFit}")`);
   // A misspelt key here does not fail a build, it publishes a folder — so `exclude` is validated
   // as a list of non-empty strings rather than coerced, and a scalar `exclude: notes` (which YAML
   // is happy to hand back as a string, and which would then be iterated character by character)
@@ -148,6 +154,7 @@ export function parseArticleConfig(text: string): ArticleConfig {
     // `cover_alt` in the file, `coverAlt` in the object — the same snake_case rule as `site_url`.
     ...(o.cover_alt === undefined || o.cover_alt === null ? {} : { coverAlt: str(o.cover_alt, "cover_alt") }),
     coverOn: coverOn as CoverOn,
+    coverFit: coverFit as CoverFit,
     ...optionalStr(o.description, "description"),
     ...optionalStr(o.author, "author"),
     // `site_url` in the file, `siteUrl` in the object: YAML keys here are snake_case, and this is

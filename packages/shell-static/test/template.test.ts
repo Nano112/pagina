@@ -56,6 +56,10 @@ describe("renderPageHtml", () => {
     expect(renderPageHtml(article, "/g/page/", ctx)).not.toContain("Edit this page");
     const editing = renderPageHtml(article, "/g/page/", { ...ctx, dev: true, edit: true });
     expect(editing).toContain(`<a class="pg-header__edit" href="/__edit/g/page/">Edit this page</a>`);
+    // Grouped with the other controls rather than loose in the row: four loose children under
+    // `space-between` divide the free space into gaps that close to nothing, which is how the site
+    // title and this link ended up touching on a narrow header.
+    expect(editing).toContain(`<div class="pg-header__actions"><a class="pg-header__edit"`);
   });
 
   it("JSON-escapes the import-map URL instead of HTML-escaping it", () => {
@@ -186,13 +190,73 @@ describe("SEO metadata and the cover", () => {
   it("renders the article header on the landing page and on no other", () => {
     const root = renderPageHtml(onRoot, "/", ctx);
     expect(root).toContain(`<header class="pg-article-header">`);
-    expect(root).toContain(`<figure class="pg-cover"><img class="pg-cover__img" src="/media/hero.png"`);
+    expect(root).toContain(`<figure class="pg-cover pg-cover--contain"><img class="pg-cover__img" src="/media/hero.png"`);
     expect(root.indexOf("pg-article-header")).toBeLessThan(root.indexOf(`class="pg-content"`));
+    // The cover is a band across the page, so it is emitted *outside* the shell grid — above the
+    // sidebar, not inside the measure. That position is the whole of "it behaves like a cover".
+    expect(root.indexOf(`class="pg-cover`)).toBeLessThan(root.indexOf(`class="pg-shell"`));
 
     // The sub-page has a cover of its own in the manifest and still must not draw the hero.
     const sub = renderPageHtml(onRoot, "/g/page/", ctx);
     expect(sub).not.toContain("pg-article-header");
     expect(sub).not.toContain("pg-cover");
+  });
+
+  /**
+   * The cover must not be cropped by a default nobody chose.
+   *
+   * pagina never decodes the image, so it cannot tell a wordmark from a photograph — and it was
+   * cropping both, which took "Ki" off the front of Kineglyph's own cover. `contain` is therefore
+   * what a page gets when nothing says otherwise, and `cover` is a decision.
+   */
+  it("does not crop the cover unless the author asked it to", () => {
+    expect(renderPageHtml(onRoot, "/", ctx)).toContain(`class="pg-cover pg-cover--contain"`);
+    const filled = rooted(onRoot, "/");
+    const cropped: RenderedArticle = {
+      ...filled,
+      manifest: {
+        ...filled.manifest,
+        pages: { ...filled.manifest.pages, "/": { ...filled.manifest.pages["/"]!, coverFit: "cover" } },
+      },
+    };
+    expect(renderPageHtml(cropped, "/", ctx)).toContain(`class="pg-cover pg-cover--cover"`);
+  });
+
+  /**
+   * The title, printed exactly once.
+   *
+   * The shell *moves* a page's opening `<h1>` into the article header rather than reprinting it.
+   * `inlineFigureSvgs` prepends a `<style>` element to any page whose figures were drawn at
+   * several widths, so on those pages — Kineglyph's docs, which is where this was reported — the
+   * page no longer literally began with the heading, the move silently failed, and the header
+   * printed the manifest title above an `<h1>` that was still in the content.
+   */
+  it("moves the page's own h1 into the header even behind a hoisted <style>", () => {
+    const styled: RenderedArticle = {
+      ...onRoot,
+      pages: {
+        ...onRoot.pages,
+        "/": { ...onRoot.pages["/"]!, html: `<style>@container kg-frame (min-width:0px){}</style><h1 id="home">Home</h1><p>hi</p>` },
+      },
+    };
+    const html = renderPageHtml(styled, "/", ctx);
+    expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
+    // Moved, not reprinted: the heading keeps the id anchors already point at.
+    expect(html).toContain(`<header class="pg-article-header"><h1 id="home">Home</h1>`);
+    // …and the style element it was hiding behind is still on the page, in the content.
+    expect(html).toContain(`<article class="pg-content"><style>`);
+  });
+
+  it("leaves a page that opens with prose all of its headings", () => {
+    const prosey: RenderedArticle = {
+      ...onRoot,
+      pages: { ...onRoot.pages, "/": { ...onRoot.pages["/"]!, html: `<p>lede</p><h1 id="later">Later</h1>` } },
+    };
+    const html = renderPageHtml(prosey, "/", ctx);
+    // Nothing was moved, so nothing was lost: the header falls back to the manifest title and the
+    // page keeps the heading it wrote in the place it wrote it.
+    expect(html).toContain(`<header class="pg-article-header"><h1>Home</h1>`);
+    expect(html).toContain(`<h1 id="later">Later</h1>`);
   });
 
   it('follows cover_on: "all" and "none"', () => {

@@ -143,12 +143,43 @@ function readableDate(iso: string): string {
 }
 
 /**
- * The article header: the cover, the title, and the line of provenance under it.
+ * The cover, as a band across the whole page.
+ *
+ * A cover is the first thing on the page and behaves like one: it is emitted *outside* the shell
+ * grid, above the sidebar and the content column, so it spans the window rather than the measure.
+ * Boxed inside the reading column it read as an illustration that happened to be first; across the
+ * page it reads as the top of the article, which is what it is.
+ *
+ * **It does not crop by default.** No intrinsic size is known at build time — pagina copies the
+ * file, it does not decode it — so it cannot tell a photograph (which may be cropped to a band
+ * without losing anything) from a wordmark (where the first letters *are* the picture). Guessing
+ * wrong in the cropping direction decapitates the image, and that is the failure a reader sees, so
+ * the default is `contain`: the whole image, letterboxed in the band. An author whose cover is a
+ * photograph says `cover_fit: cover` and gets an edge-to-edge band. `object-position` is left to
+ * the host as `--pg-cover-position`, because which part of a photograph matters is a fact about
+ * that photograph and not something worth a second key.
+ *
+ * The band's height comes from the aspect-ratio box `.pg-cover__img` declares, which is also what
+ * holds the layout still while the image loads. On the landing page the cover is the LCP element
+ * and must not be deferred; on a sub-page under `cover_on: "all"` it is one hero among many and
+ * can wait its turn.
+ */
+function coverHtml(meta: PageMeta, article: RenderedArticle["manifest"]["article"], isRoot: boolean): string {
+  if (meta.cover === undefined) return "";
+  const alt = meta.coverAlt ?? article.title;      // never "", never the filename — see render-article.ts
+  const fit = meta.coverFit ?? "contain";
+  return `<figure class="pg-cover pg-cover--${fit}"><img class="pg-cover__img" src="${esc(meta.cover)}" alt="${esc(alt)}" loading="${isRoot ? "eager" : "lazy"}" decoding="async"></figure>`;
+}
+
+/**
+ * The article header: the title, and the line of provenance under it.
  *
  * **A cover belongs to the article, not to each page.** A reference page three levels into an API
  * doc re-displaying the hero is a magazine reprinting its front page on every spread, so the
  * header renders on the article's landing page and nowhere else unless the author says otherwise
- * with `cover_on` (`"root"` by default, `"all"`, or `"none"`).
+ * with `cover_on` (`"root"` by default, `"all"`, or `"none"`). The cover itself is
+ * {@link coverHtml}, emitted above the shell; what is left here is the part that belongs in the
+ * reading column, so the meta row stays aligned to the prose even when the image is full-bleed.
  *
  * The title is **moved** here out of the content rather than printed a second time: a hero that
  * repeats the `h1` immediately below it is the defect this header would otherwise introduce.
@@ -160,17 +191,7 @@ function readableDate(iso: string): string {
  * and no prose each drop their own part and leave the rest intact — an article with only a title
  * renders a header that is only a title, not an empty box with separators in it.
  */
-function articleHeaderHtml(
-  meta: PageMeta, article: RenderedArticle["manifest"]["article"], titleHtml: string, isRoot: boolean,
-): string {
-  const alt = meta.coverAlt ?? article.title;      // never "", never the filename — see render-article.ts
-  const cover = meta.cover === undefined
-    ? ""
-    // No intrinsic size is known at build time (pagina copies the file, it does not decode it), so
-    // the reflow is held off by the aspect-ratio box `.pg-cover__img` declares instead. On the
-    // landing page the cover is the LCP element and must not be deferred; on a sub-page under
-    // `cover_on: "all"` it is one hero among many and can wait its turn.
-    : `<figure class="pg-cover"><img class="pg-cover__img" src="${esc(meta.cover)}" alt="${esc(alt)}" loading="${isRoot ? "eager" : "lazy"}" decoding="async"></figure>`;
+function articleHeaderHtml(meta: PageMeta, titleHtml: string): string {
   const date = meta.published ?? meta.updated;
   const items = [
     date === undefined ? "" : `<time class="pg-article-meta__item" datetime="${esc(date)}">${esc(readableDate(date))}</time>`,
@@ -180,7 +201,7 @@ function articleHeaderHtml(
   const metaRow = items.length === 0
     ? ""
     : `<p class="pg-article-meta">${items.join(`<span class="pg-article-meta__sep" aria-hidden="true">·</span>`)}</p>`;
-  return `<header class="pg-article-header">${cover}${titleHtml}${metaRow}</header>`;
+  return `<header class="pg-article-header">${titleHtml}${metaRow}</header>`;
 }
 
 /**
@@ -214,6 +235,41 @@ function searchTriggerHtml(ctx: ShellCtx): string {
 
 /** A leading `<h1>…</h1>`, if the rendered page opens with one. */
 const LEADING_H1 = /^\s*<h1\b[^>]*>[\s\S]*?<\/h1>/;
+/**
+ * Markup a page may begin with that is not *content*: a `<style>` element the renderer hoisted
+ * there, or a comment. Neither is a thing a reader sees, so neither should decide whether the
+ * page opens with a heading.
+ */
+const LEADING_NON_CONTENT = /^\s*(?:<style\b[^>]*>[\s\S]*?<\/style>|<!--[\s\S]*?-->)/;
+
+/**
+ * The page's opening `<h1>`, lifted out of its HTML — and what is left of the page.
+ *
+ * The heading is *moved* into the article header rather than reprinted, so exactly one of the two
+ * surfaces prints it and the element keeps its `id`. The subtlety is what "opening" means:
+ * `inlineFigureSvgs` prepends a `<style>` element to a page whose figures were drawn at several
+ * widths, so on precisely the pages that carry responsive figures — Kineglyph's own docs, which is
+ * where this was found — the page no longer *literally* began with its `<h1>`, the lift silently
+ * failed, and the header fell back to reprinting the manifest title above a heading that was still
+ * in the content. The title rendered twice.
+ *
+ * So the leading non-content is stepped over to find the heading, and then put back in front of
+ * the content it came with: nothing is dropped, and a page that genuinely opens with prose keeps
+ * every heading it wrote.
+ */
+export function liftLeadingH1(html: string): { readonly h1?: string; readonly rest: string } {
+  let prefix = "";
+  let body = html;
+  for (;;) {
+    const skip = LEADING_NON_CONTENT.exec(body);
+    if (skip === null) break;
+    prefix += skip[0];
+    body = body.slice(skip[0].length);
+  }
+  const h1 = LEADING_H1.exec(body);
+  if (h1 === null) return { rest: html };
+  return { h1: h1[0], rest: prefix + body.slice(h1[0].length) };
+}
 
 function navHtml(nodes: readonly NavNode[], current: string, base: string, depth = 0): string {
   return `<ul class="pg-nav__list pg-nav__list--${depth}">${nodes
@@ -260,20 +316,25 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     : "";
   // A host that brings its own header takes the brand row and the theme toggle with it; the
   // sidebar, TOC and pager stay, because they are the article's own navigation.
+  // The brand on the left and everything that acts on the right, in a group of its own. Four
+  // children under `justify-content: space-between` spread themselves across the row, which put
+  // "Edit this page" hard against the site title on a narrow header and left the toggle marooned;
+  // one group with a gap is the arrangement a header actually has.
   const header = ctx.chrome === false
     ? ""
-    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a>${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></header>`;
+    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><div class="pg-header__actions">${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></div></header>`;
   // The article header, above the content and under the breadcrumbs, on the pages `cover_on`
   // names. `?? "root"` is for a manifest assembled by hand rather than by `renderArticle` — the
   // default has to be the same one `article.yaml` documents, wherever the manifest came from.
   const isRoot = href === a.rootHref;
   const coverOn = a.coverOn ?? "root";
   const wantsHeader = coverOn === "all" || (coverOn === "root" && isRoot);
-  const leading = wantsHeader ? LEADING_H1.exec(page.html) : null;
-  const contentHtml = leading === null ? page.html : page.html.slice(leading[0].length);
+  const lifted = wantsHeader ? liftLeadingH1(page.html) : { rest: page.html };
+  const contentHtml = lifted.rest;
   const articleHeader = wantsHeader
-    ? articleHeaderHtml(meta, a, leading?.[0] ?? `<h1>${esc(meta.title)}</h1>`, isRoot)
+    ? articleHeaderHtml(meta, lifted.h1 ?? `<h1>${esc(meta.title)}</h1>`)
     : "";
+  const cover = wantsHeader ? coverHtml(meta, a, isRoot) : "";
   // Every tag pagina emits for this page — title, description, robots, OpenGraph, Twitter,
   // canonical and the JSON-LD `Article` — already escaped for the context each one lands in.
   const seo = renderSeoHtml(pageSeo(article.manifest, href, {
@@ -291,7 +352,7 @@ ${THEME_INIT_SCRIPT}
 ${stylesheetHtml(ctx)}${kineglyphThemeCss(ctx)}
 </head>
 <body>
-${header}
+${header}${cover}
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${articleHeader}<article class="pg-content">${contentHtml}</article><nav class="pg-pager">${prev}${next}</nav></main>
