@@ -16,6 +16,9 @@ import { mountAll, defaultTheme, type ThemeTokens, type EmbeddedFigure } from "k
 // with `data-instrument="true"`. See the module for why that opinion lives here and not in the
 // library.
 import { figureChrome } from "./figure-chrome.js";
+// Relative rather than through the package's own name: `client/` is source that a consumer's Vite
+// compiles, so it must not depend on this package having been built into `dist/` first.
+import { wireTabs } from "../src/interactive.js";
 
 type Themes = { light: ThemeTokens; dark: ThemeTokens };
 type Theme = "light" | "dark";
@@ -52,32 +55,12 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
 });
 
 // --- tabs (a11y: click + arrow-key roving tabindex) ---------------------------------------
+// The implementation is in `../src/interactive.ts` rather than here, because this is not the only
+// place core's HTML is put into a DOM: the editor's preview and its published view render the same
+// markup in the browser without loading this bundle, and had no working tabs at all until the
+// behaviour stopped living inside the site's client entry.
 
-for (const group of document.querySelectorAll<HTMLElement>("[data-pg-tabs]")) {
-  const tabs = [...group.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-  const select = (i: number) =>
-    tabs.forEach((t, j) => {
-      const on = i === j;
-      t.setAttribute("aria-selected", String(on));
-      t.tabIndex = on ? 0 : -1;
-      const p = document.getElementById(t.getAttribute("aria-controls") ?? "");
-      if (p) p.hidden = !on;
-      if (on) t.focus({ preventScroll: true });
-    });
-  tabs.forEach((t, i) => {
-    t.addEventListener("click", () => select(i));
-    t.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        select((i + 1) % tabs.length);
-      }
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        select((i - 1 + tabs.length) % tabs.length);
-      }
-    });
-  });
-}
+wireTabs(document);
 
 // --- code-copy buttons ---------------------------------------------------------------------
 

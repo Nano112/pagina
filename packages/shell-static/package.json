@@ -8,6 +8,11 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./interactive": {
+      "types": "./dist/interactive.d.ts",
+      "development": "./src/interactive.ts",
+      "import": "./dist/interactive.js"
+    },
     "./pagina.css": "./dist/pagina.css",
     "./pagina.tokens.css": "./dist/pagina.tokens.css",
     "./pagina.reading.css": "./dist/pagina.reading.css",
