@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { kineglyphThemeHref, type RenderedArticle, type Shell, type ShellContext } from "@pagina/core";
+import { kineglyphThemeHref, kineglyphThemeHrefs, type RenderedArticle, type Shell, type ShellContext } from "@pagina/core";
 import { renderPageHtml, type ShellCtx } from "./template.js";
 import { renderNotFoundHtml } from "./not-found.js";
 
@@ -12,12 +12,17 @@ export const staticShell: Shell = {
   clientEntry: fileURLToPath(new URL("../client/pagina.ts", import.meta.url)),
   async render(article: RenderedArticle, ctx: ShellContext) {
     const kgThemeUrl = kineglyphThemeHref(article.manifest.article, ctx.base);
+    // The article's named palettes, for the figures that pick one by name. Empty is left off the
+    // element entirely rather than written as `{}`: an attribute that is always there says the
+    // feature is always in use, and most articles never name a second palette.
+    const kgThemeUrls = kineglyphThemeHrefs(article.manifest.article, ctx.base);
     // The manifest's own `site_url` is the fallback, so a folder that declares one is complete
     // without the builder having to be told again.
     const siteUrl = ctx.siteUrl ?? article.manifest.article.siteUrl;
     const full: ShellCtx = {
       ...ctx,
       ...(kgThemeUrl === undefined ? {} : { kineglyphThemeUrl: kgThemeUrl }),
+      ...(Object.keys(kgThemeUrls).length === 0 ? {} : { kineglyphThemeUrls: kgThemeUrls }),
       ...(siteUrl === undefined ? {} : { siteUrl }),
       ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
       ...(ctx.searchUrl === undefined ? {} : { searchUrl: ctx.searchUrl }),

@@ -66,6 +66,16 @@ export interface ArticleConfig {
    */
   readonly kineglyph?: {
     readonly theme?: string;
+    /**
+     * Named palettes a single `<figure>` may choose between with `data-theme`, as module paths or
+     * runtime theme names.
+     *
+     * `theme` above is the article's declaration and applies to every figure that says nothing.
+     * This is the vocabulary for the figure that wants to say something: level 5 of the cascade
+     * needs a name that means the same thing to the pre-render and to the browser, or the figure
+     * changes colour the moment the runtime lands.
+     */
+    readonly themes?: Readonly<Record<string, string>>;
     readonly width?: number;
     readonly widths?: readonly number[];
   };
@@ -94,6 +104,20 @@ export interface Heading { readonly id: string; readonly text: string; readonly 
 export interface FigureRef {
   readonly id: string; readonly kind: "inline" | "module" | "static";
   readonly source?: string; readonly scene?: string; readonly static?: string;
+  /**
+   * This figure's theme — level 5 of the cascade, and the narrowest scope there is.
+   *
+   * Written `data-theme` on the `<figure>`, and it is a *name*, not a path: `inherit`, or a theme
+   * Kineglyph's runtime knows. A name is the whole vocabulary here on purpose. The article-level
+   * declaration (`kineglyph.theme`) may be a module because an article is where a palette is
+   * authored; a figure is where one is *chosen*, and the set to choose from is the one both the
+   * pre-render and the browser can resolve identically.
+   *
+   * Absent means the figure inherits — which is also what `inherit` means written down. The
+   * difference is only that one of them is a decision an author can see and a reviewer can ask
+   * about, and the design asked for that to be expressible.
+   */
+  readonly theme?: string;
 }
 export interface LinkRef { readonly raw: string; readonly resolved?: string; readonly line?: number }
 export interface Diagnostic { readonly severity: "error" | "warning"; readonly code: string; readonly message: string; readonly page?: string }

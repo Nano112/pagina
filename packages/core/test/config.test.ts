@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { isKineglyphThemeModule, kineglyphThemeHref, parseArticleConfig } from "../src/config.js";
+import { isKineglyphThemeModule, kineglyphThemeHref, kineglyphThemeHrefs, parseArticleConfig } from "../src/config.js";
 
 const yaml = readFileSync(new URL("./fixture/article.yaml", import.meta.url), "utf8");
 
@@ -113,5 +113,36 @@ describe("kineglyph.theme, named or shipped", () => {
     expect(kineglyphThemeHref({ kineglyph: { theme: "inherit" } }, "/docs/")).toBeUndefined();
     expect(kineglyphThemeHref({ kineglyph: { theme: "midnight" } }, "/docs/")).toBeUndefined();
     expect(kineglyphThemeHref({}, "/docs/")).toBeUndefined();
+  });
+
+  /**
+   * `kineglyph.themes` is the vocabulary a single `<figure>` picks from — level 5 of the cascade.
+   * It has to mean the same thing to the pre-render and to the browser, so every entry is carried
+   * to the page, including the ones with no module to fetch.
+   */
+  describe("kineglyph.themes", () => {
+    const withThemes = (block: string): ReturnType<typeof parseArticleConfig> =>
+      parseArticleConfig(`${yaml}\nkineglyph:\n  themes:\n${block}`);
+
+    it("accepts module paths and runtime names side by side", () => {
+      const cfg = withThemes("    scoped: theme/scoped.mjs\n    night: midnight\n");
+      expect(cfg.kineglyph?.themes).toEqual({ scoped: "theme/scoped.mjs", night: "midnight" });
+    });
+
+    it("refuses to let an article redefine `inherit`", () => {
+      // The one word that must travel unchanged through every level, so it is not an article's
+      // to reassign — otherwise "follow the page" would mean something different per folder.
+      expect(() => withThemes("    inherit: theme/x.mjs\n")).toThrow(/reserved/);
+    });
+
+    it("refuses a name that could not be a `data-theme` value", () => {
+      expect(() => withThemes('    "a name": theme/x.mjs\n')).toThrow(/must be a name/);
+    });
+
+    it("carries every entry to the page: a URL for a module, the name itself for a name", () => {
+      expect(kineglyphThemeHrefs({ kineglyph: { themes: { scoped: "theme/s.mjs", night: "midnight" } } }, "/docs/"))
+        .toEqual({ scoped: "/docs/theme/s.mjs", night: "midnight" });
+      expect(kineglyphThemeHrefs({}, "/docs/")).toEqual({});
+    });
   });
 });

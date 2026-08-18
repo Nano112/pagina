@@ -171,3 +171,38 @@ describe("inlineFigureSvgs", () => {
     });
   });
 });
+
+/**
+ * A `<figure>`'s own theme, which is the narrowest scope in the cascade.
+ *
+ * The attribute is *read* and left in place rather than consumed: `mountAll` reads the same one
+ * when it hydrates, so the pre-render and the live figure answer one declaration instead of two
+ * that can drift apart.
+ */
+describe("extractFigures and a figure's own theme", () => {
+  const extract = (attrs: string): ReturnType<typeof extractFigures> =>
+    extractFigures(`<figure class="kg" data-scene="./s.mjs" ${attrs}></figure>`, { pageSlug: "p" });
+
+  it("carries a declared name onto the figure", () => {
+    expect(extract('id="a" data-theme="scoped"').figures[0]).toMatchObject({ id: "a", kind: "module", theme: "scoped" });
+  });
+
+  it("carries `inherit`, because declining has to be sayable", () => {
+    expect(extract('id="a" data-theme="inherit"').figures[0]).toMatchObject({ theme: "inherit" });
+  });
+
+  it("leaves a figure that says nothing with no opinion at all", () => {
+    expect(extract('id="a"').figures[0]).not.toHaveProperty("theme");
+    // An empty attribute is not a declaration either — it is a typo, and it should inherit.
+    expect(extract('id="a" data-theme=""').figures[0]).not.toHaveProperty("theme");
+  });
+
+  it("leaves the attribute on the element for the runtime to read", () => {
+    expect(extract('id="a" data-theme="scoped"').html).toContain('data-theme="scoped"');
+  });
+
+  it("applies to an inline figure as much as a module one", () => {
+    const html = `<figure class="kg" id="a" data-theme="scoped"><script type="text/kineglyph">export default {}</script></figure>`;
+    expect(extractFigures(html, { pageSlug: "p" }).figures[0]).toMatchObject({ kind: "inline", theme: "scoped" });
+  });
+});

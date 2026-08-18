@@ -1,6 +1,6 @@
 export * from "./types.js";
 export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
-export { parseArticleConfig, isKineglyphThemeModule, kineglyphThemeHref, COVER_FIT, COVER_ON, THEME_INHERIT } from "./config.js";
+export { parseArticleConfig, isKineglyphThemeModule, kineglyphThemeHref, kineglyphThemeHrefs, COVER_FIT, COVER_ON, THEME_INHERIT } from "./config.js";
 export { WORDS_PER_MINUTE, countWords, prose, readingMinutes } from "./reading-time.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets, SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";

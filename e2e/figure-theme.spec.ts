@@ -26,7 +26,7 @@
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
-import { SITE_BASE, THEMED_BASE, THEMED_COLORS } from "./setup.js";
+import { SCOPED_CANVAS, SITE_BASE, THEMED_BASE, THEMED_COLORS } from "./setup.js";
 
 const SHOTS = fileURLToPath(new URL("../test-results/figure-theme/", import.meta.url));
 const FIGURE = "figure.kg#kg-guide-figures-1";
@@ -124,4 +124,78 @@ test("an article that declares no theme is not a different case any more", async
   // The same number as the themed build's: declaring a theme changed what the figure was *drawn*
   // with, and drawing is no longer what decides what a reader sees.
   expect(await canvasOf(page, STATIC)).toBe(PAGE_CANVAS.light);
+});
+
+/**
+ * Level 5: one `<figure>` declaring a palette of its own.
+ *
+ * The interesting assertion is never on the figure that declared — a declaration that leaked to the
+ * whole document would still look correct there. It is on its **neighbour**, which declared nothing
+ * and must still be painted by the page. So every test below reads both, from one page load, and a
+ * third figure that says `inherit` out loud while the article around it declares a palette.
+ *
+ * The scoped theme claims exactly one role (`canvas`, via `createTheme`), which is what makes this
+ * measurable rather than merely plausible: a figure that overrode all twenty would look right for
+ * the wrong reason. One role holds, nineteen still follow the page.
+ */
+test.describe("a figure that declares its own theme", () => {
+  const THEMES_PAGE = `${THEMED_BASE}guide/figure-themes/`;
+  const frameOf = (id: string): string => `figure.kg#${id} .kg-frame > svg`;
+  const stageOf = (id: string): string => `figure.kg#${id} [data-kg-stage] svg`;
+
+  test("holds its colour where its neighbours take the page's, before the runtime lands", async ({ page }) => {
+    await page.context().addInitScript(() => { /* nothing: JS stays on, we read before hydration */ });
+    await page.goto(THEMES_PAGE);
+    // Read in one pass, so all three numbers describe the same document.
+    expect(await canvasOf(page, frameOf("fig-declared"))).toBe(rgb(SCOPED_CANVAS));
+    expect(await canvasOf(page, frameOf("fig-neighbour"))).toBe(PAGE_CANVAS.light);
+    expect(await canvasOf(page, frameOf("fig-inherit"))).toBe(PAGE_CANVAS.light);
+  });
+
+  test("keeps holding it when the page goes dark, and its neighbours still move", async ({ page }) => {
+    await page.goto(THEMES_PAGE);
+    await page.evaluate(() => (document.documentElement.dataset["theme"] = "dark"));
+    // A declaration is an override, not a preference: it does not flip with the page.
+    expect(await canvasOf(page, frameOf("fig-declared"))).toBe(rgb(SCOPED_CANVAS));
+    expect(await canvasOf(page, frameOf("fig-neighbour"))).toBe(PAGE_CANVAS.dark);
+    expect(await canvasOf(page, frameOf("fig-inherit"))).toBe(PAGE_CANVAS.dark);
+  });
+
+  test("does not leak to a neighbour when a host retints the page", async ({ page }) => {
+    // The scoping proof, stated the way a host would meet it: the host moves `--pg-*` and every
+    // figure that claimed nothing comes with it, while the one that claimed `canvas` does not.
+    await page.goto(THEMES_PAGE);
+    await page.addStyleTag({ content: ":root{--pg-bg-raised:#101216}" });
+    expect(await canvasOf(page, frameOf("fig-declared"))).toBe(rgb(SCOPED_CANVAS));
+    expect(await canvasOf(page, frameOf("fig-neighbour"))).toBe(rgb("#101216"));
+  });
+
+  test("is painted the same once hydrated as it was pre-rendered", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(THEMES_PAGE);
+    const prerendered = {
+      declared: await canvasOf(page, frameOf("fig-declared")),
+      neighbour: await canvasOf(page, frameOf("fig-neighbour")),
+      inherit: await canvasOf(page, frameOf("fig-inherit")),
+    };
+    await expect(page.locator(stageOf("fig-declared"))).toBeVisible();
+    await expect(page.locator(stageOf("fig-neighbour"))).toBeVisible();
+
+    expect(await canvasOf(page, stageOf("fig-declared"))).toBe(prerendered.declared);
+    expect(await canvasOf(page, stageOf("fig-neighbour"))).toBe(prerendered.neighbour);
+    expect(await canvasOf(page, stageOf("fig-inherit"))).toBe(prerendered.inherit);
+    expect(prerendered.declared).toBe(rgb(SCOPED_CANVAS));
+    expect(prerendered.neighbour).toBe(PAGE_CANVAS.light);
+  });
+
+  test("survives the theme toggle, which is where a scoped override quietly stops working", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(THEMES_PAGE);
+    await expect(page.locator(stageOf("fig-declared"))).toBeVisible();
+    // The toggle used to hand every mounted figure the page's palette, which would have undone the
+    // declaration on the first click — working until a reader touched it.
+    await page.locator("[data-pagina-theme-toggle]").click();
+    await expect.poll(async () => await canvasOf(page, stageOf("fig-neighbour"))).toBe(PAGE_CANVAS.dark);
+    expect(await canvasOf(page, stageOf("fig-declared"))).toBe(rgb(SCOPED_CANVAS));
+  });
 });

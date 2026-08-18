@@ -1,14 +1,24 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createTheme, defaultTheme, type ThemeTokens } from "@kineglyph/core";
+import { createTheme, defaultTheme, inheritTheme, overrideTheme, type ThemeTokens } from "@kineglyph/core";
 import { prerender, rewriteImports } from "@kineglyph/export";
 import { FIGURE_WIDTHS, isKineglyphThemeModule, THEME_INHERIT } from "@pagina/core";
 import type { DrawnFigure } from "@pagina/core";
 import type { ArticleConfig, Diagnostic, RenderedArticle } from "@pagina/core";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 
-export interface KineglyphThemes { readonly light: ThemeTokens; readonly dark: ThemeTokens }
+export interface KineglyphThemes {
+  readonly light: ThemeTokens;
+  readonly dark: ThemeTokens;
+  /**
+   * The article's `kineglyph.themes`, resolved — the vocabulary a single `<figure>` picks from.
+   *
+   * Loaded here, at publish time, and named the same way in the browser, so the drawing a reader
+   * gets before the runtime lands and the one they get after it are painted from one declaration.
+   */
+  readonly named?: Readonly<Record<string, ThemeTokens>>;
+}
 
 /**
  * Loads the `{ light, dark }` token pair named by `article.yaml`'s `kineglyph.theme`
@@ -57,7 +67,7 @@ function asTheme(value: unknown): ThemeTokens | undefined {
  * Note that `default` therefore inherits: it claims no roles, so it follows the page. A theme that
  * is meant to hold its palette against the page says so with `overrideTheme()`.
  */
-async function themeNamed(name: string): Promise<ThemeTokens> {
+async function themeNamed(name: string, base: ThemeTokens = defaultTheme): Promise<ThemeTokens> {
   if (name !== THEME_INHERIT) {
     try {
       const web = (await import("@kineglyph/web")) as { themeByName?: (n: string) => ThemeTokens | undefined };
@@ -68,16 +78,16 @@ async function themeNamed(name: string): Promise<ThemeTokens> {
       // simply resolves to nothing, and nothing is inherit.
     }
   }
-  return defaultTheme;
+  // `inherit` against whatever it is inheriting *from*, which is the enclosing declaration rather
+  // than Kineglyph's default. The claims are what inherit is about and `inheritTheme` drops them
+  // all; keeping the base's literals only decides what the figure looks like on a page that maps
+  // no `--kg-color-*` at all, and there the article's own palette is the better answer than a
+  // palette nobody in this folder chose.
+  return inheritTheme(base);
 }
 
-export async function loadKineglyphThemes(folder: string, config: ArticleConfig): Promise<KineglyphThemes> {
-  const rel = config.kineglyph?.theme;
-  if (rel === undefined) return { light: defaultTheme, dark: defaultTheme };
-  if (!isKineglyphThemeModule(rel)) {
-    const named = await themeNamed(rel);
-    return { light: named, dark: named };
-  }
+/** One theme module of the article's, evaluated: `{ light, dark }` as the author exported it. */
+async function loadThemeModule(folder: string, rel: string): Promise<{ light: ThemeTokens; dark: ThemeTokens }> {
   const abs = resolve(folder, rel);
   const baseUrl = pathToFileURL(abs).href;
   const source = await readFile(abs, "utf8");
@@ -92,6 +102,37 @@ export async function loadKineglyphThemes(folder: string, config: ArticleConfig)
   const light = asTheme(mod.light ?? mod.default?.light) ?? defaultTheme;
   const dark = asTheme(mod.dark ?? mod.default?.dark) ?? light;
   return { light, dark };
+}
+
+/**
+ * A named palette, from a module the article ships or from the runtime's own registry.
+ *
+ * A figure naming this holds it against the page, so `overrideTheme` is applied to a *named* one:
+ * `kineglyph.themes: { midnight: midnight }` is an author asking for midnight's colours, and a
+ * built-in that claims nothing would silently mean "inherit" — the one reading nobody writing that
+ * line intends. A module the article ships is left exactly as authored, because `createTheme`
+ * already recorded what it named and that is the author's own answer.
+ */
+async function loadNamedTheme(folder: string, spec: string): Promise<ThemeTokens> {
+  if (isKineglyphThemeModule(spec)) return (await loadThemeModule(folder, spec)).light;
+  const found = await themeNamed(spec);
+  return spec === THEME_INHERIT ? found : overrideTheme(found);
+}
+
+export async function loadKineglyphThemes(folder: string, config: ArticleConfig): Promise<KineglyphThemes> {
+  const entries = Object.entries(config.kineglyph?.themes ?? {});
+  const named = Object.fromEntries(
+    await Promise.all(entries.map(async ([name, spec]) => [name, await loadNamedTheme(folder, spec)] as const)),
+  );
+  const withNamed = (base: { light: ThemeTokens; dark: ThemeTokens }): KineglyphThemes =>
+    entries.length === 0 ? base : { ...base, named };
+  const rel = config.kineglyph?.theme;
+  if (rel === undefined) return withNamed({ light: defaultTheme, dark: defaultTheme });
+  if (!isKineglyphThemeModule(rel)) {
+    const one = await themeNamed(rel);
+    return withNamed({ light: one, dark: one });
+  }
+  return withNamed(await loadThemeModule(folder, rel));
 }
 
 /** Site-absolute URL (which includes `base`) → folder-relative path. */
@@ -140,6 +181,30 @@ export async function prerenderFigures(
   const figures = new Map<string, PrerenderedFigure[]>();
   const diagnostics: Diagnostic[] = [];
   const themeList = [{ name: "light", tokens: themes.light }, { name: "dark", tokens: themes.dark }];
+  /**
+   * The theme list one figure is drawn with — the article's, unless the figure named its own.
+   *
+   * A figure's declaration replaces *both* schemes rather than one, and that is the point of it:
+   * a declared theme claims its roles, so it holds against whatever the page is painting, in light
+   * and in dark alike. That is what "this figure decides its own colours" has to mean; a
+   * declaration that still flipped with the page would be a preference, not an override.
+   *
+   * Resolved once per name, because the same name on twelve figures is one answer.
+   */
+  const named = new Map<string, Promise<ThemeTokens>>();
+  const themesFor = async (fig: { theme?: string }): Promise<typeof themeList> => {
+    if (fig.theme === undefined) return themeList;
+    let tokens = named.get(fig.theme);
+    if (tokens === undefined) {
+      const declared = themes.named?.[fig.theme];
+      // The article's own vocabulary first, then the runtime's registry. `inherit` resolves
+      // against the *article's* theme — the declaration this figure is escaping.
+      tokens = declared === undefined ? themeNamed(fig.theme, themes.light) : Promise.resolve(declared);
+      named.set(fig.theme, tokens);
+    }
+    const t = await tokens;
+    return [{ name: "light", tokens: t }, { name: "dark", tokens: t }];
+  };
   for (const page of Object.values(article.pages)) {
     for (const fig of page.figures) {
       if (fig.kind === "static") continue;
@@ -157,7 +222,7 @@ export async function prerenderFigures(
         // `@kineglyph/export` appends the theme name, so the SVG's root id is `${fig.id}-light`.
         // That matters now the SVG is inlined: its ids share a namespace with the `<figure>` that
         // holds it, and `fig.id` is already taken by the figure element.
-        const results = await prerender(source, { themes: themeList, widths: widthList, baseUrl, idPrefix: fig.id });
+        const results = await prerender(source, { themes: await themesFor(fig), widths: widthList, baseUrl, idPrefix: fig.id });
         figures.set(
           fig.id,
           results.map((r) => ({ theme: r.theme, svg: r.svg, inlineSvg: r.inlineSvg, needsRuntime: r.needsRuntime, containerWidth: r.containerWidth })),

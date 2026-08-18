@@ -50,7 +50,12 @@ export function extractFigures(html: string, opts: FigureRewriteOptions): { html
       return fixedAttrs === attrs ? whole : `<figure${fixedAttrs}>${inner}</figure>`;
     }
     const withId = authored === undefined ? `${attrs} id="${id}"` : fixedAttrs;
-    figures.push(script !== null ? { id, kind: "inline", source: script[1]!.trim() } : { id, kind: "module", scene: scene! });
+    // `data-theme` is left on the element as the author wrote it, not consumed: `mountAll` reads
+    // the same attribute when it hydrates, so the pre-render and the live figure are answering one
+    // declaration rather than two that can drift.
+    const theme = attr(attrs, "data-theme")?.trim();
+    const themed = theme === undefined || theme === "" ? {} : { theme };
+    figures.push(script !== null ? { id, kind: "inline", source: script[1]!.trim(), ...themed } : { id, kind: "module", scene: scene!, ...themed });
     return `<figure${withId}>${frame(id)}${inner}</figure>`;
   });
   return { html: out, figures, diagnostics };

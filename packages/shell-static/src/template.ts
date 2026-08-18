@@ -17,6 +17,8 @@ export interface ShellCtx {
   chrome?: boolean;
   kineglyphRuntimeUrl: string;
   kineglyphThemeUrl?: string;
+  /** Name → module URL for `kineglyph.themes`, which a `<figure>`'s `data-theme` picks from. */
+  kineglyphThemeUrls?: Readonly<Record<string, string>>;
   /** `pagina dev --edit`: add an "Edit this page" link into the editor. Never set in a build. */
   edit?: boolean;
   /** Overrides {@link DEFAULT_MODEL_VIEWER_URL} for pages that embed a `<model-viewer>`. */
@@ -326,7 +328,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
   }));
   return `<!doctype html>
-<html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}${ctx.searchUrl === undefined ? "" : ` data-pg-search="${esc(ctx.searchUrl)}" data-pg-base="${esc(ctx.base)}"`}>
+<html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}${ctx.kineglyphThemeUrls === undefined ? "" : ` data-kg-themes="${esc(JSON.stringify(ctx.kineglyphThemeUrls))}"`}${ctx.searchUrl === undefined ? "" : ` data-pg-search="${esc(ctx.searchUrl)}" data-pg-base="${esc(ctx.base)}"`}>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${seo}

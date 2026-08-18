@@ -372,6 +372,49 @@ Three ways to inherit, all meaning the same thing: omit the key, write `inherit`
     follows the page. If you meant "pin Kineglyph's own built-in look regardless of the site around
     it", say `overrideTheme(themes.default)` in a module and name that module instead.
 
+#### One figure, one palette
+
+`kineglyph.theme` is the article's declaration and reaches every figure that says nothing. A single
+`<figure>` overrides it with `data-theme`, and the vocabulary it picks from is the article's:
+
+```yaml
+# article.yaml — the palettes a figure may name
+kineglyph:
+  theme: theme/kineglyph.mjs
+  themes:
+    scoped: theme/scoped.mjs     # a module the article ships…
+    night: midnight              # …or a theme the runtime knows
+```
+
+```html
+<figure class="kg" data-scene="./scenes/flow.mjs" data-theme="scoped"></figure>
+<figure class="kg" data-scene="./scenes/flow.mjs"></figure>
+<figure class="kg" data-scene="./scenes/flow.mjs" data-theme="inherit"></figure>
+```
+
+The first holds `scoped`'s claimed roles against the page. The second — its neighbour — is painted
+by the page, which is the half worth checking: a declaration that leaked would still look right on
+the figure that made it. The third declines the *article's* declaration out loud and follows the
+page like the second.
+
+Named rather than a path, and that is deliberate. The name has to resolve to the same palette in two
+places — the pre-render that draws the SVG a reader sees first, and the runtime that mounts over it
+— so the article declares the set once and both ends look it up. Declaring the set is also what
+keeps the answer reviewable: the palettes a folder may use are a list in one file, not a path
+scattered across forty `<figure>` tags.
+
+A name nobody declared resolves to nothing, and nothing is inherit — the right outcome for a typo as
+much as for a decision.
+
+```yaml
+# theme/scoped.mjs — one role claimed, nineteen inherited
+# export const light = createTheme({ colors: { canvas: "#ff00ff" } });
+```
+
+A partial palette is the shape to reach for. A figure that claimed all twenty roles would look
+correct whatever the page did, which is also how you would fail to notice that scoping had stopped
+working.
+
 ### What inheriting does not reach
 
 Three things stay baked into a figure at publish time, and no level of this cascade moves them:

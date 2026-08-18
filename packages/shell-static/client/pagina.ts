@@ -11,7 +11,7 @@ import "./pagina.css";
 // can recover from) — everything below that does NOT depend on it resolving (tabs, code-copy,
 // theme toggle, HMR bridge) is wired up before the guarded `mountAll` call further down, so a
 // runtime load failure or a figure throwing doesn't take those features down with it.
-import { mountAll, mountAllKineglyphLabs, defaultTheme, type ThemeTokens, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
+import { mountAll, mountAllKineglyphLabs, defaultTheme, inheritTheme, overrideTheme, registerTheme, themeByName, type ThemeTokens, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
 // pagina's editorial default: a figure in prose is a picture, and the instrument is opted into
 // with `data-instrument="true"`. See the module for why that opinion lives here and not in the
 // library.
@@ -36,6 +36,30 @@ let themes: Themes = { light: defaultTheme, dark: defaultTheme };
 let figures: EmbeddedFigure[] = [];
 let labs: KineglyphLabController[] = [];
 
+/**
+ * The theme one figure is mounted with — level 5 of the cascade, and the narrowest scope there is.
+ *
+ * A `<figure>` may name its own (`data-theme="midnight"`, or `data-theme="inherit"` said out loud),
+ * and the name is resolved by the runtime's own registry, so pagina keeps no list and a theme works
+ * here the moment Kineglyph learns it. A name nobody knows resolves to nothing, and nothing is
+ * inherit — the right outcome for a typo as much as for a decision.
+ *
+ * A declaration replaces both schemes rather than one. That is what makes it an override instead of
+ * a preference: the roles it claims are pinned on the drawing's own root, so they hold against
+ * whatever the page is painting, and they reach nothing outside that figure. Its neighbour, having
+ * claimed nothing, still follows the page — which is the half that has to keep working.
+ */
+const figureTheme = (element: HTMLElement): ThemeTokens | undefined => {
+  const name = element.dataset.theme;
+  if (name === undefined || name.trim() === "") return undefined;
+  // `inheritTheme()` rather than `undefined`, so an explicit `inherit` on a figure escapes the
+  // article's declaration instead of falling back to it.
+  return themeByName(name.trim()) ?? inheritTheme();
+};
+
+/** What a figure should be showing right now: its own declaration, or the page's scheme. */
+const themeFor = (element: HTMLElement, scheme: Theme): ThemeTokens => figureTheme(element) ?? themes[scheme];
+
 // --- theme toggle -------------------------------------------------------------------------
 // Wired before any await point: reads `themes`/`figures` through closures, so it works
 // correctly whether it fires before or after those variables are populated below.
@@ -48,7 +72,10 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
   } catch {
     /* private mode / storage disabled */
   }
-  for (const f of figures) f.controller.setTheme(themes[next]);
+  // Through `themeFor`, not `themes[next]`: a figure that declared a theme keeps it across the
+  // toggle. Handing every figure the page's scheme here is exactly how a scoped override would
+  // read as working and then quietly stop the first time a reader flipped the switch.
+  for (const f of figures) f.controller.setTheme(themeFor(f.element, next));
   for (const lab of labs) lab.setTheme(themes[next]);
   // Pre-rendered figures need nothing here. They are inline SVG whose every paint reads a
   // `--kg-color-*` that `tokens.css` maps onto `--pg-*`, so flipping `data-theme` above has
@@ -156,10 +183,57 @@ if (kgThemeUrl !== undefined && kgThemeUrl !== "") {
   }
 }
 
+/**
+ * The article's named palettes, registered under the names its figures use.
+ *
+ * `data-kg-themes` is `{ name: moduleUrl }`, written by the shell from `kineglyph.themes`. Each is
+ * registered before anything mounts, so `themeByName` — which is what both `figureTheme` here and
+ * the pre-render on the server ask — gives the same answer at both ends. A module that fails to
+ * load is warned about and skipped; its figures then inherit, which is the safe direction: a
+ * figure painted by the page is a figure a reader can still read.
+ *
+ * `overrideTheme`, because a figure naming a palette means it: the roles it claims are pinned on
+ * that figure's own root and hold against the page, and reach nothing outside it. A module that
+ * was authored with `createTheme({ colors: { accent } })` is left partial — it already recorded
+ * what it named — so a one-colour palette moves one colour and inherits the rest.
+ */
+const kgThemeUrls = root.dataset.kgThemes;
+if (kgThemeUrls !== undefined && kgThemeUrls !== "") {
+  let entries: [string, string][] = [];
+  try {
+    entries = Object.entries(JSON.parse(kgThemeUrls) as Record<string, string>);
+  } catch (e) {
+    console.warn("pagina: data-kg-themes is not valid JSON", e);
+  }
+  await Promise.all(entries.map(async ([name, spec]) => {
+    try {
+      if (!/[/\\]|^[a-z][a-z0-9+.-]*:/i.test(spec)) {
+        // A bare name the runtime already knows. `overrideTheme` because an article that wrote
+        // `midnight` under a name meant midnight's colours — a built-in that claims nothing would
+        // otherwise resolve to "inherit", the one reading nobody writing that line intends. It is
+        // the same wrapping the pre-render applies, so the two ends agree.
+        const found = themeByName(spec);
+        if (found !== undefined) registerTheme(name, overrideTheme(found));
+        return;
+      }
+      const m = (await import(/* @vite-ignore */ spec)) as Partial<Themes> & { default?: Partial<Themes> };
+      // Registered as authored: `createTheme` already recorded which roles the module named, so a
+      // one-colour palette moves one colour and inherits the other nineteen.
+      const tokens = m.light ?? m.default?.light;
+      if (tokens !== undefined) registerTheme(name, tokens);
+    } catch (e) {
+      console.warn(`pagina: kineglyph theme "${name}" failed to load`, e);
+    }
+  }));
+}
+
 try {
   figures = await mountAll({
     selector: "figure.kg:not([data-kineglyph-lab]), [data-kineglyph]:not([data-kineglyph-lab])",
-    theme: () => themes[current()],
+    // Per element, not per page. `mountAll` would read `data-theme` itself if pagina passed no
+    // theme at all, but pagina has to pass one — the article's — so the element's own declaration
+    // is resolved here or it is never consulted at all.
+    theme: (element) => themeFor(element, current()),
     mountOptions: figureChrome,
   });
   labs = await mountAllKineglyphLabs({

@@ -85,6 +85,30 @@ export const kineglyphThemeHref = (article: { readonly kineglyph?: { readonly th
 };
 
 /**
+ * The article's named palettes as the page should carry them: `{ name: url-or-name }`.
+ *
+ * A module the article ships becomes a URL to fetch. A bare name — `midnight`, or anything a host
+ * registered — is passed through unchanged, because there is nothing to fetch and the runtime's
+ * own registry is what answers it.
+ *
+ * Both kinds are listed, including the ones with nothing to load, and that is deliberate: the
+ * server resolves every entry here into the palette it pre-renders with, so the browser has to
+ * resolve exactly the same set or a figure changes colour the moment the runtime lands. A list
+ * that quietly dropped half its entries is how that kind of drift starts.
+ */
+export const kineglyphThemeHrefs = (
+  article: { readonly kineglyph?: { readonly themes?: Readonly<Record<string, string>> } | undefined },
+  base: string,
+): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [name, theme] of Object.entries(article.kineglyph?.themes ?? {})) {
+    if (!isKineglyphThemeModule(theme)) { out[name] = theme; continue; }
+    out[name] = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(theme) ? theme : `${base.replace(/\/$/, "")}/${theme}`;
+  }
+  return out;
+};
+
+/**
  * `kineglyph.widths`, checked.
  *
  * Every width is a full copy of every figure in the page it appears on, so the cap is not a
@@ -104,6 +128,35 @@ function figureWidths(value: unknown): readonly number[] {
   if (widths.length > MAX_FIGURE_WIDTHS)
     fail("kineglyph.widths", `must name at most ${MAX_FIGURE_WIDTHS} widths (each one is another copy of every figure)`);
   return [...new Set(widths)].sort((a, b) => b - a);
+}
+
+/** A theme name is a `data-theme` value and a registry key, so keep it to the boring alphabet. */
+const THEME_NAME = /^[A-Za-z][\w-]*$/;
+
+/**
+ * `kineglyph.themes`: the palettes a single `<figure>` may choose between by name.
+ *
+ * Level 5 of the cascade needs a vocabulary, and this is it. `kineglyph.theme` is the article's
+ * own palette — one declaration, applying to every figure that does not say otherwise — but a
+ * figure that wants to hold a *different* palette against the page has to be able to name one, and
+ * a name has to mean the same thing to the pre-render and to the browser or the figure changes
+ * colour when the runtime lands. So the article declares the set, once, and both ends resolve
+ * against it.
+ *
+ * `inherit` is not accepted as a key: it is reserved, it already means something at every level,
+ * and letting an article redefine it would make the one word that must travel unchanged the one
+ * word that does not.
+ */
+function themeMap(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    fail("kineglyph.themes", "must be a mapping of name to theme module or theme name");
+  const out: Record<string, string> = {};
+  for (const [name, module] of Object.entries(value as Record<string, unknown>)) {
+    if (!THEME_NAME.test(name)) fail(`kineglyph.themes.${name}`, "must be a name matching [A-Za-z][\\w-]*");
+    if (name === THEME_INHERIT) fail(`kineglyph.themes.${name}`, `is reserved: "${THEME_INHERIT}" means "follow the page" at every level`);
+    out[name] = str(module, `kineglyph.themes.${name}`);
+  }
+  return out;
 }
 
 export function parseArticleConfig(text: string): ArticleConfig {
@@ -158,7 +211,12 @@ export function parseArticleConfig(text: string): ArticleConfig {
     ...(o.site_url === undefined || o.site_url === null ? {} : { siteUrl: str(o.site_url, "site_url") }),
     ...optionalDate(o.published, "published"),
     ...optionalDate(o.updated, "updated"),
-    ...(kg === undefined ? {} : { kineglyph: { ...(kg.theme === undefined ? {} : { theme: str(kg.theme, "kineglyph.theme") }), ...(typeof kg.width === "number" ? { width: kg.width } : {}), ...(kg.widths === undefined ? {} : { widths: figureWidths(kg.widths) }) } }),
+    ...(kg === undefined ? {} : { kineglyph: {
+      ...(kg.theme === undefined ? {} : { theme: str(kg.theme, "kineglyph.theme") }),
+      ...(kg.themes === undefined || kg.themes === null ? {} : { themes: themeMap(kg.themes) }),
+      ...(typeof kg.width === "number" ? { width: kg.width } : {}),
+      ...(kg.widths === undefined ? {} : { widths: figureWidths(kg.widths) }),
+    } }),
     snippets: { roots },
     exclude,
     excludeGitignore,

@@ -58,6 +58,48 @@ export const light = tint(${JSON.stringify(THEMED_COLORS.light)});
 export const dark = tint(${JSON.stringify(THEMED_COLORS.dark)});
 `;
 
+/** The one colour the scoped palette claims. Not near anything else here, so a mix-up is visible. */
+export const SCOPED_CANVAS = "#ff00ff";
+
+/**
+ * A palette a single `<figure>` can name — and the shape that makes level 5 mean anything.
+ *
+ * `createTheme` rather than a spread over `defaultTheme`, and that is the whole difference: naming
+ * a colour *claims* it, so this theme asserts `canvas` and inherits the other nineteen roles. The
+ * figure that names it therefore holds one colour against the page and still follows it everywhere
+ * else — which is what "scoped" has to mean, and what a full-palette override could not
+ * demonstrate, because a figure that overrode everything would look right for the wrong reason.
+ */
+const SCOPED_THEME_MODULE = `import { createTheme } from "kineglyph";
+
+export const light = createTheme({ colors: { canvas: "${SCOPED_CANVAS}" } });
+export const dark = light;
+`;
+
+/**
+ * Three figures, one page: the whole of the figure-level cascade in a form a browser can measure.
+ *
+ * They are neighbours on purpose. "Scoped" is not a property of the declaring figure, it is a
+ * property of the ones beside it — a declaration that leaked would still look correct on the figure
+ * that made it, and only the neighbour would say so.
+ */
+export const FIGURE_THEMES_PAGE = "guide/figure-themes.md";
+const scene = '<figure class="kg" data-scene="../scenes/demo.mjs"';
+export const FIGURE_THEMES_MARKDOWN = `# Figure themes
+
+## Declares one
+
+${scene} id="fig-declared" data-theme="scoped"></figure>
+
+## Declares nothing
+
+${scene} id="fig-neighbour"></figure>
+
+## Declines, out loud
+
+${scene} id="fig-inherit" data-theme="inherit"></figure>
+`;
+
 /**
  * Every admonition the dialect has, in one page, for `admonitions.spec.ts`.
  *
@@ -101,8 +143,16 @@ export default async function globalSetup(): Promise<void> {
   // this copy is for.
   await cp(fileURLToPath(new URL("../packages/core/test/outside/", import.meta.url)), join(THEMED_ARTICLE, "..", "outside"), { recursive: true });
   await writeFile(join(THEMED_ARTICLE, "theme/kineglyph.mjs"), THEME_MODULE, "utf8");
+  await writeFile(join(THEMED_ARTICLE, "theme/scoped.mjs"), SCOPED_THEME_MODULE, "utf8");
+  await writeFile(join(THEMED_ARTICLE, FIGURE_THEMES_PAGE), FIGURE_THEMES_MARKDOWN, "utf8");
   const config = await readFile(join(FIXTURE, "article.yaml"), "utf8");
-  await writeFile(join(THEMED_ARTICLE, "article.yaml"), `${config}\nkineglyph:\n  theme: theme/kineglyph.mjs\n`, "utf8");
+  // The fixture's `nav:` is the last thing in the file and ends on a `children:` list, so the new
+  // page appends as one more child at that indent rather than needing the YAML re-emitted.
+  await writeFile(
+    join(THEMED_ARTICLE, "article.yaml"),
+    `${config}      - { title: Figure themes, page: ${FIGURE_THEMES_PAGE} }\n\nkineglyph:\n  theme: theme/kineglyph.mjs\n  themes:\n    scoped: theme/scoped.mjs\n`,
+    "utf8",
+  );
   await rm(THEMED_SITE, { recursive: true, force: true });
   await buildStatic({ folder: THEMED_ARTICLE, outDir: THEMED_SITE, shell: staticShell, base: THEMED_BASE, strict: true });
 
