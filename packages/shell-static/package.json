@@ -1,6 +1,6 @@
 {
   "name": "@pagina/shell-static",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The static HTML shell for a pagina site: page chrome, CSS tokens, theming, and the browser runtime that hydrates figures and search.",
   "license": "MIT",
   "author": "Harrison (https://github.com/Nano112)",
@@ -67,7 +67,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "^0.1.0",
+    "@pagina/core": "^0.2.0",
     "markdown-it": "^14.1.0",
     "shiki": "^3.12.0"
   },

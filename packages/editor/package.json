@@ -1,6 +1,6 @@
 {
   "name": "@pagina/editor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WYSIWYG editor for pagina article folders, built on TipTap, shipped as both a module and a self-contained IIFE bundle.",
   "license": "MIT",
   "author": "Harrison (https://github.com/Nano112)",
@@ -69,8 +69,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "^0.1.0",
-    "@pagina/shell-static": "^0.1.0",
+    "@pagina/core": "^0.2.0",
+    "@pagina/shell-static": "^0.2.0",
     "@tiptap/core": "^3.7.2",
     "@tiptap/extension-code": "^3.7.2",
     "@tiptap/extension-color": "^3.7.2",

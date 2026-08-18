@@ -1,6 +1,6 @@
 {
   "name": "@pagina/vite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Vite plugin and build pipeline for pagina: hot-reloading dev server, Kineglyph figure pre-rendering, and static site output.",
   "license": "MIT",
   "author": "Harrison (https://github.com/Nano112)",
@@ -53,12 +53,12 @@
     "@kineglyph/core": "^0.2.0",
     "@kineglyph/export": "^0.3.0",
     "@kineglyph/web": "^0.2.0",
-    "@pagina/core": "^0.1.0",
+    "@pagina/core": "^0.2.0",
     "vite": "^8.2.1"
   },
   "devDependencies": {
-    "@pagina/editor": "^0.1.0",
-    "@pagina/shell-static": "^0.1.0",
+    "@pagina/editor": "^0.2.0",
+    "@pagina/shell-static": "^0.2.0",
     "@types/markdown-it": "^14.1.2"
   }
 }
