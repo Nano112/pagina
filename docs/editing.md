@@ -13,9 +13,10 @@ someone with a text editor, and `pagina pack` without the editor ever having bee
 That is a promise the design has to keep continuously, not a claim made once. The editor parses
 with the *same* markdown-it instance the site renders with, so there is no second dialect that can
 drift; the serializer writes the dialect back; and the round trip `markdown → document → markdown`
-is asserted byte-for-byte over every fixture page, this site's own pages and a synthetic document
-for every node type. If a construct cannot survive that trip, the answer is to fix the serializer,
-not to store something else.
+is asserted byte-for-byte over the fixture's pages, two pages of a real Nucleation reference, the
+live demo's seed and a synthetic document for every node type (`packages/editor/test/roundtrip.test.ts`).
+If a construct cannot survive that trip, the answer is to fix the serializer, not to store
+something else.
 
 !!! tip "There is a live one on this site"
     [Try the editor](demo.md) runs the real editor in your browser against browser storage. No

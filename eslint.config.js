@@ -9,10 +9,10 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // Plain-JS Node scripts (the e2e host, the shell's CSS build step): the TS configs supply
-    // Node's globals everywhere else, and these files are outside them, so `no-undef` needs the
-    // handful they actually use.
-    files: ["e2e/**/*.mjs", "scripts/**/*.mjs", "packages/*/scripts/**/*.mjs"],
+    // Plain-JS Node scripts (the e2e host, the embedding example, the shell's CSS build step): the
+    // TS configs supply Node's globals everywhere else, and these files are outside them, so
+    // `no-undef` needs the handful they actually use.
+    files: ["e2e/**/*.mjs", "examples/**/*.mjs", "scripts/**/*.mjs", "packages/*/scripts/**/*.mjs"],
     languageOptions: {
       globals: { console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly" },
     },

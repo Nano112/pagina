@@ -44,8 +44,9 @@ exclude:
   - plans/
 
 nav:
-  - { title: What pagina is, page: index.md }
-  - { title: Get started, page: getting-started.md }
+  - { title: Why pagina, page: index.md }
+  - { title: How it works, page: how-it-works.md }
+  - { title: Install, page: install.md }
   - section: The contracts
     children:
       - { title: The article folder, page: article-folder.md }

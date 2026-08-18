@@ -10,3 +10,8 @@ playwright-report/
 site/
 site.pgz
 .release/
+
+# The article `examples/node-host/server.mjs` seeds for itself on first run: a pack of `docs/` and
+# the folder it unpacks into. Both are build output of the repository's own content.
+examples/node-host/.article/
+examples/node-host/.article.pgz
