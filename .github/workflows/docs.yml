@@ -1,0 +1,135 @@
+# pagina's documentation, built with pagina and deployed to GitHub Pages.
+#
+# The article is `docs/`, and the toolchain that renders it is this same checkout — so the site is
+# always built by the commit it documents. There is nothing to clone but Kineglyph, which supplies
+# the figure engine and is not published to npm yet.
+#
+# Action versions are pinned by commit SHA. A tag is a moving target that someone else controls,
+# and this workflow is handed a `GITHUB_TOKEN` that can publish.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "packages/**"
+      - "tools/build-docs-site.sh"
+      - ".github/workflows/docs.yml"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "packages/**"
+      - "tools/build-docs-site.sh"
+      - ".github/workflows/docs.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The deployment URL, path and all. `tools/build-docs-site.sh` derives `--base` from it, so the
+  # sub-path is stated once and the canonical and the asset URLs cannot disagree.
+  PAGINA_SITE_URL: https://nano112.github.io/pagina/
+  # Kineglyph is consumed from source. Pinned, because an unpinned figure engine means the site's
+  # pictures can change without a commit here.
+  KINEGLYPH_REF: 1422ee8511d709962d01cffe86f1a255496ff6b2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `configure-pages` needs these to create the Pages site on the first run. Without it, the
+      # very first deploy of a repository that has never published Pages fails on a site that does
+      # not exist yet.
+      pages: write
+      id-token: write
+    steps:
+      - name: Check out pagina
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pagina
+
+      - name: Check out Kineglyph
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Nano112/kineglyph
+          ref: ${{ env.KINEGLYPH_REF }}
+          path: kineglyph
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            pagina/package-lock.json
+            kineglyph/package-lock.json
+
+      - name: Build Kineglyph
+        working-directory: kineglyph
+        run: |
+          npm ci --no-audit --no-fund
+          npm run bootstrap
+
+      - name: Install and build pagina
+        working-directory: pagina
+        run: |
+          npm ci --no-audit --no-fund
+          # Direct symlinks rather than `npm link`: linking through the global prefix depends on
+          # machine state, and `npm ci` above has just pruned anything that was there. This is the
+          # same shape `npm run link:kineglyph` produces, without the global step.
+          mkdir -p node_modules/@kineglyph
+          for p in core svg anime plot scenes web export; do
+            rm -rf "node_modules/@kineglyph/$p"
+            ln -s "$GITHUB_WORKSPACE/kineglyph/packages/$p" "node_modules/@kineglyph/$p"
+          done
+          npm run build
+
+      - name: Build the documentation site
+        working-directory: pagina
+        run: tools/build-docs-site.sh "$GITHUB_WORKSPACE/site"
+
+      - name: Upload the article bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pagina-docs-bundle
+          path: ${{ github.workspace }}/site.pgz
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          enablement: true
+
+      - name: Upload the Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ github.workspace }}/site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

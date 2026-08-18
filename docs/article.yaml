@@ -1,0 +1,41 @@
+slug: pagina
+title: pagina
+form: docs
+status: published
+category: documentation
+tags: [documentation, static-site, markdown, kineglyph, typescript]
+description: >-
+  A documentation article is a folder of markdown. pagina renders it to a static site, packs it
+  into one portable file, and drops it into a host page without bringing a design system along.
+author: pagina contributors
+site_url: https://nano112.github.io/pagina/
+
+# No `cover:`. There is no image in this repository that honestly represents the project — the
+# only committed artwork is a test fixture's placeholder gradient — and a cover invented for the
+# occasion is worse than none: it is the first thing a reader sees and the first thing a social
+# card shows. The figures on the pages are drawn from real scenes instead.
+
+kineglyph:
+  # No `theme:` either, and that is the point rather than an omission. An article that declares
+  # no Kineglyph theme is painted by whatever `--pg-*` tokens its host has set, so these figures
+  # follow this page — light, dark, or a host's own palette. It is the contract `theming.md`
+  # describes, exercised by the article that describes it.
+  width: 960
+
+snippets:
+  # `..` is the repository root. The pages below quote pagina's real source — the token contract
+  # from the stylesheet that ships it, this article's own `article.yaml` — instead of a copy that
+  # can drift. A snippet that has gone stale is a build failure, not a wrong sentence.
+  roots: [".", ".."]
+
+nav:
+  - { title: What pagina is, page: index.md }
+  - { title: Get started, page: getting-started.md }
+  - section: The contracts
+    children:
+      - { title: The article folder, page: article-folder.md }
+      - { title: Theming, page: theming.md }
+  - section: Publishing
+    children:
+      - { title: Article bundles, page: bundles.md }
+      - { title: Deploying, page: deploying.md }

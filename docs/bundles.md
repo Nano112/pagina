@@ -9,8 +9,8 @@ pagina unpack nucleation.pgz ./article   # verify it, then write it
 ```
 
 A bundle is a ZIP with a `.pgz` extension. It is **built, not zipped** — see
-[the design note](design/2026-08-18-article-bundles.md) for why that distinction is the whole
-point.
+[the design note](https://github.com/Nano112/pagina/blob/main/docs/design/2026-08-18-article-bundles.md)
+for why that distinction is the whole point.
 
 ## What is in a bundle
 

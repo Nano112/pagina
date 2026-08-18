@@ -73,6 +73,16 @@ sets. Tokens with no dark column are scheme-independent.
 The editor uses the same contract — there is no second palette. Its own `--pge-*` properties are
 only the tool's geometry (`--pge-1`, `--pge-2`, `--pge-sidebar`, `--pge-split`).
 
+Those defaults are not transcribed into this page. They are quoted out of the stylesheet that
+ships them, `packages/shell-static/client/tokens.css`, at the moment this page was built:
+
+```css
+--8<-- "packages/shell-static/client/tokens.css:core"
+```
+
+If someone changes a default and forgets this page, the page changes with it — and if someone
+deletes the region, the build fails instead of publishing a table that has quietly gone wrong.
+
 ### Kineglyph figures
 
 A published figure is **inline SVG**, not an `<img>`, and every paint in it is written as
@@ -273,6 +283,11 @@ Which pages get a header is the author's call, not the host's: `cover_on` in `ar
 `root` (the landing page only, the default), `all`, or `none`.
 
 ## The four escape hatches, in order
+
+They are a ladder, not a menu: each rung hands the host more control and pagina less, and the last
+one gives up pagina's styling entirely. Take the first that works and stop there.
+
+<figure class="kg" data-scene="scenes/cascade.mjs"><figcaption>Each step down costs you something pagina was doing for you. Most hosts never leave the first rung, and the fourth is a decision rather than a preference.</figcaption></figure>
 
 ### 1. Map the tokens
 
