@@ -50,9 +50,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@kineglyph/core": "^0.1.0",
-    "@kineglyph/export": "^0.2.0",
-    "@kineglyph/web": "^0.1.0",
+    "@kineglyph/core": "^0.2.0",
+    "@kineglyph/export": "^0.3.0",
+    "@kineglyph/web": "^0.2.0",
     "@pagina/core": "^0.1.0",
     "vite": "^8.2.1"
   },

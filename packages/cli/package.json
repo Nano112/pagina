@@ -48,8 +48,8 @@
     "@pagina/shell-static": "^0.1.0"
   },
   "peerDependencies": {
-    "@kineglyph/core": "^0.1.0",
-    "@kineglyph/export": "^0.2.0",
-    "@kineglyph/web": "^0.1.0"
+    "@kineglyph/core": "^0.2.0",
+    "@kineglyph/export": "^0.3.0",
+    "@kineglyph/web": "^0.2.0"
   }
 }
