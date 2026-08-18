@@ -13,6 +13,10 @@ export { noteSelfWrite, type SelfWriteHook } from "./self-write.js";
 export { MemoryBackend, type MemoryBackendOptions } from "./memory-backend.js";
 export { HttpBackend, type HttpBackendOptions } from "./http-backend.js";
 export {
+  LocalStorageBackend, StorageQuotaError, hasLocalStorage,
+  type LocalStorageBackendOptions, type StorageEventLike, type StorageEventTarget, type StorageLike,
+} from "./local-storage-backend.js";
+export {
   BackendError, ConflictError,
   type ArticleBackend, type BackendChange, type FileEntry, type PublishPayload,
   type UploadResult, type WriteOptions,

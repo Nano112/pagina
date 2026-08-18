@@ -123,13 +123,41 @@ POST   {base}/publish { manifest, pages, figures } → { publishedAt }
 GET    {base}/events  (SSE)                  → { type, path, version } frames
 ```
 
-`version` is the sha1 of the file's bytes, so two servers handing out the same version for the
-same content is a feature (a no-op write is not a conflict) and mtime jitter is not. A *version*
+Over HTTP, `version` is the sha1 of the file's bytes, so two servers handing out the same version
+for the same content is a feature (a no-op write is not a conflict) and mtime jitter is not. The
+contract only requires that a version changes when the content does — `LocalStorageBackend` counts
+instead, deliberately. A *version*
 mismatch is a `409` carrying `{ theirs, version }` — the pair the conflict banner is built from;
 `If-Match: *` means "must already exist" and is a `412` when it does not, because there is no
 `theirs` to hand back. A `PUT` with no `If-Match` creates or replaces unconditionally. Implement
-`ArticleBackend` (`src/store/types.ts`) to talk to something else entirely; `MemoryBackend` is the
-reference for tests and demos, `HttpBackend` for the contract above.
+`ArticleBackend` (`src/store/types.ts`) to talk to something else entirely.
+
+Three implementations ship, and **one parametrised suite** (`test/backend-contract.ts`, run from
+`test/backends.test.ts`) checks all three against the same behaviour — `HttpBackend` over an
+in-process implementation of the endpoints above rather than response stubs:
+
+| | Use it when | Persistence | Cross-tab |
+| --- | --- | --- | --- |
+| `MemoryBackend` | tests, a demo that starts clean each time | none | `emit()` |
+| `LocalStorageBackend` | offline, a static site, a browser-only demo | `localStorage`, survives reload | the DOM `storage` event |
+| `HttpBackend` | anything with a server | the server's | SSE at `{base}/events` |
+
+```js
+const backend = new LocalStorageBackend({
+  namespace: "my-article",                       // keys scoped; two articles cannot collide
+  seed: { "article.yaml": "…", "index.md": "…" },// written only where missing
+});
+await backend.reset();                           // back to the seed
+backend.usage();                                 // { files, bytes }
+```
+
+Its versions are a **monotonic counter**, not a content hash: an identical write from a second tab
+still conflicts, and a version is never reused, so a stale one cannot match a deleted-and-recreated
+file. Uploads are **base64 in the same store, capped at 512 KB** (`maxBinaryBytes`) — IndexedDB
+would hold more but has no cross-tab event, which would split text and media across two notions of
+"current". A full store raises `StorageQuotaError` (507) with an actionable message and nothing
+half-written; an oversized upload is a 413. `publish()` is accepted but only its timestamp is
+persisted, because a rendered article is exactly what would fill the 5 MB.
 
 ## Trust model
 

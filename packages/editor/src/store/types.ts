@@ -45,6 +45,7 @@ export interface UploadResult {
   readonly version: string;
 }
 
+// --8<-- [start:contract]
 export interface ArticleBackend {
   list(): Promise<FileEntry[]>;
   read(path: string): Promise<{ text: string; version: string }>;
@@ -59,6 +60,7 @@ export interface ArticleBackend {
   /** Optional live updates for other-tab awareness. Returns an unsubscribe function. */
   subscribe?(cb: (ev: BackendChange) => void): () => void;
 }
+// --8<-- [end:contract]
 
 /** Any non-2xx response, carrying the HTTP status when there was one. */
 export class BackendError extends Error {
