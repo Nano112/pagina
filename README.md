@@ -20,6 +20,10 @@ Design goals, in order:
   Blade view, say) can consume the same manifest without pulling in anything else.
 - **Strict by default.** A nav entry without a file, a dead link, a missing snippet, a broken
   anchor, or a figure that fails to pre-render fails the build with a diagnostic naming the page.
+- **An article travels as one file.** `pagina pack` **builds** a bundle rather than zipping a
+  folder: it resolves the snippets that live outside it, copies only the media a page actually
+  references, carries the pre-rendered output, and checksums every file. `pagina unpack` verifies
+  the whole thing before it writes a byte. See **[docs/bundles.md](docs/bundles.md)**.
 
 > **Status:** early. The pipeline is complete and browser-verified end-to-end (build, dev
 > server, HMR, theme toggle, three figure forms), and Nucleation's docs are being ported page by
@@ -229,8 +233,10 @@ hatch for fully custom, non-pre-renderable interactivity.
 ## CLI
 
 ```
-pagina dev   <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL]
-pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL]
+pagina dev    <folder> [--port N] [--base /] [--host addr] [--edit] [--theme LEVEL] [--no-chrome] [--site-url URL]
+pagina build  <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--no-chrome] [--site-url URL]
+pagina pack   [folder] [-o article.pgz] [--base /] [--created ISO8601]
+pagina unpack <article.pgz> [dir] [--force]
 ```
 
 - Port precedence: `--port` > `PORT` env > `4321`. Blank or non-numeric values are ignored.
@@ -260,6 +266,17 @@ pagina build <folder> [--out dist] [--base /] [--no-strict] [--theme LEVEL] [--n
   only writer allowed into `.pagina/`); or buffer an oversized body (5 MB text/JSON, 50 MB upload,
   then `413`). Writes go to a temp file and are `rename`d into place, so an interrupted save can
   never leave a half-written page.
+- `pack` builds a **bundle**: one file holding the article, everything its pages reference, and
+  the pre-rendered output, with a `bundle.json` carrying a per-file SHA-256. The folder defaults
+  to the working directory and the output to `<folder>.pgz`. It refuses — it does not prune — a
+  dangling nav entry, a missing asset, a snippet resolving outside the declared roots, a symlink
+  pointing out of the folder, or a figure whose scene will not draw. `--created` pins the
+  timestamp so two packs of one folder produce identical bytes.
+- `unpack` verifies **everything** before it writes anything: entry names, the archive against
+  `bundle.json` in both directions, sizes, compression ratio and every checksum. A traversing,
+  absolute or symlinked entry refuses the whole bundle. It will not write into a non-empty
+  directory without `--force`. Full format and threat model:
+  **[docs/bundles.md](docs/bundles.md)**.
 
 ### With gerrymander (optional)
 

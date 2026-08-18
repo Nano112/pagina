@@ -3,7 +3,15 @@ export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
 export { parseArticleConfig, COVER_ON } from "./config.js";
 export { WORDS_PER_MINUTE, countWords, prose, readingMinutes } from "./reading-time.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
-export { expandSnippets } from "./plugins/snippets.js";
+export { expandSnippets, SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";
+export {
+  BUNDLE_FORMAT, BUNDLE_MANIFEST_PATH, BUNDLE_RENDERED_DIR, DEFAULT_BUNDLE_LIMITS, BundleError,
+  assertSafeBundlePath, buildBundleContents, isSafeBundlePath, parseBundleManifest, sha256Hex,
+  verifyBundleEntries,
+  type BuildBundleOptions, type BuiltBundle, type BundleEntry, type BundleErrorCode,
+  type BundleFileRecord, type BundleLimits, type BundleManifest, type RenderedOutput,
+  type VerifyBundleOptions,
+} from "./bundle.js";
 export { ADMONITION_KINDS } from "./plugins/admonition.js";
 export { slugify } from "./plugins/anchors.js";
 export { extractFigures, inlineArticleFigures, inlineFigureSvgs, type DrawnFigure, type FigureSvg } from "./figures.js";

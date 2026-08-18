@@ -2,9 +2,21 @@ import type { ContentFs, Diagnostic } from "../types.js";
 
 export interface SnippetContext { readonly fs: ContentFs; readonly roots: readonly string[]; readonly pagePath: string }
 
-const DIRECTIVE = /^(\s*)--8<--\s+"([^"]+)"\s*$/;
+/**
+ * A `--8<--` include, as a whole line: its indentation, then the quoted reference.
+ *
+ * Exported because `bundle.ts` has to find the same directives this expands in order to point
+ * them at the copies it puts in the bundle, and two regexes for one syntax is one syntax too many.
+ */
+export const SNIPPET_DIRECTIVE = /^(\s*)--8<--\s+"([^"]+)"\s*$/;
+const DIRECTIVE = SNIPPET_DIRECTIVE;
 
-function joinPosix(...parts: string[]): string {
+/**
+ * Joins posix path segments, collapsing `.` and `..` — the arithmetic snippet roots are resolved
+ * with. A result may still begin with `..`: a root of `".."` is how an article reaches its repo,
+ * and whether that is *allowed* is a separate question from where it points.
+ */
+export function joinPosix(...parts: string[]): string {
   const out: string[] = [];
   for (const seg of parts.join("/").split("/")) {
     if (seg === "" || seg === ".") continue;

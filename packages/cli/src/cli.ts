@@ -1,19 +1,23 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { buildStatic, createDevServer, type ThemeLevel } from "@pagina/vite";
+import { BUNDLE_EXTENSION, buildStatic, createDevServer, packBundle, unpackBundle, verifyBundleFile, type ThemeLevel } from "@pagina/vite";
 import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
-import { PaginaBuildError } from "@pagina/core";
+import { BundleError, PaginaBuildError } from "@pagina/core";
 
-const USAGE = "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com]";
+const USAGE = [
+  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com]",
+  "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>]",
+  "       pagina unpack <article.pgz> [dir] [--force]",
+].join("\n");
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string; created?: string; force?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
-      out: { type: "string" },
+      out: { type: "string", short: "o" },
       base: { type: "string" },
       port: { type: "string" },
       host: { type: "string" },
@@ -22,6 +26,8 @@ try {
       theme: { type: "string" },
       "no-chrome": { type: "boolean" },
       "site-url": { type: "string" },
+      created: { type: "string" },
+      force: { type: "boolean" },
     },
   }));
 } catch {
@@ -29,13 +35,21 @@ try {
   process.exit(2);
 }
 const [cmd, folderArg] = positionals;
-if ((cmd !== "dev" && cmd !== "build") || folderArg === undefined) {
+const COMMANDS = ["dev", "build", "pack", "unpack"];
+if (cmd === undefined || !COMMANDS.includes(cmd)) {
   console.error(USAGE);
   process.exit(2);
 }
-const folder = resolve(folderArg);
+// `pack` is the one command whose folder defaults: the folder it is run in is almost always the
+// article, and `pagina pack` reads better than `pagina pack .`.
+if (folderArg === undefined && cmd !== "pack") {
+  console.error(USAGE);
+  process.exit(2);
+}
+const folder = resolve(folderArg ?? ".");
 const base = values.base ?? "/";
-const md = await createHighlightedMarkdown();
+// `unpack` renders nothing, and the highlighter is the expensive part of starting up.
+const md = cmd === "unpack" ? undefined : await createHighlightedMarkdown();
 
 // Theming (see `docs/theming.md`): `--theme` picks how much pagina CSS the pages link, and
 // `--no-chrome` drops pagina's own header row for a host that supplies one. Both are omitted
@@ -70,11 +84,54 @@ const port = [values.port, process.env.PORT].map((v) => Number(v)).find((n) => N
 // loopback-only default.
 const host = values.host ?? process.env.HOST;
 
-if (cmd === "dev") {
+/** The slug a bundle declares — read (and fully verified) without writing anything. */
+async function peekSlug(file: string): Promise<string> {
+  return (await verifyBundleFile(file)).manifest.slug;
+}
+
+if (cmd === "pack") {
+  // Named after the folder rather than a fixed `bundle.pgz`: a downloads directory full of files
+  // with one name tells nobody which article is which. `-o` overrides.
+  const out = resolve(values.out ?? `${basename(folder)}${BUNDLE_EXTENSION}`);
+  try {
+    const r = await packBundle({
+      folder, out, base,
+      ...(md === undefined ? {} : { md }),
+      ...(values.created === undefined ? {} : { created: values.created }),
+    });
+    for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);
+    console.log(`pagina: packed ${r.manifest.slug} — ${String(r.manifest.files.length)} files, ${String(r.size)} bytes → ${out}`);
+  } catch (e) {
+    if (e instanceof BundleError || e instanceof PaginaBuildError) {
+      console.error(e.message);
+      process.exit(1);
+    }
+    throw e;
+  }
+} else if (cmd === "unpack") {
+  const file = resolve(folderArg!);
+  const [, , dirArg] = positionals;
+  try {
+    // Without a destination, the article lands in a folder named after itself. The slug is only
+    // known once the bundle has been read, so this needs the descriptor first.
+    const r = await unpackBundle({
+      file,
+      dir: resolve(dirArg ?? (await peekSlug(file))),
+      ...(values.force === true ? { force: true } : {}),
+    });
+    console.log(`pagina: unpacked ${r.manifest.slug} — ${String(r.files.length)} files → ${r.dir}`);
+  } catch (e) {
+    if (e instanceof BundleError) {
+      console.error(e.message);
+      process.exit(1);
+    }
+    throw e;
+  }
+} else if (cmd === "dev") {
   // `--edit` makes the folder writable over HTTP for anyone who can reach the port, so it stays
   // opt-in per run and inherits the server's loopback-only default bind.
   const server = await createDevServer({
-    folder, shell: staticShell, base, md, port, ...theming, ...seo,
+    folder, shell: staticShell, base, md: md!, port, ...theming, ...seo,
     ...(host === undefined ? {} : { host }),
     ...(values.edit === true ? { edit: true } : {}),
   });
@@ -89,7 +146,7 @@ if (cmd === "dev") {
       base,
       strict: values["no-strict"] !== true,
       shell: staticShell,
-      md,
+      md: md!,
       ...theming,
       ...seo,
     });
