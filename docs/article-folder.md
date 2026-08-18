@@ -1,7 +1,7 @@
 # The article folder
 
-An article is a directory with an `article.yaml` in it. Everything else — how many pages, how they
-are nested, what media they use — follows from that file, because **the nav is the index**.
+An article is a directory with an `article.yaml` in it. Everything else, how many pages, how they
+are nested and what media they use, follows from that file, because **the nav is the index**.
 
 ## The nav decides what is a page
 
@@ -32,8 +32,8 @@ than transcribed:
 ```
 
 !!! warning "Naming it `article.yaml` here would not survive `pack`"
-    That directive reaches this file through the repository root — the second declared snippet
-    root — rather than as the plain `article.yaml` beside this page, and it has to. `pack` rewrites
+    That directive reaches this file through the repository root (the second declared snippet
+    root) rather than as the plain `article.yaml` beside this page, and it has to. `pack` rewrites
     the bundled `article.yaml` to collapse the snippet roots, so a page that includes its own
     config by its own name asks for two different files at one path in the bundle and fails with
     `bundle-collision`. Reaching it by the longer path files it under `snippets/` instead, and both
@@ -53,8 +53,8 @@ The fields, in full:
 | `author` | carried into the article's metadata and structured data |
 | `site_url` | where the article lives, for canonical URLs. `--site-url` overrides it |
 | `cover`, `cover_alt` | a path *relative to the folder*, and its alt text |
-| `cover_on` | `root` (default), `all` or `none` — which pages show the cover header |
-| `cover_fit` | `contain` (default) or `cover` — whether the cover may be cropped to fill its band |
+| `cover_on` | `root` (default), `all` or `none`: which pages show the cover header |
+| `cover_fit` | `contain` (default) or `cover`: whether the cover may be cropped to fill its band |
 | `theme` | a CSS file of the article's own, writing `--pg-*`; or `inherit`. Level 3 of [the cascade](theming.md#the-cascade), and a page may override it in its front matter |
 | `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures, a theme by name, or `inherit`. A palette [claims the roles it names](theming.md#level-5-the-figure) and inherits the rest from the page |
 | `kineglyph.width` | the layout width figures are pre-rendered at |
@@ -75,7 +75,7 @@ nav:
       - { title: The article folder, page: article-folder.md }
 ```
 
-The first page in nav order is the landing page — the one a reader arrives at, and the one
+The first page in nav order is the landing page: the one a reader arrives at, and the one
 `cover_on: root` means.
 
 The cover is a band across the **whole page**, above the sidebar and the content column, and the
@@ -100,7 +100,7 @@ uses, so what follows is demonstrated on the page as well as described.
 ### Admonitions
 
 `!!!` for a static block, `???` for a collapsible one. The body is indented four spaces. The title
-is optional — without one it is the capitalised kind; with an empty one (`""`) you get the glyph
+is optional. Without one it is the capitalised kind; with an empty one (`""`) you get the glyph
 and no label.
 
 ```
@@ -208,7 +208,7 @@ Excluded from every build, before `article.yaml` says anything:
 
 | Pattern | What it covers |
 | --- | --- |
-| `.*` | dotfiles and dot-directories at any depth — `.git`, `.env`, `.DS_Store`, `.github` |
+| `.*` | dotfiles and dot-directories at any depth: `.git`, `.env`, `.DS_Store`, `.github` |
 | `node_modules/` | a dependency tree is never content, and it is the largest thing that lands in a folder by accident |
 | `Thumbs.db`, `desktop.ini` | the two Windows shell droppings that are not dotfiles |
 
@@ -253,16 +253,16 @@ that quietly drops a file is its own failure mode. So it does not drop anything 
   with a dead image on it;
 - `exclude_gitignore: false` turns the whole thing off.
 
-One thing it does *not* do: if the article folder is itself inside an ignored directory — a
-`dist/`, a scratch tree — git would report every file in it as ignored. That is an answer about the
+One thing it does *not* do: if the article folder is itself inside an ignored directory (a
+`dist/`, a scratch tree), git would report every file in it as ignored. That is an answer about the
 container, not about the article, so it is discarded and the build proceeds on `exclude` alone.
 
 ### The unreferenced report
 
 Everything above is a list someone has to write. This is the part that tells you what you forgot.
 
-After the build, pagina walks the article the way `pack` does — from the nav outwards, through
-every link, figure, cover, scene module and whatever those modules import — and reports every file
+After the build, pagina walks the article the way `pack` does, from the nav outwards through
+every link, figure, cover, scene module and whatever those modules import, and reports every file
 it copied that the walk never reached:
 
 ```
@@ -283,7 +283,7 @@ or named.
 ### Where the design notes went
 
 `docs/design/` and `docs/plans/` are in this repository and deliberately out of the nav. They are
-dated working documents — they argue a decision at a moment in time, and several describe defects
+dated working documents: they argue a decision at a moment in time, and several describe defects
 that have since been fixed. Publishing them as reference material would misdescribe what they are.
 They are now named in this article's own `exclude`, rather than relying on the fact that markdown
 files are not copied as assets, and they remain readable on

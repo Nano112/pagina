@@ -1,7 +1,7 @@
 # Try the editor
 
 Below is pagina's editor, running in this page. It is the same build a `pagina dev --edit` session
-loads — the same document model, the same live preview, the same conflict handling. The only thing
+loads: the same document model, the same live preview, the same conflict handling. The only thing
 swapped out is where the files live: instead of a folder on disk behind an HTTP contract, this one
 writes to your browser's own storage through `LocalStorageBackend`.
 
@@ -10,9 +10,9 @@ get a conflict banner, because two tabs really are two writers.
 
 !!! warning "What this demo is not"
     There is **no server**. Nothing you type leaves this browser, nothing is uploaded, and there is
-    nothing to log into. *Publish* is real — it renders every page and every figure here, in this
-    browser, and drops you into the reading view of what you wrote — but what it renders is stored
-    in this tab and shipped nowhere. Your work lives in this browser's storage for this site only:
+    nothing to log into. *Publish* is real: it renders every page and every figure here, in this
+    browser, and drops you into the reading view of what you wrote. What it renders is stored in
+    this tab and shipped nowhere. Your work lives in this browser's storage for this site only:
     clearing site data, or opening the page in a different browser or a private window, starts over.
     Browser storage holds about 5 MB in total, so uploads are capped at 512 KB each.
 
@@ -69,13 +69,13 @@ const backend = new LocalStorageBackend({ namespace: "pagina-docs-demo", seed: S
 mountEditor(document.getElementById("editor"), { backend, page: "index.md" });
 ```
 
-`namespace` scopes every key, so this demo cannot collide with another article — or another
-application — stored by the same site. `seed` writes only files that are *missing*, which is what
+`namespace` scopes every key, so this demo cannot collide with another article, or another
+application, stored by the same site. `seed` writes only files that are *missing*, which is what
 makes a reload keep your work rather than overwrite it every time the page loads; `reset()` puts the
 sample back.
 
-The 1.3 MB bundle is loaded on demand — a click, or an `IntersectionObserver` firing when this
-section comes into view — so a reader who never scrolls this far never downloads it. Everything else
+The 1.3 MB bundle is loaded on demand (a click, or an `IntersectionObserver` firing when this
+section comes into view), so a reader who never scrolls this far never downloads it. Everything else
 on this site is static HTML the way it always was.
 
 The preview pane works because `@pagina/core` is pure: the same renderer that builds this site runs
@@ -85,8 +85,8 @@ page uses — one implementation, three callers.
 
 ## Publish, with no server to publish to
 
-Press *Publish* and the editor leaves. What you get back is the article — rendered by
-`@pagina/core`, with every Kineglyph figure drawn to SVG in light and dark, in this browser — as a
+Press *Publish* and the editor leaves. What you get back is the article, rendered by
+`@pagina/core` with every Kineglyph figure drawn to SVG in light and dark, in this browser, as a
 reader would see it, with a way back to the editor.
 
 That is not a mock-up of publishing; it is publishing, minus the delivery. The rendered pages and
@@ -111,8 +111,8 @@ other exercise at all.
 Measured at a 390 px viewport rather than guessed.
 
 The three panes stack into one column, the text is full width and legible, typing works, and the
-page does not scroll sideways. The pages sidebar is not on screen below 900 px — three panes on a
-phone help nobody — so a floating **Pages** button takes its place: it opens the same list in a
+page does not scroll sideways. The pages sidebar is not on screen below 900 px. Three panes on a
+phone help nobody, so a floating **Pages** button takes its place: it opens the same list in a
 modal, with the same New page, Upload and All files controls, and closes when you pick a page. Until
 recently there was no such control and the list was simply unreachable, which meant you got the page
 the demo opened and nothing else.
