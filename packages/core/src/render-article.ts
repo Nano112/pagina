@@ -1,6 +1,7 @@
 import type MarkdownIt from "markdown-it";
 import type { ArticleMeta, ContentFs, Diagnostic, Manifest, NavEntry, NavNode, PageMeta, RenderedArticle, RenderedPage } from "./types.js";
 import { parseArticleConfig } from "./config.js";
+import { articleExcluder } from "./exclude.js";
 import { renderPage, pageSlug } from "./render-page.js";
 import { hrefOf, resolveRelative } from "./links.js";
 import { truncateWords } from "./seo.js";
@@ -15,6 +16,15 @@ export interface RenderArticleOptions {
   /** Overrides `article.yaml`'s `site_url` — a folder that several hosts publish needs one origin
    *  per host, and the folder cannot know them. */
   readonly siteUrl?: string;
+  /**
+   * Extra exclusion patterns, appended to {@link DEFAULT_EXCLUDE} and `article.yaml`'s `exclude`.
+   *
+   * For the exclusions the folder cannot state itself: `@pagina/vite` passes the paths git says
+   * are ignored, which is a fact about the checkout rather than about the article. Kept as an
+   * option instead of read here so core stays filesystem-agnostic — the editor's in-memory store
+   * and a bundle's reader have no git to ask.
+   */
+  readonly exclude?: readonly string[];
 }
 
 interface Flat { readonly page: string; readonly title: string; readonly crumbs: readonly { title: string; href?: string }[] }
@@ -146,7 +156,10 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
       else diagnostics.push({ severity: "error", code: "figure-id-collision", message: `figure id "${f.id}" is used by both ${owner} and ${p.path}`, page: p.path });
     }
   const figures: Manifest["figures"] = Object.fromEntries(Object.values(pages).flatMap((p) => p.figures.map((f) => [f.id, { page: p.href, kind: f.kind, ...(f.scene === undefined ? {} : { scene: f.scene }), staticBase: `${base}/_pagina/figures/${pageSlug(p.href)}/${f.id}` }])));
-  const assets = (await o.fs.list(".")).filter((f) => !/\.md$/i.test(f) && f !== "article.yaml");
+  // What gets copied into the output — which is to say, what gets published. The rule used to be
+  // "everything that is not a page", which publishes whatever happens to be sitting in the folder.
+  const excluded = articleExcluder(config.exclude, o.exclude ?? []);
+  const assets = (await o.fs.list(".")).filter((f) => !/\.md$/i.test(f) && f !== "article.yaml" && !excluded(f));
   // The landing page is the first page in nav order — the one a reader arrives at, and the one
   // `coverOn: "root"` names. Emitted so no consumer has to re-walk `nav` to find it.
   const rootHref = present.length === 0 ? "/" : hrefOf(present[0]!.page);

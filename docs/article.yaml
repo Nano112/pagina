@@ -35,6 +35,14 @@ snippets:
   # can drift. A snippet that has gone stale is a build failure, not a wrong sentence.
   roots: [".", ".."]
 
+# Not article content, and not published. `design/` and `plans/` are dated working documents kept
+# in the repository on purpose (see "Where the design notes went" in article-folder.md); naming
+# them here is what the folder's own documentation tells everyone else to do, and an article that
+# does not follow its own contract is a contract nobody believes.
+exclude:
+  - design/
+  - plans/
+
 nav:
   - { title: What pagina is, page: index.md }
   - { title: Get started, page: getting-started.md }

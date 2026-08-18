@@ -54,6 +54,24 @@ export interface ArticleConfig {
     readonly widths?: readonly number[];
   };
   readonly snippets: { readonly roots: readonly string[] };                    // default ["."]
+  /**
+   * Files in the folder that are not article content, as gitignore-shaped globs.
+   *
+   * The build copies assets verbatim, so this list is the difference between "in the folder" and
+   * "on the public web". {@link DEFAULT_EXCLUDE} is always applied first and these are appended,
+   * so a `!` entry here can re-include something a default caught. `article.yaml` writes it as
+   * `exclude`.
+   */
+  readonly exclude: readonly string[];
+  /**
+   * Whether a folder inside a git work tree also excludes what git ignores. Default `true`.
+   *
+   * `.gitignore` is the expression of "not for publication" that most folders already have, and
+   * the one that would have kept a directory of internal notes off the public web. It is honoured
+   * rather than guessed at: what it dropped is reported by every build. `article.yaml` writes it
+   * as `exclude_gitignore`.
+   */
+  readonly excludeGitignore: boolean;
   readonly nav: readonly NavEntry[];
 }
 export interface Heading { readonly id: string; readonly text: string; readonly level: number }
@@ -131,8 +149,8 @@ export interface PageMeta {
   readonly readingMinutes?: number;
 }
 
-/** `article.yaml`, minus the two fields that describe the build rather than the article. */
-export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "cover"> {
+/** `article.yaml`, minus the fields that describe the build rather than the article. */
+export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "cover" | "exclude" | "excludeGitignore"> {
   /** Resolved site URL of the article cover, or the absolute URL the author gave. */
   readonly cover?: string;
   /**

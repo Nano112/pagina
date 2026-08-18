@@ -123,6 +123,37 @@ Two consequences worth knowing:
   `<meta name="robots" content="noindex, follow">`. It needs no JavaScript: the address is the only
   part a script fills in, and the HTML ships a truthful sentence in its place.
 
+## Publishing from CI
+
+A deploy is the moment a mistake stops being reversible, so two things belong in the pipeline
+before it.
+
+**Check what you are about to publish.** Add `--strict-assets` to the build that deploys. The
+normal build *warns* about a file nothing in the article references — see
+[the unreferenced report](article-folder.md) — because a working build should not fail over a font
+a stylesheet pulls in. A deploy is the other case: nothing reaches that file, nothing explains why
+it is going out, and a red build is cheaper than an unpublishable-again file.
+
+```sh
+pagina build docs --out site --site-url "$PAGINA_SITE_URL" --strict-assets
+```
+
+`.gitignore` is honoured by default when the folder is in a git repository, which is usually
+already the right answer — but a CI checkout is a *fresh clone*, so anything git ignores is not
+there at all and the report is the part that still does work.
+
+**Run the tests, all of them.** pagina's own `.github/workflows/test.yml` runs build, typecheck,
+lint, the unit suite **and the Playwright suite** on every push and pull request, and `npm test`
+runs the same five locally in the same order. That is deliberate: for a while `npm test` meant the
+unit suite alone and the end-to-end lane was one someone had to remember, which is how a run was
+reported green while eight browser tests were red. If a lane is optional, it is not a gate.
+
+!!! tip "Pin what you build against"
+    pagina's figure engine, Kineglyph, is a git dependency built from source. Both workflows read
+    its commit SHA from one file, `.github/kineglyph-ref`, rather than each carrying a copy —
+    an unpinned figure engine means the site's pictures can change without a commit, and two
+    pinned copies means the lane that tests and the lane that deploys can drift apart.
+
 ## Summary
 
 | | root deployment | sub-path deployment | mirror |

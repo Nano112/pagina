@@ -18,6 +18,8 @@ export { extractFigures, inlineArticleFigures, inlineFigureSvgs, FIGURE_WIDTHS, 
 export { hrefOf, resolveRelative, rewriteLinks } from "./links.js";
 export { renderPage, pageSlug } from "./render-page.js";
 export { renderArticle, PaginaBuildError } from "./render-article.js";
+export { DEFAULT_EXCLUDE, articleExcluder, makeExcluder } from "./exclude.js";
+export { toFolderPath, walkReferences, type ReferenceWalk, type WalkReferencesOptions } from "./references.js";
 export { parseFrontMatter, splitFrontMatter, FRONT_MATTER_RE } from "./front-matter.js";
 export {
   DESCRIPTION_MAX, absoluteUrl, deploymentDiagnostics, deploymentUrl, escapeAttr, firstParagraph,

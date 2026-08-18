@@ -6,13 +6,13 @@ import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { BundleError, PaginaBuildError } from "@pagina/core";
 
 const USAGE = [
-  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
+  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--strict-assets] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
   "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>]",
   "       pagina unpack <article.pgz> [dir] [--force]",
 ].join("\n");
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
@@ -25,6 +25,9 @@ try {
       "no-strict": { type: "boolean" },
       theme: { type: "string" },
       "no-chrome": { type: "boolean" },
+      // Turns the unreferenced-file report into a refusal. For the build that publishes something
+      // you would mind leaking: nothing reaches the file, so nothing explains why it is going out.
+      "strict-assets": { type: "boolean" },
       "site-url": { type: "string" },
       "mirror-of": { type: "string" },
       created: { type: "string" },
@@ -183,6 +186,7 @@ if (cmd === "pack") {
       outDir: resolve(values.out ?? "dist"),
       base,
       strict: values["no-strict"] !== true,
+      ...(values["strict-assets"] === true ? { strictAssets: true } : {}),
       shell: staticShell,
       md: md!,
       ...theming,

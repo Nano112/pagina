@@ -3,8 +3,9 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, sitemapXml, type Diagnostic, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
+import { gitIgnoredPaths } from "./gitignore.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 
@@ -40,6 +41,20 @@ export interface BuildOptions {
    * asks to be read and not to be ranked.
    */
   readonly mirrorOf?: string;
+  /**
+   * Turn the unreferenced-file report into errors. Default `false`.
+   *
+   * The report names every file the build copied that no page, cover, figure or module import
+   * reaches — dead weight at best, and at worst something the author did not mean to publish. It
+   * is a **warning** by default because a real folder legitimately contains files this walk cannot
+   * see: an image a scene module builds a URL for at runtime, a font a stylesheet pulls in, a
+   * `.well-known` file a host serves. Failing those builds would teach authors to widen `exclude`
+   * until it stops complaining, which is the opposite of containment.
+   *
+   * `true` for the build that publishes something you would mind leaking: it refuses to write a
+   * site containing a file nobody asked for, and the fix is to name it in `exclude` or delete it.
+   */
+  readonly strictAssets?: boolean;
 }
 
 export interface BuildResult {
@@ -65,6 +80,87 @@ function stripBase(url: string, base: string): string {
   // Only strip at a path-segment boundary: base `/docs` must not eat `/docsearch/...`.
   const inBase = b !== "" && (url === b || url.startsWith(`${b}/`));
   return (inBase ? url.slice(b.length) : url).replace(/^\/+/, "");
+}
+
+/**
+ * Everything this folder excludes beyond the built-in defaults and its own `exclude` list — which
+ * today means whatever git ignores — and what to tell the author about it.
+ *
+ * Reported rather than applied silently. Honouring `.gitignore` is the right default (it is where
+ * "not for publication" is already written, and it is what would have kept a directory of internal
+ * notes off the public web), but a default that removes files without saying so is exactly the
+ * kind of quiet behaviour this work exists to remove. So every build that drops something names
+ * how much and, up to a readable number, which.
+ */
+async function folderExclusions(
+  folder: string,
+  fs: NodeContentFs,
+  config: ArticleConfig,
+): Promise<{ exclude: string[]; gitIgnored: Set<string>; diagnostics: Diagnostic[] }> {
+  const none = { exclude: [], gitIgnored: new Set<string>(), diagnostics: [] };
+  if (!config.excludeGitignore) return none;
+  const all = await fs.list(".");
+  const ignored = await gitIgnoredPaths(folder, all);
+  if (ignored === undefined || ignored.size === 0) return none;
+  const named = [...ignored].sort();
+  const shown = named.slice(0, 10);
+  return {
+    // As literal paths, not as patterns: git already decided, and re-expressing its answer as a
+    // glob is a second matcher that can disagree with the first.
+    exclude: named,
+    gitIgnored: ignored,
+    diagnostics: [{
+      severity: "warning",
+      code: "gitignored-excluded",
+      message: `git ignores ${String(ignored.size)} file(s) in this folder, so they were not published: ${shown.join(", ")}${named.length > shown.length ? `, and ${String(named.length - shown.length)} more` : ""}. Set \`exclude_gitignore: false\` in article.yaml to publish them anyway.`,
+    }],
+  };
+}
+
+/** The codes {@link unreferencedReport} raises, and the only ones it may fail a build on. */
+const CONTAINMENT_CODES = new Set(["unreferenced-file", "gitignored-but-referenced"]);
+
+/**
+ * The files the build copied that nothing reaches.
+ *
+ * A folder is not a manifest. Everything in it that is not a page gets copied to the public web,
+ * and the only evidence an author has that a file *belongs* there is that something links to it.
+ * So the same walk the bundle uses to decide what to carry is run over the built site to decide
+ * what to *mention*: an asset no page links, no figure draws, no cover names and no scene module
+ * imports is either dead weight or a mistake, and both are worth a line of output.
+ *
+ * One case is escalated regardless of `strict`: a file git ignores that a page nevertheless
+ * references. Honouring `.gitignore` would drop it and leave a broken image on a published page,
+ * which is the one outcome worse than either alternative, so the build stops and says so.
+ */
+async function unreferencedReport(o: {
+  fs: NodeContentFs;
+  article: RenderedArticle;
+  config: ArticleConfig;
+  base: string;
+  gitIgnored: ReadonlySet<string>;
+  strict: boolean;
+}): Promise<Diagnostic[]> {
+  const walk = await walkReferences({
+    fs: o.fs, article: o.article.pages, manifest: o.article.manifest, config: o.config, base: o.base,
+  });
+  const diagnostics: Diagnostic[] = [];
+  for (const path of walk.wanted.keys()) {
+    if (!o.gitIgnored.has(path)) continue;
+    diagnostics.push({
+      severity: "error",
+      code: "gitignored-but-referenced",
+      message: `${walk.wanted.get(path) ?? "the article"} references ${path}, which git ignores — publishing would leave a dead link. Commit it, or stop referencing it.`,
+    });
+  }
+  const unreferenced = o.article.manifest.assets.filter((a) => !walk.bytes.has(a) && !walk.wanted.has(a) && !walk.snippets.has(a));
+  for (const path of unreferenced)
+    diagnostics.push({
+      severity: o.strict ? "error" : "warning",
+      code: "unreferenced-file",
+      message: `${path} was copied into the site but nothing in the article references it. Add it to \`exclude\` in article.yaml if it is not meant to be published.`,
+    });
+  return diagnostics;
 }
 
 const KINEGLYPH_ENTRY = "_pagina/.kineglyph-entry.ts";
@@ -124,14 +220,35 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   const base = o.base ?? "/";
   const strict = o.strict ?? true;
   const fs = new NodeContentFs(o.folder);
-  const article = await renderArticle({ fs, strict, base, ...(o.md === undefined ? {} : { md: o.md }), ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }) });
+  const config = parseArticleConfig(await fs.read("article.yaml"));
+  // What the folder says is not for publication, before anything is read as content. `.gitignore`
+  // is asked first because it is the answer that already exists — see `gitignore.ts`.
+  const containment = await folderExclusions(o.folder, fs, config);
+  const article = await renderArticle({
+    fs, strict, base,
+    ...(containment.exclude.length === 0 ? {} : { exclude: containment.exclude }),
+    ...(o.md === undefined ? {} : { md: o.md }),
+    ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
+  });
   await mkdir(o.outDir, { recursive: true });
   const files: string[] = [];
 
-  const config = parseArticleConfig(await fs.read("article.yaml"));
   const themes = await loadKineglyphThemes(o.folder, config);
   const prerendered = await prerenderFigures(article, o.folder, themes, figureWidths(config), base);
-  const diagnostics: Diagnostic[] = [...article.diagnostics, ...prerendered.diagnostics];
+  const diagnostics: Diagnostic[] = [...article.diagnostics, ...prerendered.diagnostics, ...containment.diagnostics];
+  // What was copied but never reached. Computed before anything is written, so a `strictAssets`
+  // build refuses instead of publishing and apologising.
+  diagnostics.push(...await unreferencedReport({
+    fs, article, config, base,
+    gitIgnored: containment.gitIgnored,
+    strict: o.strictAssets === true,
+  }));
+  // `strictAssets` promotes the unreferenced report to errors; `gitignored-but-referenced` is one
+  // regardless, because the alternative is a published page with a dead image on it. Checked
+  // before a byte is written, and scoped to this report's own codes so the figure lane below
+  // keeps reporting *every* broken figure rather than stopping at whatever came first.
+  if (strict && diagnostics.some((d) => CONTAINMENT_CODES.has(d.code) && d.severity === "error"))
+    throw new PaginaBuildError(diagnostics);
   for (const [id, results] of prerendered.figures) {
     const meta = article.manifest.figures[id];
     if (meta === undefined) continue;

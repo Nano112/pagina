@@ -126,6 +126,15 @@ export function parseArticleConfig(text: string): ArticleConfig {
   // header on every page and look exactly like the bug this option exists to fix.
   const coverOn = (o.cover_on ?? "root") as string;
   if (!COVER_ON.includes(coverOn as CoverOn)) fail("cover_on", `must be ${COVER_ON.join("|")} (got "${coverOn}")`);
+  // A misspelt key here does not fail a build, it publishes a folder — so `exclude` is validated
+  // as a list of non-empty strings rather than coerced, and a scalar `exclude: notes` (which YAML
+  // is happy to hand back as a string, and which would then be iterated character by character)
+  // is refused rather than silently excluding `n`, `o`, `t`…
+  if (o.exclude !== undefined && o.exclude !== null && !Array.isArray(o.exclude)) fail("exclude", "must be a list of glob patterns");
+  const exclude = Array.isArray(o.exclude) ? o.exclude.map((p, i) => str(p, `exclude[${i}]`)) : [];
+  if (o.exclude_gitignore !== undefined && o.exclude_gitignore !== null && typeof o.exclude_gitignore !== "boolean")
+    fail("exclude_gitignore", "must be a boolean");
+  const excludeGitignore = o.exclude_gitignore !== false;
   return {
     slug: str(o.slug, "slug"),
     title: str(o.title, "title"),
@@ -148,6 +157,8 @@ export function parseArticleConfig(text: string): ArticleConfig {
     ...optionalDate(o.updated, "updated"),
     ...(kg === undefined ? {} : { kineglyph: { ...(kg.theme === undefined ? {} : { theme: str(kg.theme, "kineglyph.theme") }), ...(typeof kg.width === "number" ? { width: kg.width } : {}), ...(kg.widths === undefined ? {} : { widths: figureWidths(kg.widths) }) } }),
     snippets: { roots },
+    exclude,
+    excludeGitignore,
     nav: parseNav(o.nav ?? [], "nav"),
   };
 }

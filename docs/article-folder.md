@@ -58,6 +58,8 @@ The fields, in full:
 | `kineglyph.theme` | a module exporting `light` and `dark` palettes for figures |
 | `kineglyph.width` | the layout width figures are pre-rendered at |
 | `snippets.roots` | the directories `--8<--` may read from. Default `["."]` |
+| `exclude` | glob patterns for files that are **not** article content and must not be published |
+| `exclude_gitignore` | whether a folder in a git repository also excludes what git ignores. Default `true` |
 | `nav` | the pages, in order |
 
 A nav entry is either a page or a section of pages:
@@ -177,10 +179,100 @@ Three attributes change how a figure behaves, and the default is the quiet one:
 | `data-instrument="true"` | a readout of the scene's own measurements, for debugging a layout |
 | `data-static="path.svg"` | an existing SVG instead of a scene, still inside the figure chrome |
 
-## What is not in this folder
+## What gets published
 
-`docs/design/` and `docs/plans/` are in the repository and deliberately out of the nav. The design
-notes are dated working documents — they argue a decision at a moment in time, and several of them
-describe defects that have since been fixed. Publishing them as reference material would misdescribe
-what they are. They remain readable on
+`pagina build` writes the pages the nav names, the figures it drew, and **the folder's assets**.
+That last one is the dangerous half, and it used to mean *everything in the folder that is not a
+page*. A folder is not a manifest: it collects things. Building Nucleation's docs directly would
+have published a gitignored directory of internal notes and a 118 MB `plans/` tree, on a public
+site, from a command whose output said nothing about either. Only `pack` was safe, and only
+because a bundle walks references for portability — containment was a side effect, not a promise.
+
+It is a promise now, in three parts.
+
+### Built-in exclusions
+
+Excluded from every build, before `article.yaml` says anything:
+
+| Pattern | What it covers |
+| --- | --- |
+| `.*` | dotfiles and dot-directories at any depth — `.git`, `.env`, `.DS_Store`, `.github` |
+| `node_modules/` | a dependency tree is never content, and it is the largest thing that lands in a folder by accident |
+| `Thumbs.db`, `desktop.ini` | the two Windows shell droppings that are not dotfiles |
+
+Deliberately **not** on that list: `dist`, `build`, `out`, `tmp`, `*.log`, `README.md`. Every one
+of them is a plausible name for something an author wrote on purpose, and a default that guesses
+about intent breaks folders silently. Name those in `exclude`; the unreferenced report below will
+point at them first.
+
+### `exclude`
+
+Gitignore-shaped globs, appended to the built-ins:
+
+```yaml
+exclude:
+  - drafts/          # a `drafts` directory at any depth
+  - /scratch/        # only this folder's
+  - "*.psd"          # by name, at any depth
+  - "!drafts/keep.png"   # …except this one
+```
+
+`*` matches within a segment, `**` across them, `?` one character. A `/` at the start or in the
+middle anchors the pattern to the folder root; a *trailing* `/` only means "directory". A leading
+`!` re-includes, and the last pattern that matches a path decides — which is what lets you take one
+file back out of an excluded directory.
+
+The one thing `!` cannot win back is a dot-entry or `node_modules`: the folder walk itself never
+descends into them, so no pattern can reach inside.
+
+### `.gitignore` is honoured
+
+If the folder is inside a git work tree, files git ignores are not published. This is the default,
+and it is the part of the change that would have caught the Nucleation case exactly.
+
+The argument for it is that `.gitignore` is the expression of "not for publication" that most
+folders *already have*, written where everyone working on the article can see it, and a second
+list that has to be kept in sync with it will not be. The argument against is surprise — a build
+that quietly drops a file is its own failure mode. So it does not drop anything quietly:
+
+- every build that excludes something says how many files and names them;
+- a file git ignores that a page nevertheless **references** is a build **error**
+  (`gitignored-but-referenced`), not a silent drop, because the alternative is a published page
+  with a dead image on it;
+- `exclude_gitignore: false` turns the whole thing off.
+
+One thing it does *not* do: if the article folder is itself inside an ignored directory — a
+`dist/`, a scratch tree — git would report every file in it as ignored. That is an answer about the
+container, not about the article, so it is discarded and the build proceeds on `exclude` alone.
+
+### The unreferenced report
+
+Everything above is a list someone has to write. This is the part that tells you what you forgot.
+
+After the build, pagina walks the article the way `pack` does — from the nav outwards, through
+every link, figure, cover, scene module and whatever those modules import — and reports every file
+it copied that the walk never reached:
+
+```
+[warning] unreferenced-file : notes/2026-planning.pdf was copied into the site but nothing in
+the article references it. Add it to `exclude` in article.yaml if it is not meant to be published.
+```
+
+A file nothing reaches is either dead weight or something you did not mean to publish. It is a
+**warning** by default rather than an error, and that is a deliberate trade: a real folder
+legitimately contains files this walk cannot see — an image a scene builds a URL for at run time,
+a font a stylesheet pulls in, a `.well-known` file a host serves. Failing those builds would teach
+authors to widen `exclude` until it stopped complaining, which is the opposite of containment.
+
+For the build that publishes something you would mind leaking, `pagina build --strict-assets`
+turns the report into a refusal: the site is not written until every file in it is either reached
+or named.
+
+### Where the design notes went
+
+`docs/design/` and `docs/plans/` are in this repository and deliberately out of the nav. They are
+dated working documents — they argue a decision at a moment in time, and several describe defects
+that have since been fixed. Publishing them as reference material would misdescribe what they are.
+They are now named in this article's own `exclude`, rather than relying on the fact that markdown
+files are not copied as assets, and they remain readable on
 [GitHub](https://github.com/Nano112/pagina/tree/main/docs), which is the right place for them.

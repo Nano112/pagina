@@ -4,7 +4,7 @@ import type { ArticleConfig, ContentFs } from "../src/types.js";
 
 const config: ArticleConfig = {
   slug: "fm", title: "FM", form: "docs", status: "published", visibility: "public",
-  tags: [], coverOn: "root", snippets: { roots: ["."] }, nav: [],
+  tags: [], coverOn: "root", snippets: { roots: ["."] }, exclude: [], excludeGitignore: true, nav: [],
 };
 
 function memFs(files: Record<string, string>): ContentFs {

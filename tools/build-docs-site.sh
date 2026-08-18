@@ -86,8 +86,12 @@ run_pagina "" unpack "$WORK/pagina.pgz" "$WORK/unpacked"
 
 # ---- 2. the site -------------------------------------------------------------------------------
 rm -rf "$OUT"
+# `--strict-assets` because this is a deploy: a file in the folder that no page, figure or module
+# reaches has nothing explaining why it is going on the public web. The unpacked bundle should
+# contain no such file by construction, which is exactly why asserting it here is cheap.
 run_pagina "" build "$WORK/unpacked" \
   --out "$OUT" \
+  --strict-assets \
   --site-url "$SITE_URL" \
   ${MIRROR_OF:+--mirror-of "$MIRROR_OF"}
 

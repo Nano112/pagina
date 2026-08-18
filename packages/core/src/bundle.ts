@@ -15,8 +15,8 @@
 import { parseDocument } from "yaml";
 import type { ArticleConfig, ContentFs, Diagnostic, Manifest, RenderedArticle } from "./types.js";
 import { pageSlug } from "./render-page.js";
-import { resolveRelative } from "./links.js";
 import { SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";
+import { walkReferences } from "./references.js";
 
 /**
  * The bundle format version.
@@ -353,25 +353,10 @@ export interface BuiltBundle {
   readonly diagnostics: readonly Diagnostic[];
 }
 
-const ABSOLUTE_URL = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
-const EXTERNAL_REF = /\b(?:href|src|data-scene|data-static)="((?:https?:)?\/\/[^"]*)"/g;
-/** `import x from "…"`, `import "…"`, `export … from "…"`, `import("…")` — enough for a scene. */
-const MODULE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
 
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
 
-/** Site-absolute URL (which includes `base`) → folder-relative path, or `undefined` if it is not one. */
-function toFolderPath(url: string, base: string): string | undefined {
-  if (ABSOLUTE_URL.test(url)) return undefined;
-  const b = base.replace(/\/$/, "");
-  const inBase = b === "" || url === b || url.startsWith(`${b}/`);
-  if (!inBase) return undefined;
-  const rest = (b === "" ? url : url.slice(b.length)).replace(/^\/+/, "");
-  const path = rest.split("#")[0]!.split("?")[0]!;
-  // A page href ends in `/`; an asset never does.
-  return path === "" || path.endsWith("/") ? undefined : path;
-}
 
 /** The declared snippet roots, normalised to folder-relative posix paths (`"."` becomes `""`). */
 function normaliseRoots(roots: readonly string[]): string[] {
@@ -473,56 +458,27 @@ export async function buildBundleContents(o: BuildBundleOptions): Promise<BuiltB
   add("article.yaml", bytes(yaml), "article.yaml");
 
   // ---- 3. everything the pages reference -------------------------------------------------------
-  /** Folder-relative asset path → what asked for it, for the diagnostic. */
-  const wanted = new Map<string, string>();
-  const want = (path: string | undefined, why: string): void => {
-    if (path === undefined || path === "") return;
-    if (!wanted.has(path)) wanted.set(path, why);
-  };
-  for (const page of Object.values(o.article.pages)) {
-    for (const link of page.links) {
-      if (link.resolved === undefined || link.resolved.startsWith("#")) continue;
-      want(toFolderPath(link.resolved, o.base), page.path);
-    }
-    for (const figure of page.figures) {
-      if (figure.scene !== undefined) want(toFolderPath(figure.scene, o.base), page.path);
-      if (figure.static !== undefined && !ABSOLUTE_URL.test(figure.static)) want(resolveRelative(page.path, figure.static), page.path);
-    }
-    for (const m of page.html.matchAll(EXTERNAL_REF)) external.add(m[1]!);
-  }
-  want(toFolderPath(o.rendered.manifest.article.cover ?? "", o.base), "article.yaml (cover)");
-  for (const [href, meta] of Object.entries(o.rendered.manifest.pages))
-    want(toFolderPath(meta.cover ?? "", o.base), `${href} (cover)`);
-  if (o.config.kineglyph?.theme !== undefined) want(joinPosix(o.config.kineglyph.theme), "article.yaml (kineglyph.theme)");
-  for (const url of [o.rendered.manifest.article.cover, ...Object.values(o.rendered.manifest.pages).map((p) => p.cover)])
-    if (url !== undefined && ABSOLUTE_URL.test(url)) external.add(url);
-
-  // Scene modules pull in whatever they import, transitively, or the figure that survived the
-  // pack would fail to hydrate on the importing host.
-  const queue = [...wanted.keys()];
-  while (queue.length > 0) {
-    const path = queue.shift()!;
-    if (files.has(path)) continue;
-    if (path.endsWith(".md")) continue;                            // a page, already handled
-    if (!isSafeBundlePath(path)) {
-      diagnostics.push({ severity: "error", code: "bundle-asset-outside", message: `${wanted.get(path) ?? "the article"} references ${path}, which is outside the folder` });
-      continue;
-    }
-    if (!(await o.fs.exists(path))) {
-      diagnostics.push({ severity: "error", code: "bundle-asset-missing", message: `${wanted.get(path) ?? "the article"} references ${path}, which does not exist` });
-      continue;
-    }
-    const data = await o.fs.readBinary(path);
-    add(path, data, "asset");
-    if (!/\.(?:mjs|js)$/i.test(path)) continue;
-    const text = new TextDecoder().decode(data);
-    for (const m of text.matchAll(MODULE_SPECIFIER)) {
-      const specifier = m[1]!;
-      if (!specifier.startsWith("./") && !specifier.startsWith("../")) continue;
-      const resolved = resolveRelative(path, specifier);
-      if (!wanted.has(resolved)) { wanted.set(resolved, path); queue.push(resolved); }
-    }
-  }
+  // The walk itself is `references.ts`, shared with the static build. It used to live here, and
+  // the static build had no walk at all — it copied the folder — so the two disagreed about what
+  // an article contains, and the bundle's containment was an accident of portability rather than
+  // a property either of them promised.
+  const walk = await walkReferences({
+    fs: o.fs,
+    article: o.article.pages,
+    manifest: o.rendered.manifest,
+    config: o.config,
+    base: o.base,
+    // Already added above, with their snippet directives rewritten; re-reading a page here would
+    // offer different bytes for a path the bundle already holds.
+    skip: (path) => files.has(path),
+    isInside: isSafeBundlePath,
+  });
+  for (const url of walk.external) external.add(url);
+  for (const [path, why] of walk.outside)
+    diagnostics.push({ severity: "error", code: "bundle-asset-outside", message: `${why} references ${path}, which is outside the folder` });
+  for (const [path, why] of walk.missing)
+    diagnostics.push({ severity: "error", code: "bundle-asset-missing", message: `${why} references ${path}, which does not exist` });
+  for (const [path, data] of walk.bytes) add(path, data, "asset");
 
   // ---- 4. the pre-rendered output ---------------------------------------------------------------
   // `assets` is re-derived from what the bundle actually holds rather than carried over from the
