@@ -11,10 +11,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cp, mkdir, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
+import { tempDir } from "../../../test/tmp.js";
 import {
   BUNDLE_MANIFEST_PATH, BundleError, DEFAULT_BUNDLE_LIMITS, sha256Hex, verifyBundleEntries,
   type BundleEntry, type BundleManifest, type Manifest,
@@ -29,7 +29,7 @@ const CREATED = "2026-08-18T09:00:00.000Z";
 
 const utf8 = (data: Uint8Array): string => new TextDecoder().decode(data);
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
-const temp = (prefix: string): Promise<string> => mkdtemp(join(tmpdir(), `pagina-${prefix}-`));
+const temp = tempDir;
 
 /**
  * A throwaway copy of the fixture, with its `../outside` snippet root beside it.

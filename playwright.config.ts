@@ -29,6 +29,9 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   globalSetup: "./e2e/setup.ts",
+  // Fails the run if the specs — or the CLI processes below — left anything in the working
+  // directory. The unit suite has the same guard in `test/setup.ts`.
+  globalTeardown: "./e2e/cwd-guard.ts",
   use: { trace: "retain-on-failure" },
   projects: [
     {

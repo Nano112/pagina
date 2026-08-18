@@ -4,6 +4,21 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["packages/*/test/**/*.test.{ts,tsx}", "packages/*/src/**/*.test.{ts,tsx}"],
+    /**
+     * Cleans up every scratch directory the file allocated, and fails the file if it left
+     * anything in the working directory. See `test/setup.ts` — the second half is a regression
+     * guard for a bug that put 442 MB in someone else's repository.
+     */
+    setupFiles: ["./test/setup.ts"],
+    /**
+     * The repository root, for the setup file's working-directory guard.
+     *
+     * It is passed as an environment variable because a setup file cannot work this out for
+     * itself: inside the test environment `import.meta.url` is one of Vite's `/@fs/…` URLs, not a
+     * `file:` URL, so `new URL("..", import.meta.url).pathname` yields a path that does not exist.
+     * This file runs in plain Node, where `import.meta.url` means what it says.
+     */
+    env: { PAGINA_REPO_ROOT: fileURLToPath(new URL(".", import.meta.url)) },
     pool: "forks",
     /**
      * Test *files* run one at a time.

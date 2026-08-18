@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { staticShell } from "@pagina/shell-static";
 import { buildStatic } from "@pagina/vite";
+import { recordWorkingDirectories } from "./cwd-guard.js";
 
 export const ARTICLE = fileURLToPath(new URL(".tmp/article/", import.meta.url));
 /** A second copy, for the static-host spec: two servers must not write to one folder. */
@@ -104,4 +105,8 @@ export default async function globalSetup(): Promise<void> {
   await writeFile(join(THEMED_ARTICLE, "article.yaml"), `${config}\nkineglyph:\n  theme: theme/kineglyph.mjs\n`, "utf8");
   await rm(THEMED_SITE, { recursive: true, force: true });
   await buildStatic({ folder: THEMED_ARTICLE, outDir: THEMED_SITE, shell: staticShell, base: THEMED_BASE, strict: true });
+
+  // Everything above is deliberate and gitignored. From here on, anything new in the working
+  // directory is a leak — see `e2e/cwd-guard.ts`.
+  await recordWorkingDirectories();
 }

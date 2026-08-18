@@ -10,7 +10,6 @@
 import { existsSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { tmpdir } from "node:os";
 import type MarkdownIt from "markdown-it";
 import {
   BUNDLE_MANIFEST_PATH, BundleError, DEFAULT_BUNDLE_LIMITS, buildBundleContents, inlineArticleFigures,
@@ -20,6 +19,7 @@ import {
 import { NodeContentFs } from "./node-fs.js";
 import { loadKineglyphThemes, prerenderFigures } from "./prerender.js";
 import { readZip, writeZip } from "./zip.js";
+import { paginaTempRoot } from "./tmp.js";
 
 /** The version stamped into every bundle this build produces. */
 export const PAGINA_VERSION = "0.1.0";
@@ -192,7 +192,11 @@ export async function unpackBundle(o: UnpackOptions): Promise<UnpackResult> {
   // A sibling of the destination would be tidier, but the destination's parent may not exist yet
   // and may not be writable; the OS temp directory always is, and the rename falls back to a copy
   // across devices anyway.
-  const staging = await mkdtemp(join(tmpdir(), "pagina-unpack-"));
+  //
+  // `paginaTempRoot()` rather than `tmpdir()` because the latter is only as absolute as `$TMPDIR`
+  // is, and staging that resolves relatively would put a half-verified archive in whatever
+  // directory the caller ran `pagina unpack` from.
+  const staging = await mkdtemp(join(paginaTempRoot(), "pagina-unpack-"));
   try {
     for (const entry of [...entries].sort((a, b) => (a.path < b.path ? -1 : 1))) {
       const target = join(staging, ...entry.path.split("/"));

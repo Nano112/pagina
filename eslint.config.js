@@ -24,6 +24,16 @@ export default tseslint.config(
     },
   },
   {
+    // Tests get their scratch space from one place. `os.tmpdir()` is only as absolute as `$TMPDIR`
+    // is, so `join(tmpdir(), …)` under a relative `$TMPDIR` writes to `process.cwd()` — which is
+    // how a run of this suite once deposited 2,094 directories and 442 MB into an unrelated
+    // repository. `tempDir()` allocates under an absolute root and is deleted for you.
+    files: ["packages/*/test/**/*.{ts,tsx}", "e2e/**/*.{ts,mts}"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [{ name: "node:os", importNames: ["tmpdir"], message: "Use `tempDir()` from `test/tmp.ts`: it is absolute, and it is cleaned up." }] }],
+    },
+  },
+  {
     files: ["packages/editor/src/store/**/*.ts", "packages/editor/src/ui/**/*.ts", "packages/editor/src/ui/**/*.tsx"],
     rules: {
       "no-restricted-imports": ["error", { patterns: [{ group: ["node:*", "fs", "path", "os", "url", "child_process", "vite", "vite/*"], message: "The editor is backend-agnostic: talk to an ArticleBackend, not to the filesystem or Vite." }] }],

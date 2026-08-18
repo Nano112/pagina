@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tempDir } from "../../../test/tmp.js";
 import type { ArticleConfig } from "@pagina/core";
 import { loadKineglyphThemes } from "../src/index.js";
 
 describe("loadKineglyphThemes", () => {
   it("resolves the bare \"kineglyph\" specifier in an article's theme module", async () => {
-    const folder = await mkdtemp(join(tmpdir(), "pagina-theme-"));
+    const folder = await tempDir("theme");
     await mkdir(join(folder, "theme"), { recursive: true });
     await writeFile(
       join(folder, "theme/t.mjs"),

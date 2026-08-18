@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { cp, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { cp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { tempDir } from "../../../test/tmp.js";
 import { staticShell } from "@pagina/shell-static";
 import { buildStatic, bundleClient } from "../src/index.js";
 import { stubShell } from "./stub-shell.js";
@@ -19,7 +19,7 @@ const shellClient = new URL("../../shell-static/client/pagina.ts", import.meta.u
  * whatever the test is actually about.
  */
 async function variant(edit: (yaml: string) => string): Promise<string> {
-  const parent = await mkdtemp(join(tmpdir(), "pagina-variant-"));
+  const parent = await tempDir("variant");
   const folder = join(parent, "fixture");
   await cp(fixture, folder, { recursive: true });
   await cp(new URL("../../core/test/outside/", import.meta.url).pathname, join(parent, "outside"), { recursive: true });
@@ -29,7 +29,7 @@ async function variant(edit: (yaml: string) => string): Promise<string> {
 
 describe("buildStatic", () => {
   it("emits pages, copies assets, pre-renders figures, writes manifest and runtime", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-"));
+    const outDir = await tempDir("build");
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     for (const f of [
@@ -73,7 +73,7 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("writes sitemap.xml and robots.txt for a standalone static site", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-seo-"));
+    const outDir = await tempDir("build-seo");
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true });
     expect(r.files).toContain("sitemap.xml");
     expect(r.files).toContain("robots.txt");
@@ -89,7 +89,7 @@ describe("buildStatic", () => {
 
   it("skips the sitemap and warns rather than writing a relative one", async () => {
     const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example\n", ""));
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-nosite-"));
+    const outDir = await tempDir("build-nosite");
     const r = await buildStatic({ folder, outDir, shell: stubShell, strict: true });
     expect(existsSync(join(outDir, "sitemap.xml"))).toBe(false);
     expect(r.diagnostics.map((d) => d.code)).toContain("sitemap-skipped");
@@ -99,7 +99,7 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("lets --site-url override the folder, and honours base in the sitemap", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-siteurl-"));
+    const outDir = await tempDir("build-siteurl");
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
     const xml = await readFile(join(outDir, "sitemap.xml"), "utf8");
     expect(xml).toContain("<loc>https://host.example/docs/</loc>");
@@ -110,7 +110,7 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("writes no robots.txt under a sub-path, and says what to serve at the root instead", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-subpath-robots-"));
+    const outDir = await tempDir("build-subpath-robots");
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/docs/", siteUrl: "https://host.example" });
     // A crawler reads robots.txt from `/robots.txt` and nowhere else. `/docs/robots.txt` would be a
     // file nothing ever requests — the one outcome that looks like coverage and provides none.
@@ -125,7 +125,7 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("points a mirror's canonical at the primary, and asks for no indexing of its own", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-mirror-"));
+    const outDir = await tempDir("build-mirror");
     const r = await buildStatic({
       folder: fixture, outDir, shell: staticShell, strict: true,
       base: "/Project/", siteUrl: "https://user.github.io", mirrorOf: "https://primary.example/docs/",
@@ -145,18 +145,18 @@ describe("buildStatic", () => {
 
   it("warns when site_url carries a path the build is not served at", async () => {
     const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example", "site_url: https://fixture.example/docs/"));
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-pathmismatch-"));
+    const outDir = await tempDir("build-pathmismatch");
     // Built at the root while `site_url` names `/docs/`: every canonical would read
     // `https://fixture.example/` — a plausible-looking URL that is not this article.
     const r = await buildStatic({ folder, outDir, shell: stubShell, strict: true });
     expect(r.diagnostics.map((d) => d.code)).toContain("seo-site-url-path-ignored");
-    const matching = await buildStatic({ folder, outDir: await mkdtemp(join(tmpdir(), "pagina-build-pathmatch-")), shell: stubShell, strict: true, base: "/docs/" });
+    const matching = await buildStatic({ folder, outDir: await tempDir("build-pathmatch"), shell: stubShell, strict: true, base: "/docs/" });
     expect(matching.diagnostics.map((d) => d.code)).not.toContain("seo-site-url-path-ignored");
   }, 60_000);
 
   it("disallows everything for a draft, and writes no sitemap", async () => {
     const folder = await variant((yaml) => yaml.replace("status: published", "status: draft"));
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-draft-"));
+    const outDir = await tempDir("build-draft");
     await buildStatic({ folder, outDir, shell: staticShell, strict: true });
     expect(existsSync(join(outDir, "sitemap.xml"))).toBe(false);
     expect(await readFile(join(outDir, "robots.txt"), "utf8")).toBe("User-agent: *\nDisallow: /\n");
@@ -165,7 +165,7 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("puts base in every emitted URL but never in the output paths", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-build-base-"));
+    const outDir = await tempDir("build-base");
     const r = await buildStatic({ folder: fixture, outDir, shell: stubShell, strict: true, base: "/Nucleation/" });
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const html = await readFile(join(outDir, "guide/figures/index.html"), "utf8");
@@ -187,13 +187,13 @@ describe("buildStatic", () => {
   }, 60_000);
 
   it("reports a broken figure as a diagnostic and still renders the others", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pagina-broken-"));
+    const root = await tempDir("broken");
     const folder = join(root, "fixture");
     await cp(fixture, folder, { recursive: true });
     await cp(join(fixture, "../outside"), join(root, "outside"), { recursive: true }); // a snippet root
     await writeFile(join(folder, "scenes/demo.mjs"), `export default null;\n`);
 
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-broken-out-"));
+    const outDir = await tempDir("broken-out");
     const r = await buildStatic({ folder, outDir, shell: stubShell, strict: false });
     const broken = r.diagnostics.filter((d) => d.code === "figure-prerender");
     // One diagnostic per figure that referenced the broken module — the page has three, which is
@@ -205,14 +205,14 @@ describe("buildStatic", () => {
     expect((await readdir(join(outDir, "_pagina/figures/guide-figures"))).sort())
       .toEqual(["inline-demo.dark.svg", "inline-demo.light.svg"]);
 
-    const strictOut = await mkdtemp(join(tmpdir(), "pagina-broken-strict-"));
+    const strictOut = await tempDir("broken-strict");
     await expect(buildStatic({ folder, outDir: strictOut, shell: stubShell })).rejects.toThrow(/kg-guide-figures-1/);
   }, 60_000);
 });
 
 describe("bundleClient", () => {
   it("ships the tokens sheet beside the full one, from the same source file", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-css-"));
+    const outDir = await tempDir("css");
     const urls = await bundleClient(outDir, "/docs/", shellClient);
     expect(urls.cssUrl).toBe("/docs/_pagina/pagina.css");
     expect(urls.tokensCssUrl).toBe("/docs/_pagina/pagina.tokens.css");
@@ -255,7 +255,7 @@ describe("bundleClient", () => {
    * or rename the reference, either fixes it; shipping a link nothing answers does not.
    */
   it.each(["full", "tokens", "none"] as const)("links only stylesheets that exist in the built site (theme: %s)", async (theme) => {
-    const outDir = await mkdtemp(join(tmpdir(), `pagina-links-${theme}-`));
+    const outDir = await tempDir(`links-${theme}`);
     await buildStatic({ folder: fixture, outDir, shell: staticShell, strict: true, base: "/docs/", theme });
     const html = await readFile(join(outDir, "index.html"), "utf8");
     const hrefs = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]!);
@@ -271,7 +271,7 @@ describe("bundleClient", () => {
   }, 60_000);
 
   it("skips the tokens sheet for a shell that has none", async () => {
-    const outDir = await mkdtemp(join(tmpdir(), "pagina-css-none-"));
+    const outDir = await tempDir("css-none");
     const urls = await bundleClient(outDir, "/", stubShell.clientEntry);
     expect(urls.tokensCssUrl).toBeUndefined();
     expect(existsSync(join(outDir, "_pagina/pagina.tokens.css"))).toBe(false);

@@ -12,6 +12,7 @@
  * the editor mounts against the HTTP contract, typing reaches the file, and publish returns.
  */
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { STATIC_ARTICLE } from "./setup.js";
@@ -66,7 +67,10 @@ test("no bare `process.` reference survives in either built bundle", async () =>
   // The browser check above is the real test; this one names the cause when it fails, and covers
   // the iife build, which no browser test loads.
   for (const file of ["editor.js", "editor.iife.js"]) {
-    const source = await readFile(join(process.cwd(), "packages/editor/dist", file), "utf8");
+    // Relative to this file, not to `process.cwd()`: where the runner was invoked from is not
+    // something a spec should have an opinion about, and `cwd` silently resolves to the wrong
+    // place the moment anyone runs the suite from outside the repository.
+    const source = await readFile(fileURLToPath(new URL(`../packages/editor/dist/${file}`, import.meta.url)), "utf8");
     const hits = source.match(/\bprocess\s*\./g) ?? [];
     expect(hits, `${file} still reads ${hits[0] ?? ""} at runtime`).toHaveLength(0);
   }

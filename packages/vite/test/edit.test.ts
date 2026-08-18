@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cp, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
+import { tempDir } from "../../../test/tmp.js";
 import type { ViteDevServer } from "vite";
 import { HttpBackend } from "@pagina/editor/store";
 import { createDevServer, pagePathForHref, renderEditPage } from "../src/index.js";
@@ -63,12 +63,12 @@ describe("pagina dev --edit", () => {
 
   beforeAll(async () => {
     // A temp copy: every test in here writes to the folder, and the fixture is shared.
-    folder = await mkdtemp(join(tmpdir(), "pagina-edit-"));
+    folder = await tempDir("edit");
     await cp(fixture, folder, { recursive: true });
 
     // A separate tree the folder must never be able to reach, plus the two symlinks that would
     // reach it if containment were lexical only.
-    outside = await mkdtemp(join(tmpdir(), "pagina-outside-"));
+    outside = await tempDir("outside");
     await writeFile(join(outside, "secret.txt"), "top secret\n");
     await symlink(join(outside, "secret.txt"), join(folder, "escape.txt"));
     await symlink(outside, join(folder, "escape-dir"));

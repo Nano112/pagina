@@ -11,9 +11,9 @@
  * and the failure will say so.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tempDir } from "../../../test/tmp.js";
 import { describe, expect, it } from "vitest";
 import {
   PAGINA_LAYERS, PAGINA_LAYER_DECLARATION, declaredLayers, definedTokens, effectiveLayerOrder,
@@ -84,7 +84,7 @@ describe("cascade layers", () => {
  */
 describe("the built stylesheets", () => {
   it("inline every import, keep the layer order, and name what the docs tell hosts to link", async () => {
-    const dist = await mkdtemp(join(tmpdir(), "pagina-shell-css-"));
+    const dist = await tempDir("shell-css");
     // The build step itself, run the way `npm run build` runs it.
     execFileSync(process.execPath, [filePath("../scripts/build-css.mjs"), dist]);
     const written = ["pagina.css", "pagina.tokens.css", "pagina.reading.css"];
