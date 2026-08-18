@@ -32,14 +32,24 @@ const macrotask = (): Promise<void> =>
  * Advances past every debounce in the app and lets the work behind them settle.
  *
  * Bounded rather than `runAllTimers` because the status bar keeps a `setInterval` running.
+ *
+ * `until` is for the callers that know what they are waiting *for*. Three rounds is a guess, and
+ * a guess about how many turns of a scheduler something takes is a guess that a slower machine
+ * gets wrong: the first CI run of this repository failed on a mounted editor whose document had
+ * not been parsed yet, and passed on the re-run. Given a predicate this stops as soon as the
+ * answer is yes — usually sooner than three rounds — and keeps going, up to a much higher cap,
+ * when it is not. It never throws: the caller's own assertion says what was missing, which is a
+ * better message than anything this could raise.
  */
-export async function settle(ms = 2_000): Promise<void> {
-  for (let round = 0; round < 3; round += 1) {
+export async function settle(ms = 2_000, until?: () => boolean): Promise<void> {
+  const rounds = until === undefined ? 3 : 15;
+  for (let round = 0; round < rounds; round += 1) {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
     await act(async () => {
       await macrotask();
     });
+    if (until !== undefined && until()) return;
   }
 }

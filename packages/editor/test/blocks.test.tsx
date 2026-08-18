@@ -199,7 +199,22 @@ async function mount(page = "blocks.md"): Promise<void> {
   await act(async () => {
     handle = mountEditor(host, { backend, page });
   });
-  await settle();
+  // Wait for the *parse*, not for a fixed number of scheduler turns. Every test below starts by
+  // finding a node in the document, so "mounted" is not the condition any of them mean, and on a
+  // slow machine a fixed wait returns first: the first CI run of this repository failed with "no
+  // figureImage in the document" and the re-run of the same commit passed.
+  //
+  // "More than one top-level node" is the condition, not a per-type count: a fresh editor holds
+  // one empty paragraph, and the parse lands in a single transaction, so this is true exactly
+  // once the file has arrived and been read — for the all-blocks fixture and for the one-block
+  // one the tests further down seed.
+  await settle(2_000, () => {
+    try {
+      return editorOf().state.doc.childCount > 1;
+    } catch {
+      return false;                                     // not mounted yet; keep waiting
+    }
+  });
 }
 
 describe("the block chrome", () => {

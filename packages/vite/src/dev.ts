@@ -117,7 +117,25 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
       watch: { ignored: ["**/node_modules/**"] },
     },
     resolve: { conditions: ["development"], alias: { kineglyph: kgWebEntry } },
-    optimizeDeps: { exclude: [...KINEGLYPH_PACKAGES] },
+    optimizeDeps: {
+      exclude: [...KINEGLYPH_PACKAGES],
+      /**
+       * Where the dependency crawl starts, stated rather than discovered.
+       *
+       * `root` is the *article* folder and `appType` is `custom`, so Vite's default entry crawl —
+       * every `.html` under the root — finds nothing at all. Dependency discovery therefore
+       * happened lazily, on the first module request from the first page load, and the
+       * re-optimization that followed answered the requests already in flight with
+       * `504 (Outdated Optimize Dep)`. The browser recovers by reloading, which is why this was
+       * invisible by hand and why the very first end-to-end spec failed the moment there was CI
+       * to run it on a cold `node_modules/.vite`.
+       *
+       * Naming the two real entries — the page shell's client, and the editor when it is being
+       * served — moves the whole optimize pass to startup, before anything can be in flight. It
+       * also means a human's first page load is not the one that pays for it.
+       */
+      entries: [o.shell.clientEntry, ...(editorRoot === undefined ? [] : [resolve(editorRoot, "src/index.ts")])],
+    },
     plugins: [{
       name: "pagina-dev",
       // Scene modules are hot-swapped entirely through the `kineglyph:update` custom event
