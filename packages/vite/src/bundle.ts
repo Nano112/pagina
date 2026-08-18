@@ -7,7 +7,7 @@
  * archive came from somewhere else, so every structural claim it makes is checked before a single
  * byte is written, and a failure leaves the destination exactly as it was found.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type MarkdownIt from "markdown-it";
@@ -22,8 +22,17 @@ import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, wides
 import { readZip, writeZip } from "./zip.js";
 import { paginaTempRoot } from "./tmp.js";
 
-/** The version stamped into every bundle this build produces. */
-export const PAGINA_VERSION = "0.1.0";
+/**
+ * The version stamped into every bundle this build produces.
+ *
+ * Read from this package rather than written here: a hand-kept copy of a version number
+ * is a second source of truth, and it had already drifted a release behind.
+ */
+export const PAGINA_VERSION: string = (
+  JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version: string }
+).version;
 
 /** The conventional extension. A bundle is a ZIP, but not every ZIP is a bundle. */
 export const BUNDLE_EXTENSION = ".pgz";

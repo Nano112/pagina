@@ -16,7 +16,6 @@ on:
       - "packages/**"
       - "tools/build-docs-site.sh"
       - ".github/workflows/docs.yml"
-      - ".github/kineglyph-ref"
       - "package.json"
       - "package-lock.json"
   pull_request:
@@ -25,7 +24,6 @@ on:
       - "packages/**"
       - "tools/build-docs-site.sh"
       - ".github/workflows/docs.yml"
-      - ".github/kineglyph-ref"
       - "package.json"
       - "package-lock.json"
   workflow_dispatch:
@@ -58,48 +56,21 @@ jobs:
         with:
           path: pagina
 
-      # Kineglyph is consumed from source, pinned by SHA, because an unpinned figure engine means
-      # the site's pictures can change without a commit here. The SHA lives in one file that this
-      # workflow and `test.yml` both read: two copies of it are two things that can disagree, and
-      # a docs build against a Kineglyph the test lane never ran is exactly the disagreement that
-      # matters.
-      - name: Read the pinned Kineglyph ref
-        run: echo "KINEGLYPH_REF=$(cat pagina/.github/kineglyph-ref)" >> "$GITHUB_ENV"
-
-      - name: Check out Kineglyph
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: Nano112/kineglyph
-          ref: ${{ env.KINEGLYPH_REF }}
-          path: kineglyph
-
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: |
-            pagina/package-lock.json
-            kineglyph/package-lock.json
+          cache-dependency-path: pagina/package-lock.json
 
-      - name: Build Kineglyph
-        working-directory: kineglyph
-        run: |
-          npm ci --no-audit --no-fund
-          npm run bootstrap
-
+      # The figure engine is pinned by the lockfile now that it is published, which is a stronger
+      # guarantee than the SHA this used to clone: the lockfile pins what every install resolves,
+      # including a reader's. The old pin shadowed it, so the site could be drawn by a Kineglyph
+      # nobody else could obtain.
       - name: Install and build pagina
         working-directory: pagina
         run: |
           npm ci --no-audit --no-fund
-          # Direct symlinks rather than `npm link`: linking through the global prefix depends on
-          # machine state, and `npm ci` above has just pruned anything that was there. This is the
-          # same shape `npm run link:kineglyph` produces, without the global step.
-          mkdir -p node_modules/@kineglyph
-          for p in core svg anime plot scenes web export; do
-            rm -rf "node_modules/@kineglyph/$p"
-            ln -s "$GITHUB_WORKSPACE/kineglyph/packages/$p" "node_modules/@kineglyph/$p"
-          done
           npm run build
 
       - name: Build the documentation site
