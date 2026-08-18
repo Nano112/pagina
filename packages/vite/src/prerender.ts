@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { defaultTheme, type ThemeTokens } from "@kineglyph/core";
+import { createTheme, defaultTheme, type ThemeTokens } from "@kineglyph/core";
 import { prerender, rewriteImports } from "@kineglyph/export";
-import { FIGURE_WIDTHS } from "@pagina/core";
+import { FIGURE_WIDTHS, isKineglyphThemeModule, THEME_INHERIT } from "@pagina/core";
 import type { DrawnFigure } from "@pagina/core";
 import type { ArticleConfig, Diagnostic, RenderedArticle } from "@pagina/core";
 import { resolveKineglyphBundle } from "./kineglyph.js";
@@ -21,9 +21,63 @@ export interface KineglyphThemes { readonly light: ThemeTokens; readonly dark: T
  * any relative imports, resolved against the theme file's own location) before evaluating
  * it, the same technique `@kineglyph/export` uses internally for scene modules.
  */
+/**
+ * A theme module's export, as the theme a figure is actually drawn with.
+ *
+ * Kineglyph's themes now record which colour roles they *claim*: a claimed role is pinned on the
+ * drawing's own root and holds against the page, an unclaimed one resolves from the page's
+ * `--kg-color-*`, and naming a role in an override is what claims it. So a **partial** theme — the
+ * shape an author almost always writes, three colours and nothing else — has to reach
+ * `createTheme` as an override rather than be spread over the defaults, or every one of the twenty
+ * roles would be claimed and the article would go back to overruling its own host.
+ *
+ * A complete `ThemeTokens` is passed through untouched, because it already carries whatever it
+ * decided about claims: `inheritTheme()` claims nothing and `overrideTheme()` claims everything,
+ * and re-running either through `createTheme` would silently make it the other one.
+ */
+function asTheme(value: unknown): ThemeTokens | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const o = value as Record<string, unknown>;
+  // "Complete" is the shape Kineglyph's own constructors return: a palette *and* the geometry that
+  // goes with it. Anything less was hand-written, and the roles it names are the roles it means.
+  const complete = typeof o["colors"] === "object" && typeof o["typography"] === "object" && typeof o["spacing"] === "object";
+  return complete ? (value as ThemeTokens) : createTheme(value as Parameters<typeof createTheme>[0]);
+}
+
+/**
+ * A theme named rather than shipped — `inherit`, or a name a runtime knows.
+ *
+ * `inherit` is the reserved one and pagina resolves it here, because it is the answer that must
+ * mean the same thing on every host: draw with the default palette and claim none of it, so every
+ * paint resolves from the page. Any other name is Kineglyph's registry to answer, and it answers
+ * `undefined` for one it does not know — which is inherit as well, and the right outcome for a typo
+ * as much as for a decision. pagina asks the runtime rather than keeping a list, so a name it has
+ * never heard of works the moment the runtime learns it.
+ *
+ * Note that `default` therefore inherits: it claims no roles, so it follows the page. A theme that
+ * is meant to hold its palette against the page says so with `overrideTheme()`.
+ */
+async function themeNamed(name: string): Promise<ThemeTokens> {
+  if (name !== THEME_INHERIT) {
+    try {
+      const web = (await import("@kineglyph/web")) as { themeByName?: (n: string) => ThemeTokens | undefined };
+      const found = web.themeByName?.(name);
+      if (found !== undefined) return found;
+    } catch {
+      // A runtime that cannot be loaded here (or predates `themeByName`) is not an error: the name
+      // simply resolves to nothing, and nothing is inherit.
+    }
+  }
+  return defaultTheme;
+}
+
 export async function loadKineglyphThemes(folder: string, config: ArticleConfig): Promise<KineglyphThemes> {
   const rel = config.kineglyph?.theme;
   if (rel === undefined) return { light: defaultTheme, dark: defaultTheme };
+  if (!isKineglyphThemeModule(rel)) {
+    const named = await themeNamed(rel);
+    return { light: named, dark: named };
+  }
   const abs = resolve(folder, rel);
   const baseUrl = pathToFileURL(abs).href;
   const source = await readFile(abs, "utf8");
@@ -34,9 +88,9 @@ export async function loadKineglyphThemes(folder: string, config: ArticleConfig)
     return specifier;
   });
   const url = `data:text/javascript;base64,${Buffer.from(rewritten, "utf8").toString("base64")}`;
-  const mod = (await import(url)) as { default?: Partial<KineglyphThemes>; light?: ThemeTokens; dark?: ThemeTokens };
-  const light = mod.light ?? mod.default?.light ?? defaultTheme;
-  const dark = mod.dark ?? mod.default?.dark ?? light;
+  const mod = (await import(url)) as { default?: { light?: unknown; dark?: unknown }; light?: unknown; dark?: unknown };
+  const light = asTheme(mod.light ?? mod.default?.light) ?? defaultTheme;
+  const dark = asTheme(mod.dark ?? mod.default?.dark) ?? light;
   return { light, dark };
 }
 

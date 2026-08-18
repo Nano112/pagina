@@ -1,19 +1,18 @@
 /**
  * @vitest-environment jsdom
  *
- * The preview pane paints a figure in the article's colours, not in the runtime's.
+ * The preview pane draws a figure with the theme the article declares.
  *
  * The preview is the *only* place an author sees a figure before publishing, so a figure that is
- * one colour here and another on the page is a bug found by readers. It was: `mountAll` was called
- * with no theme at all, so every figure was drawn in Kineglyph's default palette — and drawn is
- * only half of it, because `pagina.css` (which the editor links, for preview parity) points every
- * `--kg-color-*` at a `--pg-*` token, which repaints even a correctly drawn figure.
+ * one colour here and another on the page is a bug found by readers. `mountAll` was once called
+ * with no theme at all, so every figure was drawn in Kineglyph's default palette; it is handed the
+ * article's module now, and — this is the part that changed — handed it the way the *builder*
+ * hands it over, so a partial theme claims the three roles it names here as well as there.
  *
- * Both halves are checked here, against the article's declared theme module:
- *
- *  - the tokens handed to `mountAll`, which decide the literals baked into the SVG;
- *  - the `--kg-color-*` custom properties on the preview container, which decide what the browser
- *    actually paints — the same variables the published page emits from the same declaration.
+ * What the preview no longer does is paint `--kg-color-*` onto the container. That was pagina
+ * pinning the declared palette over the page's tokens, which is the inversion this undid: the
+ * roles a theme claims are pinned by Kineglyph on the drawing's own root, and everything else
+ * resolves from the page, in the preview exactly as on the published page.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
@@ -41,6 +40,14 @@ vi.mock("kineglyph", () => ({
   },
   mountAllKineglyphLabs: async () => [],
   defaultTheme: RUNTIME_DEFAULT,
+  // Stands in for the real one closely enough for what is asserted: it fills the geometry from the
+  // base and records the colour roles the override *named*, which is the whole of the contract the
+  // editor has to honour — a partial theme must arrive partial.
+  createTheme: (o: { colors?: Record<string, string> }) => ({
+    ...RUNTIME_DEFAULT, ...o,
+    colors: { ...RUNTIME_DEFAULT.colors, ...o.colors },
+    declaredColors: Object.keys(o.colors ?? {}),
+  }),
 }));
 
 /**
@@ -91,32 +98,30 @@ afterEach(() => {
 describe("the preview's kineglyph theme", () => {
   it("draws with the theme the article declares, not the runtime default", async () => {
     await preview(THEME_MODULE);
-    expect(theme()).toEqual(LIGHT);
+    expect(theme()).toMatchObject({ name: "vellum", colors: expect.objectContaining(LIGHT.colors) });
   });
 
-  it("paints with it too — the variables that outrank pagina's --pg-* bridge", async () => {
-    const container = await preview(THEME_MODULE);
-    expect(container.style.getPropertyValue("--kg-color-canvas")).toBe("#f4f1e9");
-    expect(container.style.getPropertyValue("--kg-color-accent")).toBe("#237f74");
-    // The token is spelled the way Kineglyph spells it, or the variable names nothing.
-    expect(container.style.getPropertyValue("--kg-color-surface-raised")).toBe("#fffdf8");
+  it("keeps a partial theme partial, so unnamed roles still follow the page", async () => {
+    // Three roles named is three roles claimed. Spread over the defaults instead — which is what
+    // this did — the theme would arrive claiming every role and the article would go back to
+    // overruling its own host.
+    await preview(THEME_MODULE);
+    expect(theme()).toMatchObject({ declaredColors: ["canvas", "accent", "surfaceRaised"] });
   });
 
-  it("draws and paints the same colours, which is the whole point", async () => {
+  it("paints no --kg-color-* of its own, because the page is what paints a figure", async () => {
     const container = await preview(THEME_MODULE);
-    const drawn = theme() as { colors: Record<string, string> };
-    expect(container.style.getPropertyValue("--kg-color-canvas")).toBe(drawn.colors["canvas"]);
-    expect(container.style.getPropertyValue("--kg-color-accent")).toBe(drawn.colors["accent"]);
+    expect(container.style.getPropertyValue("--kg-color-canvas")).toBe("");
+    expect(container.style.getPropertyValue("--kg-color-accent")).toBe("");
   });
 
   it("follows the page's light/dark switch", async () => {
-    const container = await preview(THEME_MODULE);
+    await preview(THEME_MODULE);
     document.documentElement.dataset["theme"] = "dark";
     await act(async () => {
       await Promise.resolve();
     });
-    expect(container.style.getPropertyValue("--kg-color-canvas")).toBe("#101216");
-    expect(theme()).toEqual(DARK);
+    expect(theme()).toMatchObject({ name: "basalt", colors: expect.objectContaining(DARK.colors) });
   });
 
   it("leaves an article that declares no theme to its host, as before", async () => {

@@ -142,13 +142,24 @@ test.describe("the cover under the host's dark theme", () => {
 
     const paint = await img.evaluate((el) => {
       const s = getComputedStyle(el);
-      return { border: s.borderTopColor, radius: s.borderTopLeftRadius, ratio: s.aspectRatio, fit: s.objectFit };
+      return { border: s.borderBottomColor, ratio: s.aspectRatio, fit: s.objectFit };
     });
-    // `--pg-line: #262233` from the host's block, not pagina's default `#e3e6eb`.
+    // `--pg-line: #262233` from the host's block, not pagina's default `#e3e6eb`. The cover is a
+    // band across the page now, so its rule is the edge it sits on rather than a boxed outline.
     expect(paint.border).toBe("rgb(38, 34, 51)");
-    expect(paint.radius).toBe("14px");                  // --pg-radius-lg: 0.875rem
-    expect(paint.ratio).toBe("2 / 1");
-    expect(paint.fit).toBe("cover");
+    expect(paint.ratio).toBe("3 / 1");
+    // Nothing is cropped unless the article says so: a cover may be a wordmark, and pagina never
+    // decoded the file, so `contain` is what a page gets when nothing chose.
+    expect(paint.fit).toBe("contain");
+
+    // Full-bleed: as wide as the window, and wider than the reading column it introduces.
+    const widths = await page.evaluate(() => ({
+      cover: document.querySelector(".pg-cover__img")!.getBoundingClientRect().width,
+      content: document.querySelector(".pg-content")!.getBoundingClientRect().width,
+      viewport: document.documentElement.clientWidth,
+    }));
+    expect(widths.cover).toBe(widths.viewport);
+    expect(widths.cover).toBeGreaterThan(widths.content);
 
     // The host's reset flattens headings; the header's own rules must still be winning underneath.
     // This is the half the reading layer no longer covers — the title lives outside `.pg-content`

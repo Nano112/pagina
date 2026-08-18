@@ -52,14 +52,6 @@ export interface ShellContext {
    *  a site that is nobody's copy, which is the usual case. */
   readonly mirrorOf?: string;
   /**
-   * The article's Kineglyph theme, already loaded — the same tokens the builder drew the
-   * pre-rendered figures with. A shell publishes their colours as `--kg-color-*` so the page paints
-   * a figure in the colours it was drawn in; without that the CSS token bridge in `pagina.css`
-   * silently repaints every figure in the host's palette. Absent when the article declares no
-   * theme, which is the case where following the host is the right answer.
-   */
-  readonly kineglyphTheme?: KineglyphThemeColors;
-  /**
    * Site URL of the search index the build wrote — `/_pagina/search.json` for a pagina build, or
    * wherever a host serves its own copy from.
    *
@@ -68,17 +60,6 @@ export interface ShellContext {
    * exists", which is the only thing a page can honestly act on.
    */
   readonly searchUrl?: string;
-}
-
-/**
- * Just the colours, of each of an article theme's two palettes.
- *
- * Structural on purpose: `@pagina/core` renders no figures and must not depend on Kineglyph's
- * types, but the object `@pagina/vite` loads from the article's theme module satisfies this.
- */
-export interface KineglyphThemeColors {
-  readonly light: { readonly colors: Readonly<Record<string, string>> };
-  readonly dark: { readonly colors: Readonly<Record<string, string>> };
 }
 
 /** A page shell: turns a rendered article into files (`out path` → contents). */

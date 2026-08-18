@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { parseArticleConfig } from "../src/config.js";
+import { isKineglyphThemeModule, kineglyphThemeHref, parseArticleConfig } from "../src/config.js";
 
 const yaml = readFileSync(new URL("./fixture/article.yaml", import.meta.url), "utf8");
 
@@ -88,5 +88,30 @@ describe("parseArticleConfig", () => {
     expect(() => parseArticleConfig(`title: A\nform: docs\nnav: []`)).toThrow(/slug/);
     expect(() => parseArticleConfig(`slug: a\ntitle: A\nform: post\nnav: []`)).toThrow(/form/);
     expect(() => parseArticleConfig(`slug: a\ntitle: A\nform: docs\nnav: [{ title: X }]`)).toThrow(/nav\[0\]/);
+  });
+});
+
+/**
+ * `kineglyph.theme`: a module the article ships, or a theme by name.
+ *
+ * They are told apart the way an author tells them apart — a module is a file, so it has a path in
+ * it — because a name has nothing to fetch. `inherit` is the reserved one and every runtime means
+ * the same thing by it; any other name is Kineglyph's registry to answer, and an answer of "I do
+ * not know that name" is inherit too, which is the right outcome for a typo as much as a decision.
+ */
+describe("kineglyph.theme, named or shipped", () => {
+  it("recognises a file by its path, and a name by the absence of one", () => {
+    for (const module of ["theme/kineglyph.mjs", "./theme.mjs", "../shared/theme.js", "/themes/x.mjs", "https://cdn/x.mjs", "theme.ts"])
+      expect(isKineglyphThemeModule(module)).toBe(true);
+    for (const name of ["inherit", "midnight", "paper", "default", "our-brand"])
+      expect(isKineglyphThemeModule(name)).toBe(false);
+  });
+
+  it("gives a page a URL to load for a module, and nothing to load for a name", () => {
+    expect(kineglyphThemeHref({ kineglyph: { theme: "theme/kg.mjs" } }, "/docs/")).toBe("/docs/theme/kg.mjs");
+    expect(kineglyphThemeHref({ kineglyph: { theme: "https://cdn/x.mjs" } }, "/docs/")).toBe("https://cdn/x.mjs");
+    expect(kineglyphThemeHref({ kineglyph: { theme: "inherit" } }, "/docs/")).toBeUndefined();
+    expect(kineglyphThemeHref({ kineglyph: { theme: "midnight" } }, "/docs/")).toBeUndefined();
+    expect(kineglyphThemeHref({}, "/docs/")).toBeUndefined();
   });
 });

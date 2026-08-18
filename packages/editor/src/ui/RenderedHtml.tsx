@@ -18,7 +18,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 // at the one runtime instance the site itself uses, and the editor bundle keeps it external.
 import { mountAll, mountAllKineglyphLabs, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
 import { wireTabs } from "@pagina/shell-static/interactive";
-import { applyThemeVars, currentThemeName, loadKineglyphThemes, onThemeChange, type KineglyphThemes } from "./kineglyph-theme.js";
+import { currentThemeName, loadKineglyphThemes, onThemeChange, type KineglyphThemes } from "./kineglyph-theme.js";
 
 export interface RenderedHtmlProps {
   readonly html: string;
@@ -58,7 +58,6 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
         themeSource.current = themeUrl;
       }
       const resolved = themes.current;
-      applyThemeVars(container, themeUrl === undefined ? undefined : resolved);
       const mountedFigures = await mountAll({
         root: container,
         selector: "figure.kg:not([data-kineglyph-lab]), [data-kineglyph]:not([data-kineglyph-lab])",
@@ -86,12 +85,12 @@ export function RenderedHtml({ html, themeUrl, className = "pg-content" }: Rende
     };
   }, [html, themeUrl]);
 
-  // The light/dark toggle moves the whole page; these figures have to move with it, and the
-  // variables that paint them are set by hand rather than by a stylesheet, so nothing else would.
+  // The light/dark toggle moves the whole page. A pre-rendered figure moves with it for free — its
+  // paints read `--kg-color-*`, which `pagina.css` points at the `--pg-*` the toggle changed — so
+  // what is left here is the live surfaces, which hold their tokens in JavaScript.
   useEffect(
     () =>
       onThemeChange(() => {
-        if (root.current !== null && themeSource.current !== undefined) applyThemeVars(root.current, themes.current);
         const theme = themes.current?.[currentThemeName()];
         if (theme !== undefined) for (const lab of labs.current) lab.setTheme(theme);
       }),

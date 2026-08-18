@@ -18,7 +18,6 @@ export const staticShell: Shell = {
     const full: ShellCtx = {
       ...ctx,
       ...(kgThemeUrl === undefined ? {} : { kineglyphThemeUrl: kgThemeUrl }),
-      ...(ctx.kineglyphTheme === undefined ? {} : { kineglyphTheme: ctx.kineglyphTheme }),
       ...(siteUrl === undefined ? {} : { siteUrl }),
       ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
       ...(ctx.searchUrl === undefined ? {} : { searchUrl: ctx.searchUrl }),

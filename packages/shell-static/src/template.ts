@@ -1,4 +1,4 @@
-import { kineglyphColorVars, pageSeo, renderSeoHtml, type KineglyphThemeColors, type NavNode, type PageMeta, type RenderedArticle, type ThemeLevel } from "@pagina/core";
+import { pageSeo, renderSeoHtml, type NavNode, type PageMeta, type RenderedArticle, type ThemeLevel } from "@pagina/core";
 
 /** Context a page render pass gets. The five required fields mirror `@pagina/core`'s
  * `ShellContext` exactly; `kineglyphThemeUrl` is computed by `staticShell` internally (see
@@ -17,8 +17,6 @@ export interface ShellCtx {
   chrome?: boolean;
   kineglyphRuntimeUrl: string;
   kineglyphThemeUrl?: string;
-  /** The article's theme, loaded — its colours become `--kg-color-*`; see {@link kineglyphThemeCss}. */
-  kineglyphTheme?: KineglyphThemeColors;
   /** `pagina dev --edit`: add an "Edit this page" link into the editor. Never set in a build. */
   edit?: boolean;
   /** Overrides {@link DEFAULT_MODEL_VIEWER_URL} for pages that embed a `<model-viewer>`. */
@@ -107,39 +105,6 @@ function cascadeStylesheetsHtml(article: RenderedArticle, href: string): string 
   const sheets = [article.manifest.article.theme, article.manifest.pages[href]?.theme]
     .filter((s): s is string => s !== undefined && s !== "");
   return sheets.map((s) => `\n<link rel="stylesheet" href="${esc(s)}">`).join("");
-}
-
-/** `--kg-color-a:#…;--kg-color-b:#…` for one palette. */
-const varBlock = (palette: { readonly colors?: Readonly<Record<string, string>> } | undefined): string =>
-  Object.entries(kineglyphColorVars(palette?.colors))
-    // A colour is a CSS value in a `<style>`: `<` and `"` cannot appear in one, and anything that
-    // would need escaping is not a colour, so it is dropped rather than smuggled through.
-    .filter(([, value]) => !/[<>"';{}]/.test(value))
-    .map(([name, value]) => `${name}:${value}`)
-    .join(";");
-
-/**
- * The article's own theme, as the variables its figures are painted from.
- *
- * Emitted **after** the stylesheet, and unlayered, so it outranks `pagina.css`'s `--kg-color-*` →
- * `--pg-*` bridge. That bridge is what lets a host retint figures it did not draw, and it stays the
- * default; but an article that ships a theme module has already said what its figures look like,
- * and drawing them in one palette while painting them in another is the bug this closes.
- *
- * Both palettes are written, keyed on the same `data-theme` the page toggle sets, so switching
- * theme moves the pre-rendered frame and the live stage together and without JavaScript.
- *
- * The dark half is scoped to `@media screen` for the same reason `tokens.css`'s is: paper is white
- * whatever the reader chose on screen, so the print medium keeps the light palette, and a figure
- * has to be repainted by the same rule that repaints the page around it. Without this line a
- * reader in dark mode printed a page of light prose with dark diagrams in it.
- */
-function kineglyphThemeCss(ctx: ShellCtx): string {
-  if (ctx.kineglyphTheme === undefined || (ctx.theme ?? "full") === "none") return "";
-  const light = varBlock(ctx.kineglyphTheme.light);
-  const dark = varBlock(ctx.kineglyphTheme.dark);
-  if (light === "" && dark === "") return "";
-  return `\n<style>:root{${light}}@media screen{:root[data-theme="dark"]{${dark}}}</style>`;
 }
 
 /**
@@ -367,7 +332,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 ${seo}
 ${THEME_INIT_SCRIPT}
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
-${stylesheetHtml(ctx)}${kineglyphThemeCss(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}
+${stylesheetHtml(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}
 </head>
 <body>
 ${header}${cover}
