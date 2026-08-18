@@ -80,6 +80,53 @@ describe("renderPageHtml", () => {
   });
 });
 
+/**
+ * Levels 3 and 4 of the cascade, as `<link>` elements.
+ *
+ * The article's sheet then the page's, both after pagina's own and both unlayered. That order *is*
+ * the cascade: pagina's defaults are layered so anything here beats them, the page's declarations
+ * beat the article's token by token, and a host that loads its own CSS afterwards still beats
+ * both — which is level 2 keeping its place whenever it wants it.
+ */
+describe("the theme cascade in the head", () => {
+  const sheets = (html: string): string[] =>
+    [...html.matchAll(/<link rel="stylesheet" href="([^"]*)">/g)].map((m) => m[1]!);
+  const withThemes = (articleTheme?: string, pageTheme?: string): RenderedArticle => ({
+    ...article,
+    manifest: {
+      ...article.manifest,
+      article: { ...article.manifest.article, ...(articleTheme === undefined ? {} : { theme: articleTheme }) },
+      pages: {
+        ...article.manifest.pages,
+        "/": { ...article.manifest.pages["/"]!, ...(pageTheme === undefined ? {} : { theme: pageTheme }) },
+      },
+    },
+  });
+
+  it("links pagina's sheet, then the article's, then the page's", () => {
+    expect(sheets(renderPageHtml(withThemes("/theme/site.css", "/theme/night.css"), "/", ctx)))
+      .toEqual(["/_pagina/pagina.css", "/theme/site.css", "/theme/night.css"]);
+  });
+
+  it("emits nothing for a level that is silent", () => {
+    expect(sheets(renderPageHtml(withThemes(), "/", ctx))).toEqual(["/_pagina/pagina.css"]);
+    expect(sheets(renderPageHtml(withThemes("/theme/site.css"), "/", ctx)))
+      .toEqual(["/_pagina/pagina.css", "/theme/site.css"]);
+    // A page that declared one is the *only* page that gets it: the sibling is untouched.
+    expect(sheets(renderPageHtml(withThemes("/theme/site.css", "/theme/night.css"), "/g/page/", ctx)))
+      .toEqual(["/_pagina/pagina.css", "/theme/site.css"]);
+  });
+
+  it('links nothing at all under theme: "none", which is what "none" says', () => {
+    expect(sheets(renderPageHtml(withThemes("/theme/site.css", "/theme/night.css"), "/", { ...ctx, theme: "none" })))
+      .toEqual([]);
+  });
+
+  it("escapes the URL, because it came out of a file an author wrote", () => {
+    expect(renderPageHtml(withThemes(`/a"b.css`), "/", ctx)).toContain(`href="/a&quot;b.css"`);
+  });
+});
+
 describe("theme levels and chrome", () => {
   const link = /<link rel="stylesheet" href="([^"]*)">/g;
   const links = (html: string) => [...html.matchAll(link)].map((m) => m[1]);

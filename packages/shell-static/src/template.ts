@@ -91,6 +91,24 @@ export function stylesheetHtml(ctx: ShellCtx): string {
   return `<link rel="stylesheet" href="${esc(theme === "tokens" ? tokensUrl(ctx) : ctx.cssUrl)}">`;
 }
 
+/**
+ * Levels 3 and 4 of the theme cascade: the article's stylesheet, then the page's.
+ *
+ * Both are ordinary CSS files writing `--pg-*`, which is what makes them compose — the page's
+ * declarations win token by token and the article's stand for everything the page did not mention,
+ * with no merging and nothing for pagina to resolve. They are linked **after** pagina's own sheet
+ * and are unlayered, so they beat the defaults; a host that loads its own CSS after these still
+ * outranks both, which is level 2 keeping its place at the top when it wants it.
+ *
+ * A page that declared `theme: inherit` — or nothing at all — contributes no link, so silence at
+ * one level is literally one fewer element in the head.
+ */
+function cascadeStylesheetsHtml(article: RenderedArticle, href: string): string {
+  const sheets = [article.manifest.article.theme, article.manifest.pages[href]?.theme]
+    .filter((s): s is string => s !== undefined && s !== "");
+  return sheets.map((s) => `\n<link rel="stylesheet" href="${esc(s)}">`).join("");
+}
+
 /** `--kg-color-a:#…;--kg-color-b:#…` for one palette. */
 const varBlock = (palette: { readonly colors?: Readonly<Record<string, string>> } | undefined): string =>
   Object.entries(kineglyphColorVars(palette?.colors))
@@ -349,7 +367,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 ${seo}
 ${THEME_INIT_SCRIPT}
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
-${stylesheetHtml(ctx)}${kineglyphThemeCss(ctx)}
+${stylesheetHtml(ctx)}${kineglyphThemeCss(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}
 </head>
 <body>
 ${header}${cover}

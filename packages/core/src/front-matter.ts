@@ -109,6 +109,7 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
   return {
     meta: {
       ...text_("title"), ...text_("description"), ...text_("cover"), ...text_("author"),
+      ...text_("theme"),
       ...coverAlt, ...coverFit, ...date("published"), ...date("updated"), ...noindex, ...tags,
     },
     body,

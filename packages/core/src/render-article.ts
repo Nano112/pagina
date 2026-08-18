@@ -1,6 +1,6 @@
 import type MarkdownIt from "markdown-it";
 import type { ArticleMeta, ContentFs, Diagnostic, Manifest, NavEntry, NavNode, PageMeta, RenderedArticle, RenderedPage } from "./types.js";
-import { parseArticleConfig } from "./config.js";
+import { parseArticleConfig, THEME_INHERIT } from "./config.js";
 import { articleExcluder } from "./exclude.js";
 import { renderPage, pageSlug } from "./render-page.js";
 import { hrefOf, resolveRelative } from "./links.js";
@@ -73,6 +73,48 @@ async function resolveCover(
   return `${base.replace(/\/$/, "")}/${path}`;
 }
 
+/**
+ * One level of the theme cascade, turned into the URL a page can actually link.
+ *
+ * Every level writes the same `--pg-*` tokens, so every level is the same kind of thing: a
+ * stylesheet. That is what keeps this a resolution rule rather than a feature — the article's
+ * `theme:` and a page's `theme:` are resolved by one function against the file each was written
+ * in, exactly as their `cover:` is.
+ *
+ * `inherit` resolves to nothing, which is also what omitting the key does. It is accepted so that
+ * "follow the level above" can be written down: a page in a folder of dark pages that wants the
+ * article's ordinary theme has to be able to say so, and deleting a key does not say anything.
+ *
+ * A theme that does not exist is an **error**, for the same reason a missing cover is: a page that
+ * silently links nothing looks exactly like a page whose theme did not apply, and the difference is
+ * a build log nobody reads. The value is dropped as well as reported, so a non-strict build links
+ * one fewer sheet rather than a dead one.
+ */
+async function resolveTheme(
+  theme: string | undefined,
+  from: string,
+  fs: ContentFs,
+  base: string,
+  where: string,
+  diagnostics: Diagnostic[],
+  page?: string,
+): Promise<string | undefined> {
+  if (theme === undefined || theme === THEME_INHERIT) return undefined;
+  if (ABSOLUTE.test(theme)) return theme;
+  if (theme.startsWith("/")) return theme;
+  const path = from === "" ? theme.replace(/^\.\//, "") : resolveRelative(from, theme);
+  if (!(await fs.exists(path))) {
+    diagnostics.push({
+      severity: "error",
+      code: "theme-missing",
+      message: `${where}: theme "${theme}" resolves to ${path}, which does not exist`,
+      ...(page === undefined ? {} : { page }),
+    });
+    return undefined;
+  }
+  return `${base.replace(/\/$/, "")}/${path}`;
+}
+
 export async function renderArticle(o: RenderArticleOptions): Promise<RenderedArticle> {
   const strict = o.strict ?? true;
   const config = parseArticleConfig(await o.fs.read("article.yaml"));
@@ -110,6 +152,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     }
   // Article-level metadata first: it is the fallback every page's own metadata is layered over.
   const articleCover = await resolveCover(config.cover, "", o.fs, base, "article.yaml", diagnostics);
+  const articleTheme = await resolveTheme(config.theme, "", o.fs, base, "article.yaml", diagnostics);
   const draft = config.status !== "published";
 
   const metas: Record<string, PageMeta> = {};
@@ -131,6 +174,11 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     // the image: a page that supplies its own photograph but not its own `cover_fit` gets the
     // article's answer, because that is the article's house style rather than a fact about a file.
     const coverFit = fm.coverFit ?? config.coverFit;
+    // Level 4. Resolved against the page, the way the page's `cover:` is. The article's sheet is
+    // *not* folded in here: both are linked, article first, so a page that redefines one token
+    // keeps the article's answer for the rest. That is what "inheriting when silent" means one
+    // level down, and it is the reason this is a second field rather than a replacement.
+    const theme = await resolveTheme(fm.theme, f.page, o.fs, base, f.page, diagnostics, f.page);
     const author = fm.author ?? config.author;
     const published = fm.published ?? config.published;
     const updated = fm.updated ?? config.updated;
@@ -142,6 +190,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
       ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}),
       ...(description === undefined ? {} : { description: truncateWords(description) }),
       ...(cover === undefined ? {} : { cover, coverAlt, ...(coverFit === undefined ? {} : { coverFit }) }),
+      ...(theme === undefined ? {} : { theme }),
       ...(author === undefined ? {} : { author }),
       ...(p.readingMinutes === undefined ? {} : { readingMinutes: p.readingMinutes }),
       ...(published === undefined ? {} : { published }),
@@ -175,7 +224,7 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     rootHref, coverOn: config.coverOn,
     ...(totalMinutes === 0 ? {} : { readingMinutes: totalMinutes }),
     ...(config.category === undefined ? {} : { category: config.category }),
-    ...(config.theme === undefined ? {} : { theme: config.theme }),
+    ...(articleTheme === undefined ? {} : { theme: articleTheme }),
     ...(config.coverFit === undefined ? {} : { coverFit: config.coverFit }),
     ...(articleCover === undefined ? {} : { cover: articleCover }),
     ...(config.coverAlt === undefined ? {} : { coverAlt: config.coverAlt }),

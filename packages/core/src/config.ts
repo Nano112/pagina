@@ -5,6 +5,14 @@ import type { ArticleConfig, CoverFit, CoverOn, NavEntry } from "./types.js";
 export const COVER_ON: readonly CoverOn[] = ["root", "all", "none"];
 /** Every value `cover_fit` may take. `contain` is the default — see {@link CoverFit}. */
 export const COVER_FIT: readonly CoverFit[] = ["contain", "cover"];
+/**
+ * The word a level of the theme cascade writes to say "I have no opinion, use the level above".
+ *
+ * The same value everywhere `theme:` is accepted, because a cascade with a different way of
+ * declining at each level is four mechanisms again. It is also exactly what omitting the key does;
+ * it exists so that following the level above can be a decision an author wrote down.
+ */
+export const THEME_INHERIT = "inherit";
 
 function fail(field: string, why: string): never {
   throw new Error(`article.yaml: ${field} ${why}`);

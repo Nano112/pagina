@@ -117,6 +117,12 @@ export async function walkReferences(o: WalkReferencesOptions): Promise<Referenc
   for (const [href, meta] of Object.entries(o.manifest.pages))
     want(toFolderPath(meta.cover ?? "", o.base), `${href} (cover)`);
   if (o.config.kineglyph?.theme !== undefined) want(joinPosix(o.config.kineglyph.theme), "article.yaml (kineglyph.theme)");
+  // Levels 3 and 4 of the theme cascade are files in the folder like any other, so they are
+  // referenced like any other: a stylesheet nothing points at is not "unused", it is the article's
+  // theme, and a check that reported it as an orphan would teach authors to ignore the check.
+  want(toFolderPath(o.manifest.article.theme ?? "", o.base), "article.yaml (theme)");
+  for (const [href, meta] of Object.entries(o.manifest.pages))
+    want(toFolderPath(meta.theme ?? "", o.base), `${href} (theme)`);
   for (const url of [o.manifest.article.cover, ...Object.values(o.manifest.pages).map((p) => p.cover)])
     if (url !== undefined && ABSOLUTE_URL.test(url)) external.add(url);
 

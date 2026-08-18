@@ -302,3 +302,74 @@ describe("renderArticle", () => {
     expect(anchorDiags[0]).toMatchObject({ page: "index.md", message: expect.stringContaining("#nope") });
   });
 });
+
+/**
+ * Levels 3 and 4 of the theme cascade.
+ *
+ * There is not much here to test, and that is the design: every level writes the same `--pg-*`
+ * tokens, so a level is a stylesheet and a level is resolved exactly the way that level's `cover:`
+ * already is. What is worth pinning down is the *arithmetic* — which sheet a page ends up with,
+ * what `inherit` does, and that a missing one is reported rather than silently linked.
+ */
+describe("the theme cascade", () => {
+  const themed = (articleYaml: string, files: Record<string, string>): ContentFs => {
+    const all: Record<string, string> = { "article.yaml": articleYaml, ...files };
+    return {
+      read: async (p) => all[p] ?? Promise.reject(new Error(`no ${p}`)),
+      readBinary: async () => new Uint8Array(),
+      exists: async (p) => p in all,
+      list: async () => Object.keys(all),
+    };
+  };
+  const yaml = (extra = "") => `slug: t\ntitle: T\nstatus: published\n${extra}nav:\n  - { title: Home, page: index.md }\n  - { title: Dark, page: dark.md }\n`;
+
+  it("resolves the article's theme against the folder and a page's against the page", async () => {
+    const fs = themed(yaml("theme: theme/site.css\n"), {
+      "index.md": "# Home\n",
+      "dark.md": "---\ntheme: ./theme/night.css\n---\n\n# Dark\n",
+      "theme/site.css": ":root{--pg-accent:#123456}",
+      "theme/night.css": ":root{--pg-bg:#000}",
+    });
+    const r = await renderArticle({ fs, strict: true, base: "/docs/" });
+    expect(r.manifest.article.theme).toBe("/docs/theme/site.css");
+    // A page that says nothing contributes nothing: the article's sheet is the only one it links.
+    expect(r.manifest.pages["/"]!.theme).toBeUndefined();
+    // …and one that speaks contributes its own *in addition*, so it can redefine one token and
+    // keep the article's answer for the rest.
+    expect(r.manifest.pages["/dark/"]!.theme).toBe("/docs/theme/night.css");
+  });
+
+  it("treats `inherit` as a decision to follow the level above, at either level", async () => {
+    const fs = themed(yaml("theme: theme/site.css\n"), {
+      "index.md": "---\ntheme: inherit\n---\n\n# Home\n",
+      "dark.md": "# Dark\n",
+      "theme/site.css": ":root{}",
+    });
+    const r = await renderArticle({ fs, strict: true });
+    // Written down rather than omitted, and it means the same thing: no sheet of this page's own,
+    // so the article's stands. The point of the word is that the author can say it.
+    expect(r.manifest.pages["/"]!.theme).toBeUndefined();
+    expect(r.manifest.article.theme).toBe("/theme/site.css");
+
+    const hostOnly = await renderArticle({ fs: themed(yaml("theme: inherit\n"), { "index.md": "# H\n", "dark.md": "# D\n" }), strict: true });
+    // An article that inherits has no theme of its own, which is level 2 — the host — showing
+    // through untouched. Not an empty string, and not a link to nothing.
+    expect(hostOnly.manifest.article.theme).toBeUndefined();
+  });
+
+  it("reports a theme that does not exist rather than linking a dead sheet", async () => {
+    const fs = themed(yaml("theme: theme/gone.css\n"), { "index.md": "# H\n", "dark.md": "---\ntheme: also-gone.css\n---\n\n# D\n" });
+    const r = await renderArticle({ fs, strict: false });
+    const missing = r.diagnostics.filter((d) => d.code === "theme-missing");
+    expect(missing).toHaveLength(2);
+    expect(missing[0]!.message).toContain("theme/gone.css");
+    // Dropped as well as reported: a page links one fewer sheet, not a 404.
+    expect(r.manifest.article.theme).toBeUndefined();
+    expect(r.manifest.pages["/dark/"]!.theme).toBeUndefined();
+  });
+
+  it("passes an absolute URL through, the way a cover is", async () => {
+    const fs = themed(yaml("theme: https://cdn.example/brand.css\n"), { "index.md": "# H\n", "dark.md": "# D\n" });
+    expect((await renderArticle({ fs, strict: true })).manifest.article.theme).toBe("https://cdn.example/brand.css");
+  });
+});

@@ -114,6 +114,14 @@ export interface PageFrontMatter {
   readonly coverAlt?: string;
   /** How this page's cover fills its band. Written `cover_fit`. See {@link CoverFit}. */
   readonly coverFit?: CoverFit;
+  /**
+   * This page's theme — level 4 of the cascade.
+   *
+   * A path to a CSS file writing `--pg-*`, relative to *this page*, or an absolute URL; or the
+   * word `inherit`, which is what a page that says nothing already does and is here so that
+   * following the article can be written down rather than only implied.
+   */
+  readonly theme?: string;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
@@ -154,6 +162,15 @@ export interface PageMeta {
   readonly coverAlt?: string;
   /** How {@link cover} fills its band. Already resolved: the page's, else the article's. */
   readonly coverFit?: CoverFit;
+  /**
+   * Site URL of **this page's own** theme stylesheet — level 4 of the cascade.
+   *
+   * Absent when the page declared no `theme:`, or declared `inherit`. It does not fold in the
+   * article's ({@link ArticleMeta.theme}): a consumer links the article's first and this one
+   * after, so a page that redefines one token keeps the article's answer for every other. Both are
+   * plain `--pg-*` stylesheets, which is the whole reason two of them compose.
+   */
+  readonly theme?: string;
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
@@ -170,9 +187,16 @@ export interface PageMeta {
 }
 
 /** `article.yaml`, minus the fields that describe the build rather than the article. */
-export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "cover" | "exclude" | "excludeGitignore"> {
+export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "cover" | "theme" | "exclude" | "excludeGitignore"> {
   /** Resolved site URL of the article cover, or the absolute URL the author gave. */
   readonly cover?: string;
+  /**
+   * Resolved site URL of the article's theme stylesheet — level 3 of the cascade.
+   *
+   * Absent when `article.yaml` declared none, or declared `inherit`. A page may override it; the
+   * answer for one page is that page's {@link PageMeta.theme}.
+   */
+  readonly theme?: string;
   /**
    * The href of the article's landing page — the first page in nav order.
    *
