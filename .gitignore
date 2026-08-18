@@ -9,3 +9,4 @@ playwright-report/
 # The docs site built by tools/build-docs-site.sh, and the bundle beside it.
 site/
 site.pgz
+.release/

@@ -1,7 +1,27 @@
 {
   "name": "@pagina/core",
   "version": "0.1.0",
+  "description": "Article model for pagina: parses an article folder of YAML and Markdown into a typed manifest plus HTML fragments, and builds the section-level search index.",
+  "license": "MIT",
+  "author": "Harrison (https://github.com/Nano112)",
+  "keywords": [
+    "documentation",
+    "markdown",
+    "static-site",
+    "pagina"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Nano112/pagina/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,8 +37,19 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/__tests__",
+    "!**/*.tsbuildinfo"
   ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -30,12 +61,5 @@
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Nano112/pagina.git",
-    "directory": "packages/core"
-  },
-  "homepage": "https://github.com/Nano112/pagina#readme"
+  }
 }

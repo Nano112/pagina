@@ -1,7 +1,28 @@
 {
   "name": "@pagina/editor",
   "version": "0.1.0",
+  "description": "WYSIWYG editor for pagina article folders, built on TipTap, shipped as both a module and a self-contained IIFE bundle.",
+  "license": "MIT",
+  "author": "Harrison (https://github.com/Nano112)",
+  "keywords": [
+    "editor",
+    "wysiwyg",
+    "tiptap",
+    "markdown",
+    "pagina"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/editor"
+  },
+  "homepage": "https://github.com/Nano112/pagina/tree/main/packages/editor#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,15 +51,26 @@
   "files": [
     "dist",
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/__tests__",
+    "!**/*.tsbuildinfo"
   ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "*",
-    "@pagina/shell-static": "*",
+    "@pagina/core": "^0.1.0",
+    "@pagina/shell-static": "^0.1.0",
     "@tiptap/core": "^3.7.2",
     "@tiptap/extension-code": "^3.7.2",
     "@tiptap/extension-color": "^3.7.2",
@@ -61,12 +93,5 @@
     "@types/markdown-it": "^14.1.2",
     "@vitejs/plugin-react": "^5.2.0",
     "vite": "^8.2.1"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Nano112/pagina.git",
-    "directory": "packages/editor"
-  },
-  "homepage": "https://github.com/Nano112/pagina#readme"
+  }
 }

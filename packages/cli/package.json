@@ -1,26 +1,56 @@
 {
   "name": "@pagina/cli",
   "version": "0.1.0",
+  "description": "Command line interface for pagina: `pagina dev`, `pagina build`, `pagina pack`, and `pagina unpack` over an article folder.",
+  "license": "MIT",
+  "author": "Harrison (https://github.com/Nano112)",
+  "keywords": [
+    "cli",
+    "documentation",
+    "static-site",
+    "markdown",
+    "pagina"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Nano112/pagina/tree/main/packages/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
+  },
   "type": "module",
   "bin": {
     "pagina": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/__tests__",
+    "!**/*.tsbuildinfo"
   ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "*",
-    "@pagina/vite": "*",
-    "@pagina/shell-static": "*"
+    "@pagina/core": "^0.1.0",
+    "@pagina/vite": "^0.1.0",
+    "@pagina/shell-static": "^0.1.0"
   },
   "peerDependencies": {
-    "@kineglyph/core": "*",
-    "@kineglyph/export": "*",
-    "@kineglyph/web": "*"
+    "@kineglyph/core": "^0.1.0",
+    "@kineglyph/export": "^0.2.0",
+    "@kineglyph/web": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@kineglyph/core": {
@@ -32,12 +62,5 @@
     "@kineglyph/web": {
       "optional": true
     }
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Nano112/pagina.git",
-    "directory": "packages/cli"
-  },
-  "homepage": "https://github.com/Nano112/pagina#readme"
+  }
 }

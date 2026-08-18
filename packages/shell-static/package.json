@@ -1,7 +1,28 @@
 {
   "name": "@pagina/shell-static",
   "version": "0.1.0",
+  "description": "The static HTML shell for a pagina site: page chrome, CSS tokens, theming, and the browser runtime that hydrates figures and search.",
+  "license": "MIT",
+  "author": "Harrison (https://github.com/Nano112)",
+  "keywords": [
+    "documentation",
+    "static-site",
+    "html",
+    "theming",
+    "pagina"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/shell-static"
+  },
+  "homepage": "https://github.com/Nano112/pagina/tree/main/packages/shell-static#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -28,23 +49,31 @@
     "dist",
     "src",
     "client",
-    "scripts"
+    "scripts",
+    "LICENSE",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/__tests__",
+    "!**/*.tsbuildinfo"
   ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-css.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "*",
+    "@pagina/core": "^0.1.0",
     "markdown-it": "^14.1.0",
     "shiki": "^3.12.0"
   },
-  "devDependencies": {
-    "@types/markdown-it": "^14.1.2"
-  },
   "peerDependencies": {
-    "@kineglyph/core": "*",
-    "@kineglyph/web": "*"
+    "@kineglyph/core": "^0.1.0",
+    "@kineglyph/web": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@kineglyph/core": {
@@ -54,11 +83,7 @@
       "optional": true
     }
   },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Nano112/pagina.git",
-    "directory": "packages/shell-static"
-  },
-  "homepage": "https://github.com/Nano112/pagina#readme"
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2"
+  }
 }

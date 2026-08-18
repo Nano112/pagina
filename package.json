@@ -17,7 +17,11 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "link:kineglyph": "npm link @kineglyph/core @kineglyph/svg @kineglyph/anime @kineglyph/plot @kineglyph/scenes @kineglyph/web @kineglyph/export",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "release:check": "node scripts/release.mjs check",
+    "release:pack": "node scripts/release.mjs pack",
+    "release:publish": "node scripts/release.mjs publish",
+    "adopt:kineglyph": "node scripts/adopt-kineglyph.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -36,5 +40,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Nano112/pagina.git"
+  },
+  "author": "Harrison (https://github.com/Nano112)",
+  "homepage": "https://github.com/Nano112/pagina#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
   }
 }

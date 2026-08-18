@@ -1,7 +1,28 @@
 {
   "name": "@pagina/vite",
   "version": "0.1.0",
+  "description": "Vite plugin and build pipeline for pagina: hot-reloading dev server, Kineglyph figure pre-rendering, and static site output.",
+  "license": "MIT",
+  "author": "Harrison (https://github.com/Nano112)",
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "documentation",
+    "static-site",
+    "pagina"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nano112/pagina.git",
+    "directory": "packages/vite"
+  },
+  "homepage": "https://github.com/Nano112/pagina/tree/main/packages/vite#readme",
+  "bugs": {
+    "url": "https://github.com/Nano112/pagina/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,25 +32,31 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE",
+    "!**/*.test.*",
+    "!**/*.spec.*",
+    "!**/__tests__",
+    "!**/*.tsbuildinfo"
   ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "*",
+    "@pagina/core": "^0.1.0",
     "vite": "^8.2.1"
   },
-  "devDependencies": {
-    "@pagina/editor": "*",
-    "@pagina/shell-static": "*",
-    "@types/markdown-it": "^14.1.2"
-  },
   "peerDependencies": {
-    "@kineglyph/core": "*",
-    "@kineglyph/export": "*",
-    "@kineglyph/web": "*"
+    "@kineglyph/core": "^0.1.0",
+    "@kineglyph/export": "^0.2.0",
+    "@kineglyph/web": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@kineglyph/core": {
@@ -42,11 +69,9 @@
       "optional": true
     }
   },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Nano112/pagina.git",
-    "directory": "packages/vite"
-  },
-  "homepage": "https://github.com/Nano112/pagina#readme"
+  "devDependencies": {
+    "@pagina/editor": "^0.1.0",
+    "@pagina/shell-static": "^0.1.0",
+    "@types/markdown-it": "^14.1.2"
+  }
 }
