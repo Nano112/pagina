@@ -66,12 +66,23 @@ export const withBase = (base: string, href: string) => `${base.replace(/\/$/, "
 export const THEME_INIT_SCRIPT = `<script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>`;
 
 /**
+ * The full sheet's name, hashed or not, with the capture that says which — see {@link tokensUrl}.
+ * Not public API: shared with `theming/index.ts`, which reads the same pair off a rendered page.
+ */
+export const PAGINA_CSS = /pagina(\.[0-9a-f]{8})?\.css(?=$|[?#])/;
+
+/**
  * Where the tokens-only sheet lives. A builder that emits one says so explicitly; otherwise it
  * sits next to the full sheet under the name `bundleClient` gives it, which is the layout every
  * pagina build produces.
+ *
+ * The optional hash is carried across rather than dropped. A built site names its stylesheets
+ * `pagina.<hash>.css` and `pagina.tokens.<hash>.css` — the *same* hash, because the full sheet
+ * inlines the tokens sheet and so already changes whenever it does — which is exactly what makes
+ * this one-line derivation keep working once the names carry content in them.
  */
 const tokensUrl = (ctx: ShellCtx): string =>
-  ctx.tokensCssUrl ?? ctx.cssUrl.replace(/pagina\.css(?=$|[?#])/, "pagina.tokens.css");
+  ctx.tokensCssUrl ?? ctx.cssUrl.replace(PAGINA_CSS, (_m, hash: string | undefined) => `pagina.tokens${hash ?? ""}.css`);
 
 /** The `<link>` (if any) for pagina's own CSS at this theme level. Not public API — see {@link esc}. */
 export function stylesheetHtml(ctx: ShellCtx): string {

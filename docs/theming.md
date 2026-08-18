@@ -513,6 +513,17 @@ leave the importing sheet's hash untouched and every browser would keep the stal
 inlines its imports at build time precisely so you do not have to fold sibling files into your
 own version hash.
 
+That is the rule for a **host**, which copies `dist/*.css` out under names it chose and serves them
+from its own layout: the query stamp is the only handle it has, and it is what `Assets::url()` in
+the Laravel package does. A **site build** is the other case and uses the other handle — it writes
+the HTML *and* the stylesheet, so the version goes in the name (`_pagina/pagina.<hash>.css`) and
+those files can be served immutably. Same idea, two places to put the answer; see
+[Assets are named after their contents](deploying.md).
+
+If you *read* a sheet's URL off a page to find its sibling — the theme showcase does — match
+`pagina(\.tokens)?(\.[0-9a-f]{8})?\.css` and swap only the infix. The two names always share one
+hash, because the full sheet inlines the tokens sheet and so changes whenever it does.
+
 ## How the layer trick works
 
 Every pagina stylesheet begins with

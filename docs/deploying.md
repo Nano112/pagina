@@ -123,6 +123,58 @@ Two consequences worth knowing:
   `<meta name="robots" content="noindex, follow">`. It needs no JavaScript: the address is the only
   part a script fills in, and the HTML ships a truthful sentence in its place.
 
+## Assets are named after their contents
+
+Every artefact a build emits into `_pagina/` carries a hash of its own bytes:
+
+```
+_pagina/pagina.4b77925f.js          the client bundle
+_pagina/pagina.4b082692.css         the stylesheet
+_pagina/pagina.tokens.4b082692.css  the tokens-only sheet, at the full sheet's hash
+_pagina/kineglyph.8dfd7d3c.js       the figure runtime
+```
+
+Nothing in the HTML is written by hand — the shell is handed those URLs — so a page always names the
+artefacts of the build that wrote it, and can never name a different build's.
+
+**This is the fix for a specific failure, not a performance tweak.** Under an unversioned
+`_pagina/pagina.js` with any cache lifetime at all, there is a window after each deploy in which a
+returning reader runs the *new* HTML against the *old* JavaScript. That is not a stale page; it is
+two versions of the site at once, and it is the kind of bug that gets investigated as a rendering
+fault, reported as a broken feature, and answered wrongly — because the person answering is looking
+at a browser that fetched everything fresh. Hashed names make the pairing an identity: a stale HTML
+document names the assets it was written against, and those are still on the server.
+
+So you can serve `_pagina/*.js` and `_pagina/*.css` **immutably**:
+
+```
+/_pagina/*.js   Cache-Control: public, max-age=31536000, immutable
+/_pagina/*.css  Cache-Control: public, max-age=31536000, immutable
+```
+
+and keep the HTML short-lived or revalidated, which is the pairing those two settings are for.
+`manifest.json`, `search.json`, `llms.json` and the pre-rendered figure SVGs are *not* hashed —
+they are addressed by name on purpose, by hosts and by agents — so give those a normal lifetime.
+
+!!! note "This is not a second cache-busting scheme"
+
+    [Cache-bust by content](theming.md) tells a host to stamp its published copy of `dist/pagina.css`
+    with `?v=<hash of that file>`. Both are content hashes and they never describe the same file. A
+    **build** emits the HTML *and* the assets, controls both halves, and can therefore put the
+    version in the name. A **host** copies `dist/*` out under names it chose and serves them from
+    its own layout; a query stamp is the only handle it has, and that is what `Assets::url()` in the
+    Laravel package is. An [article bundle](bundles.md) carries neither: `.rendered/` is page
+    *fragments*, with no asset URLs in it at all — the host links its own copy of the stylesheet.
+
+    The tokens sheet takes the **full** sheet's hash rather than its own. `pagina.css` inlines
+    `tokens.css`, so a tokens edit already changes it; sharing the digest keeps
+    `pagina.<h>.css` ⇄ `pagina.tokens.<h>.css` derivable from each other by name, which is what a
+    page linking one and a tool wanting the other rely on. The cost is that a chrome-only edit also
+    renames the tokens sheet — one extra download, once.
+
+`pagina dev` is unaffected: the dev server serves the client from source through Vite, which has its
+own invalidation and no cache to go stale.
+
 ## Publishing from CI
 
 A deploy is the moment a mistake stops being reversible, so two things belong in the pipeline

@@ -29,14 +29,24 @@ import { mountThemeShowcase, type ThemeShowcaseHandle } from "./showcase.js";
  * from there means the showcase works at a domain root, under a sub-path, and in the editor's
  * hand-written page, with nothing to keep in step.
  */
+/**
+ * Either sheet's name, with the `.tokens` infix and the content hash each captured separately.
+ *
+ * A built site names them `pagina.<hash>.css` and `pagina.tokens.<hash>.css` — one hash for both,
+ * since the full sheet inlines the tokens sheet — so the two are still each other's name with the
+ * infix added or removed, which is all this needs to find the sibling of whichever one the page
+ * happens to link.
+ */
+const SHEET = /pagina(\.tokens)?(\.[0-9a-f]{8})?\.css(?=$|[?#])/;
+
 function stylesheets(doc: Document): { pagina: string; tokens: string } | undefined {
   for (const link of doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')) {
-    if (!/pagina(\.tokens)?\.css(?=$|[?#])/.test(link.getAttribute("href") ?? "")) continue;
+    if (!SHEET.test(link.getAttribute("href") ?? "")) continue;
     const href = link.href;
-    return {
-      pagina: href.replace(/pagina\.tokens\.css(?=$|[?#])/, "pagina.css"),
-      tokens: href.replace(/pagina\.css(?=$|[?#])/, "pagina.tokens.css"),
-    };
+    const swap = (tokens: boolean): string =>
+      href.replace(SHEET, (_m, _infix: string | undefined, hash: string | undefined) =>
+        `pagina${tokens ? ".tokens" : ""}${hash ?? ""}.css`);
+    return { pagina: swap(false), tokens: swap(true) };
   }
   return undefined;
 }

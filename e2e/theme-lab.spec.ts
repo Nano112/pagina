@@ -231,7 +231,9 @@ test("the showcase renders every identity, wearing the CSS printed under it", as
         ?.contentDocument?.querySelector("link")
         ?.getAttribute("href") ?? "",
   );
-  expect(bareSheet).toContain("pagina.tokens.css");
+  // Content-hashed in a built site (`pagina.tokens.<hash>.css`), and derived from the sheet the
+  // *page* links rather than passed in — which is the whole reason the two names share one hash.
+  expect(bareSheet).toMatch(/\/pagina\.tokens(\.[0-9a-f]{8})?\.css(?=$|[?#])/);
 });
 
 test("works at a true 390px, without scrolling the page sideways", async ({ page }) => {

@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, serializeSearchIndex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, parseArticleConfig, renderArticle, robotsPlacement, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { gitIgnoredPaths } from "./gitignore.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
@@ -172,7 +172,75 @@ async function unreferencedReport(o: {
 
 const KINEGLYPH_ENTRY = "_pagina/.kineglyph-entry.ts";
 
-/** Bundles the client + a kineglyph runtime entry into `_pagina/`. Returns their site URLs. */
+/**
+ * Hex characters of a file's SHA-256 that go into its name.
+ *
+ * Eight is 32 bits: with a few artefacts per build and a handful of builds a day, a collision is
+ * not a thing that happens, and a name a person can read out over a call is worth more than the
+ * remaining bits. This is a cache key, not a signature — `bundle.ts`'s integrity hashes are the
+ * full digest and stay that way.
+ */
+export const ASSET_HASH_CHARS = 8;
+
+/** A name this build produced — so a rebuild into the same directory can clear the last one's. */
+const HASHED_ASSET = /^(?:pagina|pagina\.tokens|kineglyph)\.[0-9a-f]{8}\.(?:js|css)$/;
+
+/** `pagina.js` + a digest → `pagina.a1b2c3d4.js`. The extension stays last, so servers still type it. */
+function hashedName(name: string, hash: string): string {
+  const dot = name.lastIndexOf(".");
+  return `${name.slice(0, dot)}.${hash.slice(0, ASSET_HASH_CHARS)}${name.slice(dot)}`;
+}
+
+/**
+ * Renames `name` in `dir` to carry a hash of its own bytes, and answers what it is now called.
+ *
+ * A file that is not there is answered with the name it would have had, unchanged: `bundleClient`
+ * is called with a third-party shell's entry too, and a shell that imports no CSS emits no
+ * stylesheet. Returning the plain name keeps that case exactly as it was.
+ */
+async function hashInPlace(dir: string, name: string, digest?: string): Promise<string> {
+  const from = join(dir, name);
+  if (!existsSync(from)) return name;
+  const hash = digest ?? await sha256Hex(await readFile(from));
+  const to = hashedName(name, hash);
+  if (to !== name) await rename(from, join(dir, to));
+  return to;
+}
+
+/**
+ * Bundles the client + a kineglyph runtime entry into `_pagina/`. Returns their site URLs.
+ *
+ * ## Why the names carry a hash
+ *
+ * `_pagina/pagina.js` under a ten-minute `max-age` means that for ten minutes after every deploy a
+ * returning reader runs **this** build's HTML against the **last** build's JavaScript. That is not
+ * a slow cache, it is a version skew, and it has already produced one false bug report about
+ * figures and one wrong answer about a keyboard shortcut. A name that contains the content cannot
+ * skew: the HTML this build writes names the assets this build wrote, and a stale HTML document
+ * names the stale assets it was written against, which are still on the server. Both pairs are
+ * internally consistent, which is the only property that matters.
+ *
+ * Every URL travels through {@link ShellContext}, so a shell never spells one of these names —
+ * that is what makes this change invisible above this function.
+ *
+ * ## One hash for the two stylesheets
+ *
+ * `pagina.tokens.css` takes `pagina.css`'s digest rather than its own. The full sheet **inlines**
+ * the tokens sheet at build time, so any edit to the tokens changes the full sheet's bytes too:
+ * one digest already covers both, and sharing it keeps `pagina.<h>.css` ⇄ `pagina.tokens.<h>.css`
+ * derivable by name, which is what the theme showcase and `theme: "tokens"` fall back to when a
+ * caller passes only one of the two. The cost is that a chrome-only edit also renames the tokens
+ * sheet: one extra download, once, for a file almost nobody links.
+ *
+ * ## What this is *not*
+ *
+ * It is not a second cache-busting scheme next to the `?v=<hash>` a host stamps on its published
+ * copy of `dist/pagina.css` (`Assets::url()` in the Laravel package). The two never describe the
+ * same file. This one is for artefacts **pagina emits together with the HTML that names them**,
+ * where the build controls both halves and can therefore put the version in the name. That one is
+ * for artefacts a host **copies out** under names it chose, where a query stamp is the only handle
+ * it has. See `docs/theming.md`.
+ */
 export async function bundleClient(
   outDir: string,
   base: string,
@@ -206,14 +274,28 @@ export async function bundleClient(
   // than re-derived, so `theme: "tokens"` can never drift from `theme: "full"`. A third-party
   // shell without one simply doesn't get the tokens level.
   const tokensSrc = resolve(clientEntry, "../tokens.css");
+  const assets = join(outDir, "_pagina");
   const hasTokens = existsSync(tokensSrc);
-  if (hasTokens) await cp(tokensSrc, join(outDir, "_pagina/pagina.tokens.css"));
+  if (hasTokens) await cp(tokensSrc, join(assets, "pagina.tokens.css"));
+  // Last build's names, cleared before this build's are minted. `emptyOutDir` is off (the figures
+  // and the manifest live here too), so without this a directory rebuilt in place would keep every
+  // version of the client it has ever had — and the unreferenced-file report cannot see `_pagina/`.
+  for (const entry of await readdir(assets)) {
+    if (HASHED_ASSET.test(entry)) await rm(join(assets, entry), { force: true });
+  }
+  const cssPath = join(assets, "pagina.css");
+  const cssDigest = existsSync(cssPath) ? await sha256Hex(await readFile(cssPath)) : undefined;
+  const client = await hashInPlace(assets, "pagina.js");
+  const css = await hashInPlace(assets, "pagina.css", cssDigest);
+  // Deliberately the *full* sheet's digest — see the note above `bundleClient`.
+  const tokens = await hashInPlace(assets, "pagina.tokens.css", cssDigest);
+  const kineglyph = await hashInPlace(assets, "kineglyph.js");
   const b = base.replace(/\/$/, "");
   return {
-    clientUrl: `${b}/_pagina/pagina.js`,
-    cssUrl: `${b}/_pagina/pagina.css`,
-    ...(hasTokens ? { tokensCssUrl: `${b}/_pagina/pagina.tokens.css` } : {}),
-    kineglyphRuntimeUrl: `${b}/_pagina/kineglyph.js`,
+    clientUrl: `${b}/_pagina/${client}`,
+    cssUrl: `${b}/_pagina/${css}`,
+    ...(hasTokens ? { tokensCssUrl: `${b}/_pagina/${tokens}` } : {}),
+    kineglyphRuntimeUrl: `${b}/_pagina/${kineglyph}`,
   };
 }
 

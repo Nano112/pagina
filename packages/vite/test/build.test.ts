@@ -11,6 +11,9 @@ const fixture = new URL("../../core/test/fixture/", import.meta.url).pathname;
 /** The real shell's client entry, for the CSS-emission assertions below. */
 const shellClient = new URL("../../shell-static/client/pagina.ts", import.meta.url).pathname;
 
+/** `pagina.a1b2c3d4.js` → `pagina.js`: what an assertion about *which* artefact can compare on. */
+const unhashed = (url: string): string => url.replace(/\.[0-9a-f]{8}(\.(?:js|css))(?=$|[?#])/, "$1");
+
 /**
  * A throwaway copy of the fixture whose `article.yaml` has been edited.
  *
@@ -39,9 +42,11 @@ describe("buildStatic", () => {
       "scenes/demo.mjs",
       "media/static.svg",
       "_pagina/manifest.json",
-      "_pagina/kineglyph.js",
     ])
       expect((await stat(join(outDir, f))).isFile(), f).toBe(true);
+    // The client artefacts carry a hash of their own bytes, so there is no fixed name to `stat`.
+    const inPagina = await readdir(join(outDir, "_pagina"));
+    expect(inPagina.filter((f) => /^kineglyph\.[0-9a-f]{8}\.js$/.test(f)), "hashed kineglyph runtime").toHaveLength(1);
     const figs = await readdir(join(outDir, "_pagina/figures/guide-figures"));
     expect(figs.sort()).toEqual([
       "chrome-demo.dark.svg",
@@ -71,9 +76,10 @@ describe("buildStatic", () => {
     expect(html).not.toContain("kg-export-background");
     // Colour is the page's to decide; the value it was drawn with is only the fallback.
     expect(html).toContain(`fill="var(--kg-color-text, `);
-    expect(html).toContain(`"kineglyph":"/_pagina/kineglyph.js"`);
+    expect(html).toMatch(/"kineglyph":"\/_pagina\/kineglyph\.[0-9a-f]{8}\.js"/);
     // The client bundle keeps `kineglyph` as a bare import for the page's import map.
-    const client = await readFile(join(outDir, "_pagina/pagina.js"), "utf8");
+    const clientName = inPagina.find((f) => /^pagina\.[0-9a-f]{8}\.js$/.test(f))!;
+    const client = await readFile(join(outDir, "_pagina", clientName), "utf8");
     expect(client.length).toBeGreaterThan(0);
     expect(/from\s*"kineglyph"/.test(client), client).toBe(true);
   }, 60_000);
@@ -105,7 +111,7 @@ describe("buildStatic", () => {
     const html = await readFile(join(outDir, "404.html"), "utf8");
     expect(html).toContain(`<meta name="robots" content="noindex, follow">`);
     expect(html).toContain(`href="/docs/guide/tabs/"`);
-    expect(html).toContain(`href="/docs/_pagina/pagina.css"`);
+    expect(html).toMatch(/href="\/docs\/_pagina\/pagina\.[0-9a-f]{8}\.css"/);
     // The one defect that only shows up at depth: a single relative URL and the page is broken
     // everywhere it is actually used.
     for (const url of [...html.matchAll(/(?:href|src)="([^"]*)"/g)].map((m) => m[1]!)) {
@@ -197,7 +203,7 @@ describe("buildStatic", () => {
     expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const html = await readFile(join(outDir, "guide/figures/index.html"), "utf8");
     expect(html).toContain(`data-scene="/Nucleation/scenes/demo.mjs"`);
-    expect(html).toContain(`"kineglyph":"/Nucleation/_pagina/kineglyph.js"`);
+    expect(html).toMatch(/"kineglyph":"\/Nucleation\/_pagina\/kineglyph\.[0-9a-f]{8}\.js"/);
     // outDir is the directory served *at* base, so base must not appear inside it.
     const figs = await readdir(join(outDir, "_pagina/figures/guide-figures"));
     expect(figs.sort()).toEqual([
@@ -241,11 +247,16 @@ describe("bundleClient", () => {
   it("ships the tokens sheet beside the full one, from the same source file", async () => {
     const outDir = await tempDir("css");
     const urls = await bundleClient(outDir, "/docs/", shellClient);
-    expect(urls.cssUrl).toBe("/docs/_pagina/pagina.css");
-    expect(urls.tokensCssUrl).toBe("/docs/_pagina/pagina.tokens.css");
+    expect(unhashed(urls.cssUrl)).toBe("/docs/_pagina/pagina.css");
+    expect(unhashed(urls.tokensCssUrl!)).toBe("/docs/_pagina/pagina.tokens.css");
+    // One digest for the pair: the full sheet inlines the tokens sheet, so its hash already covers
+    // both, and sharing it is what keeps the two derivable from each other by name (`tokensUrl` in
+    // the shell's template, and the theme showcase reading a sheet off a rendered page).
+    const hash = /pagina\.([0-9a-f]{8})\.css$/.exec(urls.cssUrl)![1];
+    expect(urls.tokensCssUrl).toBe(`/docs/_pagina/pagina.tokens.${hash!}.css`);
 
     // Copied verbatim: the tokens sheet is the file `pagina.css` imports, not a re-derivation.
-    const tokens = await readFile(join(outDir, "_pagina/pagina.tokens.css"), "utf8");
+    const tokens = await readFile(join(outDir, `_pagina/pagina.tokens.${hash!}.css`), "utf8");
     const source = await readFile(new URL("../../shell-static/client/tokens.css", import.meta.url), "utf8");
     expect(tokens).toBe(source);
     expect(tokens).toContain("@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;");
@@ -254,7 +265,7 @@ describe("bundleClient", () => {
     // declaration *because* it has already sorted the blocks into the declared order — so the
     // guarantee to assert on the emitted file is the block order, which is what the cascade
     // actually reads. (`docs/theming.md` says the same.)
-    const css = await readFile(join(outDir, "_pagina/pagina.css"), "utf8");
+    const css = await readFile(join(outDir, `_pagina/pagina.${hash!}.css`), "utf8");
     // Blocks *and* the bare `@layer x;` lightningcss keeps for a slot it has no block for
     // (`pagina.editor` — the site sheet reserves it so `editor.css` cannot land ahead of the
     // reading layer). Together they are the order the cascade reads.
@@ -287,7 +298,7 @@ describe("bundleClient", () => {
     const html = await readFile(join(outDir, "index.html"), "utf8");
     const hrefs = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]!);
 
-    expect(hrefs).toEqual(theme === "none" ? [] : [`/docs/_pagina/pagina${theme === "tokens" ? ".tokens" : ""}.css`]);
+    expect(hrefs.map(unhashed)).toEqual(theme === "none" ? [] : [`/docs/_pagina/pagina${theme === "tokens" ? ".tokens" : ""}.css`]);
     for (const href of hrefs) {
       // `outDir` is the directory served *at* base, so base comes off the front of the URL.
       const file = join(outDir, href.replace(/^\/docs\//, ""));
@@ -296,6 +307,56 @@ describe("bundleClient", () => {
       expect(await readFile(file, "utf8")).toContain("--pg-accent");
     }
   }, 60_000);
+
+  /**
+   * The defect this closes: `_pagina/pagina.js` was one name for every version of the client that
+   * had ever been deployed. Served with any cache lifetime at all, that means a window after each
+   * deploy in which a returning reader runs the new HTML against the old JavaScript — which is not
+   * a stale page but two versions of the site at once, and which produced a false bug report about
+   * figure rendering and a wrong answer about ⌘K inside one day.
+   *
+   * So the assertion is the invariant, not the mechanism: **every URL a built page names for a
+   * pagina artefact carries a content hash, and every one of them is a file this build wrote.**
+   * The first half is what makes skew impossible; the second is what stops the first half being
+   * satisfied by a link to nothing.
+   */
+  it("references only hashed asset names, and every one of them exists", async () => {
+    const outDir = await tempDir("hashed");
+    await buildStatic({ folder: fixture, outDir, shell: staticShell, strict: true, base: "/docs/" });
+    const html = await readFile(join(outDir, "index.html"), "utf8");
+
+    // Every URL the page names into `_pagina/` — the stylesheet, the module, the import map's
+    // kineglyph entry — however it was written.
+    const urls = [...html.matchAll(/["'](\/docs\/_pagina\/[^"']+)["']/g)].map((m) => m[1]!);
+    const assets = urls.filter((u) => /\.(js|css)(?=$|[?#])/.test(u));
+    expect(assets.length, "the page names at least the client, its sheet and the runtime").toBeGreaterThanOrEqual(3);
+
+    for (const url of assets) {
+      expect(url, `${url} is served under a name that says nothing about its contents`)
+        .toMatch(/\.[0-9a-f]{8}\.(?:js|css)(?=$|[?#])/);
+      const file = join(outDir, url.replace(/^\/docs\//, "").replace(/[?#].*$/, ""));
+      expect(existsSync(file), `${url} is referenced but ${file} was never written`).toBe(true);
+    }
+
+    // …and the unhashed names are gone rather than left beside them: a file still answering at
+    // `_pagina/pagina.js` is a second, unversioned way to load the client, which is the thing
+    // being removed.
+    for (const stale of ["pagina.js", "pagina.css", "pagina.tokens.css", "kineglyph.js"]) {
+      expect(existsSync(join(outDir, "_pagina", stale)), `_pagina/${stale} still answers`).toBe(false);
+    }
+  }, 60_000);
+
+  /** A rebuild in place replaces the previous client rather than accumulating every version of it. */
+  it("clears the last build's hashed artefacts when it rebuilds in place", async () => {
+    const outDir = await tempDir("hashed-rebuild");
+    await bundleClient(outDir, "/", shellClient);
+    const first = (await readdir(join(outDir, "_pagina"))).filter((f) => /^pagina\.[0-9a-f]{8}\.js$/.test(f));
+    await bundleClient(outDir, "/", shellClient);
+    const second = (await readdir(join(outDir, "_pagina"))).filter((f) => /^pagina\.[0-9a-f]{8}\.js$/.test(f));
+    expect(first).toHaveLength(1);
+    // Same input, same bytes, same name — and exactly one of them either way.
+    expect(second).toEqual(first);
+  }, 90_000);
 
   it("skips the tokens sheet for a shell that has none", async () => {
     const outDir = await tempDir("css-none");
