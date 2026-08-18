@@ -151,7 +151,41 @@ done
 # of the docs chrome. `%BASE%` is substituted here because the page's import map must name an
 # absolute URL — the one thing a hand-written static file cannot derive, since a sub-path
 # deployment makes a relative one wrong as soon as the page is fetched without its trailing slash.
-sed "s|%BASE%|$BASE|g" "$REPO_ROOT/tools/editor-page.html" > "$OUT/editor/index.html"
+#
+# `%PAGINA_CSS%` and `%KINEGLYPH_JS%` for the reason that came after: the client artefacts carry a
+# hash of their contents (see `docs/deploying.md`), so their names are not knowable until the build
+# above has run, and a hand-written page naming `pagina.css` now names a 404. Every *article* page
+# gets these URLs from the shell; this file is the one page of the site the shell does not render,
+# which is exactly why it is the one that could go stale without anything noticing.
+#
+# Read out of the output rather than guessed at, and fatal unless the answer is exactly one file —
+# a demo page whose stylesheet 404s looks precisely like a broken site, which is the standard the
+# editor bundle above is already held to. The eight-character glob is what separates
+# `pagina.<hash>.css` from its sibling `pagina.tokens.<hash>.css`.
+resolve_asset() {
+  local pattern="$1" matches count
+  matches="$(find "$OUT/_pagina" -maxdepth 1 -type f -name "$pattern" | sort)"
+  count="$(printf '%s' "$matches" | grep -c . || true)"
+  if [ "$count" != "1" ]; then
+    echo "error: expected exactly one $OUT/_pagina/$pattern, found $count: ${matches:-none}" >&2
+    exit 1
+  fi
+  basename "$matches"
+}
+PAGINA_CSS="$(resolve_asset 'pagina.????????.css')"
+KINEGLYPH_JS="$(resolve_asset 'kineglyph.????????.js')"
+
+sed -e "s|%BASE%|$BASE|g" \
+    -e "s|%PAGINA_CSS%|$PAGINA_CSS|g" \
+    -e "s|%KINEGLYPH_JS%|$KINEGLYPH_JS|g" \
+    "$REPO_ROOT/tools/editor-page.html" > "$OUT/editor/index.html"
+
+# Nothing left unsubstituted. A placeholder that reaches the published page is a broken URL, and
+# adding one to the template without adding it here is how that happens.
+if grep -o '%[A-Z_]\{2,\}%' "$OUT/editor/index.html" | sort -u | grep . ; then
+  echo "error: $OUT/editor/index.html still contains the placeholders listed above" >&2
+  exit 1
+fi
 
 # The bundle is worth keeping: it is what a host would import, and having the exact artefact the
 # site was built from makes a bad deploy diagnosable.

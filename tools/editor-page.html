@@ -9,10 +9,19 @@
 
   It is a hand-written file rather than an article page because an article page comes with the
   site's chrome — header, nav, breadcrumbs, "on this page" — and "no docs chrome" is the entire
-  point. `tools/build-docs-site.sh` copies it to `$OUT/editor/index.html` and substitutes %BASE%,
-  which is the one thing a static file cannot work out for itself: the import map has to name an
-  absolute URL, and a sub-path deployment (GitHub Pages serves this at /pagina/) makes a relative
-  one wrong the moment the page is fetched without its trailing slash.
+  point. `tools/build-docs-site.sh` copies it to `$OUT/editor/index.html` and substitutes the three
+  placeholders below, which are the things a static file cannot work out for itself. (Do not write
+  another one into this comment: the script refuses to publish a page with an unsubstituted
+  placeholder left in it, and cannot tell prose from markup.)
+
+  %BASE%: the import map has to name an absolute URL, and a sub-path deployment (GitHub Pages
+  serves this at /pagina/) makes a relative one wrong the moment the page is fetched without its
+  trailing slash.
+
+  %PAGINA_CSS% and %KINEGLYPH_JS%: those artefacts are named after their contents, so their names
+  are decided by the build and not knowable here. Every article page gets them from the shell; this
+  is the one page of the site the shell does not render. The script reads them out of the built
+  output and refuses to write this file if it cannot find exactly one of each.
 -->
 <html lang="en" data-theme="light">
 <head>
@@ -24,8 +33,8 @@
 <meta name="robots" content="noindex">
 <script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <!-- The same runtime instance the site's own pages use, so a figure in the preview hydrates on it. -->
-<script type="importmap">{"imports":{"kineglyph":"%BASE%_pagina/kineglyph.js"}}</script>
-<link rel="stylesheet" href="%BASE%_pagina/pagina.css">
+<script type="importmap">{"imports":{"kineglyph":"%BASE%_pagina/%KINEGLYPH_JS%"}}</script>
+<link rel="stylesheet" href="%BASE%_pagina/%PAGINA_CSS%">
 <style>
   html, body { margin: 0; block-size: 100%; background: var(--pg-bg); color: var(--pg-fg); }
   body { font-family: var(--pg-font); }
