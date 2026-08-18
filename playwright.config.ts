@@ -44,7 +44,9 @@ export default defineConfig({
       // `host-theming.spec.ts` belongs here for the same reason: it is about what a *host* gets
       // from the built stylesheets, and the dev server's import resolution is exactly what hid
       // the defect it covers.
-      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme)\.spec\.ts/,
+      // `demo.spec.ts` belongs here too: the docs demo is `dist/demo.js` loading `dist/editor.js`
+      // from a plain static server, which is the arrangement `tools/build-docs-site.sh` publishes.
+      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo)\.spec\.ts/,
       use: { baseURL: `http://127.0.0.1:${String(STATIC_PORT)}` },
     },
   ],

@@ -46,6 +46,10 @@ const THEMED_BASE = "/themed/";
 const ASSETS = {
   "/vendor/pagina/editor.js": resolve(repo, "packages/editor/dist/editor.js"),
   "/vendor/pagina/editor.iife.js": resolve(repo, "packages/editor/dist/editor.iife.js"),
+  // The docs demo's implementation. It must sit *beside* `editor.js`, because it finds the bundle
+  // (and its stylesheet) with `new URL("editor.js", import.meta.url)` — the same arrangement
+  // `tools/build-docs-site.sh` puts on the published site.
+  "/vendor/pagina/demo.js": resolve(repo, "packages/editor/dist/demo.js"),
   "/vendor/pagina/editor.css": resolve(repo, "packages/editor/dist/editor.css"),
   "/vendor/pagina/pagina.css": resolve(repo, "packages/shell-static/dist/pagina.css"),
   "/vendor/pagina/pagina.tokens.css": resolve(repo, "packages/shell-static/dist/pagina.tokens.css"),
@@ -251,7 +255,38 @@ async function siteUnderHostTheme(rel) {
     .replace("<head>", `<head>\n${RESET}\n${HOST_THEME}`);
 }
 
+/**
+ * The docs demo, on a server that is not Vite: `startDemo` against browser storage.
+ *
+ * This page is the shape of `docs/demo.md` — an empty container and one module import — which is
+ * the whole point of moving the demo's implementation into `packages/editor/src/demo.ts`. Before
+ * that it was a hundred lines of inline script in a markdown file: the one executable thing in the
+ * repository that eslint, `tsc` and every test lane skipped. `e2e/demo.spec.ts` drives this.
+ */
+const demoPage = () => `<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8"><title>Demo (browser storage)</title>
+<link rel="stylesheet" href="/vendor/pagina/pagina.css">
+<script type="importmap">{"imports":{"kineglyph":"/vendor/pagina/kineglyph-web.js"}}</script>
+<!-- Wide enough for three panes on a desktop viewport, and exactly the viewport on a phone: the
+     shell's layout follows its own width, so this is what switches it between the two. -->
+<style>body { margin: 0 } #demo { width: min(1200px, 100vw) }</style>
+</head>
+<body>
+<!-- The demo sits below the fold, as it does on the docs page, so "not loaded until it is wanted"
+     is a thing this page can actually be wrong about. -->
+<div style="height: 150vh"></div>
+<div id="demo"></div>
+<script type="module">
+  import { startDemo } from "/vendor/pagina/demo.js";
+  startDemo(document.getElementById("demo"));
+  window.__demoStarted = true;
+</script>
+</body></html>`;
+
 const HOST_PAGES = {
+  "/demo": () => demoPage(),
   "/site-dark": () => siteUnderHostTheme("index.html"),
   // A sub-page of the same article, same host, same palette — the proof that the hero is the
   // *article's* and not every page's. It is a route rather than an assertion on `/site-dark`

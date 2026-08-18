@@ -99,9 +99,14 @@ run_pagina "" build "$WORK/unpacked" \
 # opposite of what a portable bundle is for. The demo page reaches it at `<base>editor/`, derived
 # from its own URL, so this path is the contract between the two.
 #
+# `demo.js` joins them: the demo's implementation, which both the docs page and the full-screen
+# editor import. It is emitted by plain `tsc` (it has no static imports — it fetches `editor.js`
+# through a URL at runtime, which is what keeps the 1.3 MB bundle a separate, deferred request),
+# so it is a sibling of the bundle it loads and finds it relative to its own `import.meta.url`.
+#
 # Missing is fatal. A demo page whose editor 404s looks exactly like a broken site.
 EDITOR_DIST="$REPO_ROOT/packages/editor/dist"
-for f in editor.js editor.css; do
+for f in editor.js editor.css demo.js; do
   if [ ! -f "$EDITOR_DIST/$f" ]; then
     echo "error: $EDITOR_DIST/$f does not exist — 'npm run build' has not produced the editor bundle" >&2
     exit 1
@@ -109,6 +114,16 @@ for f in editor.js editor.css; do
 done
 mkdir -p "$OUT/editor"
 cp "$EDITOR_DIST/editor.js" "$EDITOR_DIST/editor.css" "$OUT/editor/"
+# `tsc` writes a `sourceMappingURL` pointing at a `.map` that is not published; stripped rather
+# than shipped, so opening devtools on the site does not produce a 404 nobody can act on.
+sed '/^\/\/# sourceMappingURL=/d' "$EDITOR_DIST/demo.js" > "$OUT/editor/demo.js"
+
+# ---- 4. the full-screen editor -------------------------------------------------------------------
+# `<base>editor/index.html`: the same demo, the same browser storage, the whole viewport, and none
+# of the docs chrome. `%BASE%` is substituted here because the page's import map must name an
+# absolute URL — the one thing a hand-written static file cannot derive, since a sub-path
+# deployment makes a relative one wrong as soon as the page is fetched without its trailing slash.
+sed "s|%BASE%|$BASE|g" "$REPO_ROOT/tools/editor-page.html" > "$OUT/editor/index.html"
 
 # The bundle is worth keeping: it is what a host would import, and having the exact artefact the
 # site was built from makes a bad deploy diagnosable.

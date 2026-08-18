@@ -126,6 +126,13 @@ admonition whose title is just the capitalised kind — `!!! note "Note"` — is
 the title, because core supplies that default and writing it would be noise the author did not put
 there.
 
+A tab group's controls sit on the tabs themselves: double-click a tab to rename it, and each tab
+carries its own delete — a group control acting on "whichever tab is selected" is a control whose
+effect you have to remember rather than see. Delete or Backspace on the strip does the same thing
+without a pointer. **Deleting the last remaining tab removes the whole group**, because a tabs node
+with no children cannot exist and refusing left the control on a one-tab group doing nothing; it is
+one undo away.
+
 A `/` at the start of an empty block opens the slash menu, which is the fastest route to all of the
 above. Images and files can also be dropped or pasted in; the extension of the stored path decides
 what the document gets — an image node, a `<model-viewer>`, or a link.
@@ -250,6 +257,19 @@ A host page with no import map for `kineglyph` publishes pages whose figures hyd
 instead of carrying SVG. That is a degradation, not a failure, and it is silent — worth checking
 once on any new host.
 
+`publish()` resolves to `{ publishedAt, article }` — the timestamp *and* the rendered article, pages
+and inlined figures included, exactly as the backend received them. It is returned rather than
+discarded because a caller nearly always wants to show it, and re-rendering to do so would be a
+second answer to a question already answered.
+
+The editor's own **Publish** button uses it that way: it saves, renders, ships, and then leaves the
+editor for a reading view of what was just published, with the article's nav and one control back.
+That is worth the space it takes because the alternative — a control that does real work and changes
+nothing on screen — is indistinguishable from a control that does nothing, which is how it read
+before. It is also the clearest statement of the architecture: the client rendered that page, so
+there is a reading view even where there is no server. Try it on [the demo](demo.md), which has no
+publish target at all.
+
 ## Known rough edges
 
 Stated plainly, because finding these written down is more use than discovering them.
@@ -285,8 +305,15 @@ Stated plainly, because finding these written down is more use than discovering 
   than the scene's own `id` or its file name. With several figures on a page you are counting
   `<figure>` elements to find the broken one. The message itself is good; only the subject is wrong.
 
-**On a phone**
+**When the editor is narrow**
 
-The three panes stack and the text stays legible, but **the file list is hidden below 960 px with
-nothing to replace it** — so switching pages, creating one and uploading are all unreachable on a
-phone. See [the demo page](demo.md) for the rest, measured at 390 px rather than guessed.
+The layout follows the *editor's* width, not the window's — it is a component, and pagina's own docs
+demo is a 656 px frame in a 1180 px page, where a media query reports a comfortable desktop and the
+document pane gets one word per line. Below 900 px of its own width the three panes stack into one
+column and the pages sidebar is replaced by a floating **Pages** button that opens the same list —
+tree, New page, Upload, All files — in a modal, with Escape, a focus trap and focus returned to the
+button. Before that the list was simply hidden and none of it was reachable.
+
+The toolbar still wraps to several rows at 390 px, and an inline frame then has little height left
+for the document. See [the demo page](demo.md), measured at 390 px rather than guessed, and prefer
+the full-screen editor it links to on a small screen.

@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+  The full-screen editor: `<base>editor/`.
+
+  The demo on `docs/demo.md` is the editor seen through a letterbox — a 660 px frame inside a prose
+  column, between an admonition and a table of contents. Three panes do not fit there, and the one
+  that gets squeezed is the one the demo is for. This page is the same demo, the same
+  `LocalStorageBackend` and the same article, given the whole viewport.
+
+  It is a hand-written file rather than an article page because an article page comes with the
+  site's chrome — header, nav, breadcrumbs, "on this page" — and "no docs chrome" is the entire
+  point. `tools/build-docs-site.sh` copies it to `$OUT/editor/index.html` and substitutes %BASE%,
+  which is the one thing a static file cannot work out for itself: the import map has to name an
+  absolute URL, and a sub-path deployment (GitHub Pages serves this at /pagina/) makes a relative
+  one wrong the moment the page is fetched without its trailing slash.
+-->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The editor · pagina</title>
+<meta name="description" content="pagina's editor, full screen, writing to your own browser's storage.">
+<!-- No server, no sessions, nothing to index: this page is a sandbox, not a document. -->
+<meta name="robots" content="noindex">
+<script>(function(){try{var t=localStorage.getItem("pagina-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<!-- The same runtime instance the site's own pages use, so a figure in the preview hydrates on it. -->
+<script type="importmap">{"imports":{"kineglyph":"%BASE%_pagina/kineglyph.js"}}</script>
+<link rel="stylesheet" href="%BASE%_pagina/pagina.css">
+<style>
+  html, body { margin: 0; block-size: 100%; background: var(--pg-bg); color: var(--pg-fg); }
+  body { font-family: var(--pg-font); }
+</style>
+</head>
+<body>
+<div id="pagina-editor-app"></div>
+<script type="module">
+  import { startDemo } from "./demo.js";
+  startDemo(document.getElementById("pagina-editor-app"), {
+    chrome: "fullscreen",
+    backHref: "../demo/",
+    backLabel: "← Back to the docs",
+  });
+</script>
+</body>
+</html>

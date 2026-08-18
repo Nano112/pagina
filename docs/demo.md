@@ -10,137 +10,52 @@ get a conflict banner, because two tabs really are two writers.
 
 !!! warning "What this demo is not"
     There is **no server**. Nothing you type leaves this browser, nothing is uploaded, and there is
-    nothing to log into. There is **no publish target** — the *Publish* button renders the article
-    and then has nowhere to send it. Your work lives in this browser's storage for this site only:
+    nothing to log into. *Publish* is real — it renders every page and every figure here, in this
+    browser, and drops you into the reading view of what you wrote — but what it renders is stored
+    in this tab and shipped nowhere. Your work lives in this browser's storage for this site only:
     clearing site data, or opening the page in a different browser or a private window, starts over.
     Browser storage holds about 5 MB in total, so uploads are capped at 512 KB each.
 
-<div id="pagina-demo" style="width: max(100%, min(960px, calc(100vw - 3rem))); max-width: calc(100vw - 3rem); height: 660px; border: 1px solid var(--pg-line); border-radius: var(--pg-radius, 8px); overflow: hidden; background: var(--pg-bg-raised); margin: 1.5rem 0;"><div id="pagina-demo-placeholder" style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 2rem; text-align: center;"><strong style="font-family: var(--pg-font-display);">The editor is about 1.3 MB</strong><span style="color: var(--pg-muted); max-width: 46ch;">It is not loaded with the rest of this page, so nobody downloads a WYSIWYG editor to read the documentation. It starts on its own when you scroll it into view, or now:</span><button type="button" id="pagina-demo-start" style="font: inherit; padding: 0.5rem 1rem; border-radius: var(--pg-radius, 8px); border: 1px solid var(--pg-line-strong, var(--pg-line)); background: var(--pg-bg); color: var(--pg-fg); cursor: pointer;">Load the editor</button><span id="pagina-demo-status" style="color: var(--pg-muted); font-size: 0.85rem; min-height: 1.2em;"></span></div><div id="pagina-demo-mount" style="height: 100%; display: none;"></div></div>
+<p id="pagina-demo-open"></p>
 
-<div id="pagina-demo-controls" style="display: none; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin: -0.5rem 0 1.5rem; font-size: 0.85rem; color: var(--pg-muted);"><button type="button" id="pagina-demo-reset" style="font: inherit; padding: 0.35rem 0.8rem; border-radius: var(--pg-radius, 8px); border: 1px solid var(--pg-line-strong, var(--pg-line)); background: var(--pg-bg); color: var(--pg-fg); cursor: pointer;">Reset the demo article</button><span id="pagina-demo-usage"></span></div>
+<div id="pagina-demo"></div>
 
 <script type="module">
 /*
- * The demo's whole implementation, inline on purpose.
+ * The demo's bootstrap, and only its bootstrap.
  *
- * `rewriteLinks` in @pagina/core rewrites every relative href and src attribute in a page to
- * point at the article's assets, which is right for a page and wrong for a script that has to
- * reach a file the article does not contain. Assigning the properties from JavaScript, and
- * importing through `new URL(…, import.meta.url)`, keeps those attributes out of the markup
+ * Everything it used to contain is now `packages/editor/src/demo.ts`, built to `<base>editor/demo.js`
+ * — because an inline script is the one executable thing in this repository that eslint, `tsc` and
+ * the test suites all skip, and this one had grown to a hundred lines of it.
+ *
+ * What has to stay here is URL resolution. `rewriteLinks` in @pagina/core rewrites every relative
+ * href and src attribute in a page to point at the article's assets, which is right for a page and
+ * wrong for a file the article does not contain. Importing through `new URL(…, import.meta.url)`
+ * and assigning the link's `href` from JavaScript keeps those attributes out of the markup
  * entirely. `import.meta.url` in an inline module is the document's own URL, so this resolves
- * correctly whether the page is served as `/pagina/demo/` or `/pagina/demo/index.html`, and
- * whether the site sits at a domain root or under a sub-path.
+ * correctly whether the page is served as `/pagina/demo/` or `/pagina/demo/index.html`, and whether
+ * the site sits at a domain root or under a sub-path.
+ *
+ * The full-screen link is built here rather than written as markup for the same reason, plus one
+ * more: `<base>editor/` is not a page of this article, so the build's link checker is right to
+ * reject an `href` pointing at it and there is nothing to check anyway — a link to an editor is
+ * useless in a browser that did not run this script.
  */
 const ROOT = new URL("../", import.meta.url);
 
-const SEED = {
-  "article.yaml": [
-    "slug: demo",
-    "title: A sample article",
-    "form: docs",
-    "status: published",
-    "description: Three pages that live in your browser and nowhere else.",
-    "",
-    "nav:",
-    "  - { title: Start here, page: index.md }",
-    "  - { title: Things to try, page: guide/try.md }",
-    "",
-  ].join("\n"),
-  "index.md": [
-    "# A sample article",
-    "",
-    "This file is markdown, and the editor above is editing **the markdown itself** — there is no",
-    "intermediate format. Whatever you build here is what a text editor would show you.",
-    "",
-    "!!! note \"This is an admonition\"",
-    "    Click into it and type. It goes back to disk as three lines beginning !!! note.",
-    "",
-    "The pane on the right is the real renderer, not an approximation of it.",
-    "",
-  ].join("\n"),
-  "guide/try.md": [
-    "# Things to try",
-    "",
-    "1. Type a heading, then press / on an empty line to open the insert menu.",
-    "2. Insert an admonition, a tabbed block, or a table.",
-    "3. Reload the page. Everything is still here.",
-    "4. Open this page in a second tab, edit the same file in both, and watch the conflict banner.",
-    "5. Press Reset the demo article to throw it all away.",
-    "",
-    "## A tabbed block",
-    "",
-    "=== \"One\"",
-    "",
-    "    The first tab.",
-    "",
-    "=== \"Two\"",
-    "",
-    "    The second.",
-    "",
-  ].join("\n"),
-};
+const open = document.getElementById("pagina-demo-open");
+const link = document.createElement("a");
+link.className = "pgd__open";
+link.href = new URL("editor/", ROOT).href;
+link.textContent = "Open the full-screen editor →";
+const note = document.createElement("span");
+note.className = "pgd__open-note";
+note.textContent =
+  " The same article, the same browser storage, the whole viewport — which is how three panes are meant to be seen.";
+open.append(link, note);
 
-const byId = (id) => document.getElementById(id);
-const say = (text) => { const node = byId("pagina-demo-status"); if (node) node.textContent = text; };
-
-let started = false;
-
-async function start() {
-  if (started) return;
-  started = true;
-  say("Loading the editor…");
-  try {
-    const sheet = document.createElement("link");
-    sheet.rel = "stylesheet";
-    sheet.href = new URL("editor/editor.css", ROOT).href;
-    document.head.appendChild(sheet);
-
-    const editor = await import(new URL("editor/editor.js", ROOT).href);
-
-    if (!editor.hasLocalStorage()) {
-      say("This browser will not let this page store anything — private browsing, or site data is blocked for this site. The editor has nowhere to save, so the demo stops here rather than losing what you type.");
-      return;
-    }
-
-    const backend = new editor.LocalStorageBackend({ namespace: "pagina-docs-demo", seed: SEED });
-    byId("pagina-demo-placeholder").style.display = "none";
-    const mount = byId("pagina-demo-mount");
-    mount.style.display = "block";
-    editor.mountEditor(mount, { backend, page: "index.md", base: ROOT.pathname });
-
-    const controls = byId("pagina-demo-controls");
-    controls.style.display = "flex";
-    const showUsage = () => {
-      const used = backend.usage();
-      byId("pagina-demo-usage").textContent =
-        used.files + " files, " + (used.bytes / 1024).toFixed(1) + " KB in this browser";
-    };
-    showUsage();
-    setInterval(showUsage, 2000);
-
-    byId("pagina-demo-reset").addEventListener("click", async () => {
-      if (!window.confirm("Throw away every change and put the sample article back?")) return;
-      await backend.reset();
-      window.location.reload();
-    });
-  } catch (error) {
-    started = false;
-    say("The editor did not load: " + (error && error.message ? error.message : String(error)));
-  }
-}
-
-byId("pagina-demo-start").addEventListener("click", start);
-
-if ("IntersectionObserver" in window) {
-  const watcher = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      watcher.disconnect();
-      start();
-    }
-  }, { rootMargin: "150px" });
-  watcher.observe(byId("pagina-demo"));
-}
+const { startDemo } = await import(new URL("editor/demo.js", ROOT).href);
+startDemo(document.getElementById("pagina-demo"));
 </script>
 
 ## How this page works
@@ -165,7 +80,20 @@ on this site is static HTML the way it always was.
 
 The preview pane works because `@pagina/core` is pure: the same renderer that builds this site runs
 in the browser. Figures hydrate on the site's own Kineglyph runtime, resolved through the import map
-this page already carries.
+this page already carries, and tab groups are made interactive by the same `wireTabs` the published
+page uses — one implementation, three callers.
+
+## Publish, with no server to publish to
+
+Press *Publish* and the editor leaves. What you get back is the article — rendered by
+`@pagina/core`, with every Kineglyph figure drawn to SVG in light and dark, in this browser — as a
+reader would see it, with a way back to the editor.
+
+That is not a mock-up of publishing; it is publishing, minus the delivery. The rendered pages and
+figures are handed to the backend exactly as they would be handed to a server, and
+`LocalStorageBackend` keeps the payload in memory and persists only the timestamp, because a
+rendered article is several times the size of its source and browser storage holds about 5 MB. A
+host with a real backend sends the identical payload to `POST {base}/publish`.
 
 ## Two tabs, one article
 
@@ -180,20 +108,18 @@ other exercise at all.
 
 ## On a phone
 
-Measured at a 390 px viewport rather than guessed, and the answer is *partly*.
+Measured at a 390 px viewport rather than guessed.
 
-**What works.** The three panes stack into one column, the text is full width and legible, typing
-works, and the page does not scroll sideways. Nothing is broken and nothing is cut off.
+The three panes stack into one column, the text is full width and legible, typing works, and the
+page does not scroll sideways. The pages sidebar is not on screen below 900 px — three panes on a
+phone help nobody — so a floating **Pages** button takes its place: it opens the same list in a
+modal, with the same New page, Upload and All files controls, and closes when you pick a page. Until
+recently there was no such control and the list was simply unreachable, which meant you got the page
+the demo opened and nothing else.
 
-**What does not.** The file list is hidden below 960 px, and there is no other way to reach it — so
-you cannot switch pages, create one, or upload anything from a phone; you get the page the demo
-opened and that is all. The toolbar wraps to three rows, and the demo's fixed 660 px frame is then
-shared between the document and the preview, leaving each about 200 px tall. It is enough to write a
-paragraph into and too cramped to work in.
-
-The honest summary: **fine for a look, not for writing.** Fixing it properly means a responsive
-single-pane layout with a pane switcher rather than a hidden sidebar, which is real work and has not
-been done. It is written here rather than left for you to discover.
+The full-screen editor is the better place to try any of this on a small screen: the inline frame
+above shares its 660 px between a document and a preview, which is enough to write a paragraph into
+and too cramped to work in.
 
 ## Where to read more
 

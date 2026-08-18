@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMarkdown, expandSnippets, renderMarkdown, type ContentFs } from "@pagina/core";
 import { parseMarkdown, serializeMarkdown } from "../src/model/index.js";
+import { DEMO_SEED } from "../src/demo.js";
 
 /**
  * The round-trip guarantee, verbatim from plan A's global constraints. For every source:
@@ -342,11 +343,23 @@ export default { id: "inline-demo" };
 const FIXTURE: readonly Source[] = ["index.md", "guide/tabs.md", "guide/figures.md"].map(fixturePage);
 const NUCLEATION: readonly Source[] = ["index.md", "features/basics.md"].map(nucleationPage);
 
+/**
+ * The live demo's seed, held to the same guarantee as everything else.
+ *
+ * These are the first three files most people ever open in this editor, and they are seeded from a
+ * TypeScript module rather than from disk — so nothing else in the suite would ever notice if a
+ * line of that seed stopped surviving a save. Only the markdown pages: `article.yaml` is YAML, and
+ * the round trip is about the dialect.
+ */
+const DEMO: readonly Source[] = Object.entries(DEMO_SEED)
+  .filter(([path]) => path.endsWith(".md"))
+  .map(([path, markdown]) => synthetic(`demo seed: ${path}`, markdown));
+
 // ---------------------------------------------------------------------------------------------
 // The guarantee
 // ---------------------------------------------------------------------------------------------
 
-describe.each([...FIXTURE, ...NUCLEATION, ...SYNTHETIC])("round trip: $name", (source) => {
+describe.each([...FIXTURE, ...NUCLEATION, ...DEMO, ...SYNTHETIC])("round trip: $name", (source) => {
   it("serializes to a fixed point after one pass", () => {
     const once = serialize(source.markdown);
     expectSame(serialize(once), once, "second pass changed the markdown");
