@@ -75,14 +75,6 @@
     "@kineglyph/core": "^0.1.0",
     "@kineglyph/web": "^0.1.0"
   },
-  "peerDependenciesMeta": {
-    "@kineglyph/core": {
-      "optional": true
-    },
-    "@kineglyph/web": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2"
   }

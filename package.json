@@ -25,6 +25,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@kineglyph/core": "^0.1.0",
+    "@kineglyph/export": "^0.2.0",
+    "@kineglyph/web": "^0.1.0",
     "@playwright/test": "^1.62.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.10.13",
