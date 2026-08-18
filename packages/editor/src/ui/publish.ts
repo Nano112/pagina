@@ -163,10 +163,23 @@ async function sceneSource(store: ArticleStore, path: string): Promise<string> {
 }
 
 /**
+ * What a publish produces.
+ *
+ * `article` is the *inlined* render — every page's HTML with its figures already embedded as SVG,
+ * byte for byte what the backend was handed. It is returned rather than discarded because the
+ * caller almost always wants to show it: the editor takes the author straight into a reading view
+ * of it, and a host with no server of its own has nowhere else to get a published page from.
+ */
+export interface PublishResult {
+  readonly publishedAt: string;
+  readonly article: RenderedArticle;
+}
+
+/**
  * Renders the article, renders its figures, and ships both through the backend's publish endpoint.
  * This is what `mountEditor(...).publish()` and `<pagina-editor>.publish()` call.
  */
-export async function publishArticle(store: ArticleStore): Promise<{ publishedAt: string }> {
+export async function publishArticle(store: ArticleStore): Promise<PublishResult> {
   const article = await store.renderAll();
   // Measured on the prose column when there is one, so a host that fonts its articles differently
   // from its chrome gets the font its *articles* use.
@@ -183,5 +196,6 @@ export async function publishArticle(store: ArticleStore): Promise<{ publishedAt
     return svg === undefined ? undefined : { svg, needsRuntime: needsRuntime[id] ?? true };
   });
   for (const diagnostic of inlined.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
-  return await store.publish(figures, inlined.article);
+  const { publishedAt } = await store.publish(figures, inlined.article);
+  return { publishedAt, article: inlined.article };
 }

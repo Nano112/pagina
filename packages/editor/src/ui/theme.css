@@ -54,8 +54,11 @@
     /* 8px grid. */
     --pge-1: 8px;
     --pge-2: 16px;
+    /* Both are set inline by `App` from state; these are the values a bare `.pge-app` would use. */
     --pge-sidebar: 248px;
     --pge-split: 42%;
+    /* The floating pages control is positioned against the app, not the viewport. */
+    position: relative;
 
     display: grid;
     grid-template-rows: auto 1fr auto;
@@ -326,15 +329,30 @@
 
   /* Panes ------------------------------------------------------------------------------------- */
 
+  /*
+   * `isolation: isolate` is not decoration — it is a fix, and this is the one place it belongs.
+   *
+   * `.pge-pane__head` is `position: sticky; z-index: 1` so it sits above the prose scrolling under
+   * it. Without a stacking context here, that `z-index` competes in the *host page's* root stacking
+   * context, and an editor embedded in a page whose own chrome overlaps it (pagina's docs demo sat
+   * partly under the sticky "On this page" rail) painted its `PREVIEW index.md` header on top of
+   * that rail — a small box of editor chrome floating over someone else's table of contents,
+   * clipped by the demo frame so only "…review" showed. Scoping the z-index to the panes makes the
+   * header's stacking a fact about the editor rather than a negotiation with whatever it is
+   * embedded in. The slash menu and the sidebar's settings dialog are inside here too, so they
+   * still sit above every pane; the figure builder is mounted at `.pge-app` level and is
+   * deliberately left outside, because a modal is allowed to cover its host.
+   */
   .pge-panes {
     display: grid;
-    grid-template-columns: var(--pge-sidebar) minmax(0, 1fr);
+    grid-template-columns: var(--pge-sidebar) 5px minmax(0, 1fr);
     min-block-size: 0;
     overflow: hidden;
+    isolation: isolate;
   }
 
   .pge-app[data-preview] .pge-panes {
-    grid-template-columns: var(--pge-sidebar) minmax(0, 1fr) 5px var(--pge-split);
+    grid-template-columns: var(--pge-sidebar) 5px minmax(0, 1fr) 5px var(--pge-split);
   }
 
   .pge-pane {
@@ -378,15 +396,27 @@
     color: var(--pg-muted);
   }
 
+  /*
+   * A separator that can be moved is a focusable one: it takes the arrow keys, so it takes a
+   * focus ring and a tab stop. `touch-action: none` is what makes the pointer drag work on a
+   * touch screen at all — without it the browser claims the gesture for scrolling.
+   */
   .pge-handle {
     cursor: col-resize;
     background: var(--pg-line);
     opacity: 0.6;
+    touch-action: none;
   }
 
-  .pge-handle:hover {
+  .pge-handle:hover,
+  .pge-handle:focus-visible {
     background: var(--pg-accent);
     opacity: 1;
+  }
+
+  .pge-handle:focus-visible {
+    outline: 2px solid var(--pg-accent);
+    outline-offset: 1px;
   }
 
   /* Sidebar ----------------------------------------------------------------------------------- */
@@ -589,21 +619,66 @@
     border-start-end-radius: var(--pg-radius);
   }
 
-  .pge-tabs__tab {
-    background: none;
+  /*
+   * A tab and the control that deletes it, as one unit.
+   *
+   * The delete used to be a single button in the strip that removed "the selected tab", which is a
+   * control whose effect an author has to remember rather than see. It now sits on its tab; the
+   * wrapper is what lets the two share a hover state and a selected background.
+   */
+  .pge-tabs__tab-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
     border: 1px solid transparent;
     border-radius: var(--pg-radius);
-    padding: 2px 10px;
+  }
+
+  .pge-tabs__tab-wrap:has(.pge-tabs__tab[aria-selected="true"]) {
+    background: var(--pg-bg);
+    border-color: var(--pg-line);
+  }
+
+  .pge-tabs__tab {
+    background: none;
+    border: 0;
+    border-radius: var(--pg-radius);
+    padding: 3px 4px 3px 10px;
     font: inherit;
     color: var(--pg-muted);
     cursor: pointer;
   }
 
   .pge-tabs__tab[aria-selected="true"] {
-    background: var(--pg-bg);
-    border-color: var(--pg-line);
     color: var(--pg-fg);
     font-weight: 600;
+  }
+
+  /*
+   * Quiet, but never hover-only: the selected tab always shows its delete control, so the
+   * affordance exists for a reader who never hovers and for a touch screen that cannot.
+   */
+  .pge-tabs__close {
+    inline-size: 18px;
+    block-size: 18px;
+    margin-inline-end: 4px;
+    border-radius: var(--pg-radius);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .pge-tabs__tab-wrap:has(.pge-tabs__tab[aria-selected="true"]) .pge-tabs__close,
+  .pge-tabs__tab-wrap:hover .pge-tabs__close,
+  .pge-tabs__close:focus-visible {
+    opacity: 1;
+  }
+
+  .pge-tabs__close:hover:not(:disabled) {
+    color: var(--pg-danger);
+  }
+
+  @media (hover: none) {
+    .pge-tabs__close { opacity: 1; }
   }
 
   .pge-tabs__rename {
@@ -793,6 +868,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .pge-block__remove,
+    .pge-tabs__close,
     .pge-adm__track,
     .pge-adm__thumb {
       transition: none;
@@ -988,18 +1064,71 @@
     color: var(--pg-danger);
   }
 
-  /* Narrow screens: the preview folds under the document rather than squeezing both. */
-  @media (max-width: 900px) {
-    .pge-app[data-preview] .pge-panes,
-    .pge-panes {
-      grid-template-columns: minmax(0, 1fr);
-      grid-auto-rows: minmax(0, auto);
-    }
+  /* --- the pages control, for the widths at which the sidebar is not on screen --- */
 
-    .pge-sidebar,
-    .pge-handle {
-      display: none;
-    }
+  /*
+   * Absolutely positioned against `.pge-app`, and *not* a hover affordance: it is a labelled
+   * button that is always visible at the widths where the pages list is not, because the thing it
+   * replaces is a whole pane and a phone has no hover to reveal it with.
+   */
+  .pge-pages-fab {
+    display: none;
+    position: absolute;
+    inset-block-end: calc(var(--pge-2) + 34px);
+    inset-inline-start: var(--pge-2);
+    z-index: 20;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    border: 1px solid var(--pg-line-strong);
+    border-radius: 999px;
+    background: var(--pg-accent);
+    color: var(--pg-accent-fg);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+  }
+
+  /* The pages dialog holds the real `<Sidebar>`, so it is sized like a pane rather than a form. */
+  .pge-modal__panel--pages {
+    inline-size: min(420px, 100%);
+    block-size: auto;
+    max-block-size: min(80dvh, 100%);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .pge-modal__panel--pages .pge-sidebar {
+    border-inline-end: 0;
+    overflow: auto;
+  }
+
+  /*
+   * Narrow *editor* — not narrow window: the preview folds under the document rather than
+   * squeezing both, and the pages pane is replaced by the floating control above.
+   *
+   * `data-compact` is set by `App` from a `ResizeObserver` on the editor itself, because the
+   * editor is a component and may be far narrower than the page it is in; see the comment there
+   * for why this is not a container query.
+   */
+  .pge-app[data-compact][data-preview] .pge-panes,
+  .pge-app[data-compact] .pge-panes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, auto);
+  }
+
+  /*
+   * Only the sidebar *in the panes* goes away. The pages dialog holds the very same `<Sidebar>`,
+   * and it lives inside `.pge-app` too — an unscoped rule hid the contents of the control that
+   * exists to replace it, which is a dialog with nothing in it.
+   */
+  .pge-app[data-compact] .pge-panes > .pge-sidebar,
+  .pge-app[data-compact] .pge-panes > .pge-handle {
+    display: none;
+  }
+
+  .pge-app[data-compact] .pge-pages-fab {
+    display: inline-flex;
   }
 
   /* ------------------------------------------------------------------ B4b: rich nodes and tools */
@@ -1540,5 +1669,67 @@
   .pge-builder__stage {
     max-inline-size: 100%;
     overflow-x: auto;
+  }
+
+  /* --- the published view -----------------------------------------------------------------
+   * Where *Publish* leaves the author: the article they just rendered, read rather than edited.
+   * It replaces the panes entirely — half an editor behind a reading view would be neither — so
+   * the app's grid here is a bar and one scrolling page.
+   */
+  .pge-app--published {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .pge-published {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-block-size: 0;
+  }
+
+  .pge-published__bar {
+    display: flex;
+    align-items: center;
+    gap: var(--pge-1);
+    flex-wrap: wrap;
+    padding: var(--pge-1) var(--pge-2);
+    border-block-end: 1px solid var(--pg-line);
+    background: var(--pg-bg-raised);
+  }
+
+  .pge-published__note {
+    color: var(--pg-muted);
+    font-size: 0.85em;
+  }
+
+  .pge-published__spacer {
+    flex: 1 1 auto;
+  }
+
+  .pge-published__nav {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .pge-published__nav .pge-btn[aria-current="page"] {
+    border-color: var(--pg-accent);
+    color: var(--pg-accent);
+  }
+
+  .pge-published__page {
+    min-block-size: 0;
+    overflow: auto;
+    padding: var(--pge-2);
+    background: var(--pg-bg);
+  }
+
+  /* The reading measure the site uses, so what the author reads here is what a reader will. */
+  .pge-published__page > .pg-content {
+    max-inline-size: 46rem;
+    margin-inline: auto;
+  }
+
+  .pge-published__empty {
+    color: var(--pg-muted);
   }
 }

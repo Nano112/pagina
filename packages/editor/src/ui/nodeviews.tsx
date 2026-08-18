@@ -83,32 +83,6 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
       });
   }, [base]);
 
-  /**
-   * ←/→/Home/End across the strip, the way a tablist is required to behave.
-   *
-   * Selection follows focus, which is the right choice for a small set of panels whose content is
-   * already in the document: there is nothing to load, so a separate "activate" step would only be
-   * an extra keystroke. Focus is moved explicitly because the strip is a *roving tabindex* — only
-   * the selected tab is in the tab order, so Tab leaves the strip rather than walking it.
-   */
-  const onStripKey = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const moves: Record<string, number | undefined> = { ArrowLeft: -1, ArrowRight: 1 };
-    const delta = moves[event.key];
-    const next =
-      delta !== undefined
-        ? (current + delta + count) % count
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? count - 1
-            : undefined;
-    if (next === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setActive(next);
-    strip.current?.querySelectorAll<HTMLElement>("button.pge-tabs__tab")[next]?.focus();
-  };
-
   useEffect(apply, [apply, current, count, node]);
 
   // ProseMirror fills the content DOM in on its own schedule — after this component's first commit,
@@ -143,13 +117,61 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
       setActive(count);
     });
 
+  /**
+   * Deletes one tab — or, when it is the last one, the group it is the last one of.
+   *
+   * A tabs node with no children cannot exist: the schema requires at least one tab, and there is
+   * no `=== "…"` syntax for a group with nothing in it, so "delete the only tab" has to mean
+   * something else. Refusing was the old answer, and it makes the control on a one-tab group a
+   * button that does nothing. Removing the block is the honest reading of the request — the author
+   * asked for the only content the group has to be gone — and it is one undo away, which is the
+   * property that makes it safe to do without a confirmation.
+   */
   const removeTab = (index: number): void =>
     dispatch((pos) => {
-      if (count <= 1) return;
+      if (count <= 1) {
+        remove();
+        return;
+      }
       const from = childPos(node, pos, index);
       editor.view.dispatch(editor.state.tr.delete(from, from + node.child(index).nodeSize));
       setActive(Math.max(index - 1, 0));
     });
+
+  /**
+   * ←/→/Home/End across the strip, the way a tablist is required to behave, plus Delete.
+   *
+   * Selection follows focus, which is the right choice for a small set of panels whose content is
+   * already in the document: there is nothing to load, so a separate "activate" step would only be
+   * an extra keystroke. Focus is moved explicitly because the strip is a *roving tabindex* — only
+   * the selected tab and its delete control are in the tab order, so Tab leaves the strip rather
+   * than walking it.
+   */
+  const onStripKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    // Delete/Backspace removes the tab the strip is on. The delete control is quiet until the tab
+    // is hovered or focused, so the keyboard must not depend on seeing it.
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      event.stopPropagation();
+      removeTab(current);
+      return;
+    }
+    const moves: Record<string, number | undefined> = { ArrowLeft: -1, ArrowRight: 1 };
+    const delta = moves[event.key];
+    const next =
+      delta !== undefined
+        ? (current + delta + count) % count
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? count - 1
+            : undefined;
+    if (next === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setActive(next);
+    strip.current?.querySelectorAll<HTMLElement>("button.pge-tabs__tab")[next]?.focus();
+  };
 
   return (
     <NodeViewWrapper className="pge-tabs" data-pge-tabs="">
@@ -178,38 +200,49 @@ export function TabsView({ node, editor, getPos }: ReactNodeViewProps): ReactNod
               }}
             />
           ) : (
-            <button
-              key={i}
-              type="button"
-              role="tab"
-              id={tabId(i)}
-              className="pge-tabs__tab"
-              aria-selected={i === current}
-              aria-controls={panelId(i)}
-              // Roving tabindex: one stop for the whole strip, arrows move within it.
-              tabIndex={i === current ? 0 : -1}
-              onClick={() => setActive(i)}
-              onDoubleClick={() => setRenaming(i)}
-              title="Double-click to rename"
-            >
-              {label(node, i)}
-            </button>
+            // The delete control belongs to the tab it deletes, so it sits beside it rather than in
+            // a group control that acts on "whichever tab is selected" — which is a control whose
+            // effect you have to remember rather than see. The wrapper is `presentation` so the
+            // tablist still contains tabs as far as an assistive technology is concerned.
+            <span key={i} className="pge-tabs__tab-wrap" role="presentation">
+              <button
+                type="button"
+                role="tab"
+                id={tabId(i)}
+                className="pge-tabs__tab"
+                aria-selected={i === current}
+                aria-controls={panelId(i)}
+                // Roving tabindex: one stop for the whole strip, arrows move within it.
+                tabIndex={i === current ? 0 : -1}
+                onClick={() => setActive(i)}
+                onDoubleClick={() => setRenaming(i)}
+                title="Double-click to rename"
+              >
+                {label(node, i)}
+              </button>
+              <button
+                type="button"
+                className="pge-icon pge-tabs__close"
+                // Follows the roving tabindex: Tab from the selected tab reaches its own delete
+                // control and then leaves the strip.
+                tabIndex={i === current ? 0 : -1}
+                title={count <= 1 ? "Delete this tab and remove the tab group" : `Delete the tab "${label(node, i)}"`}
+                aria-label={
+                  count <= 1
+                    ? `Delete the tab "${label(node, i)}" — the last one, which removes the tab group`
+                    : `Delete the tab "${label(node, i)}"`
+                }
+                onClick={() => removeTab(i)}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </span>
           ),
         )}
-        <span className="pge-tabs__spacer" />
         <button type="button" className="pge-icon" onClick={addTab} title="Add tab" aria-label="Add tab">
           <Plus size={14} aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className="pge-icon"
-          onClick={() => removeTab(current)}
-          disabled={count <= 1}
-          title="Remove tab"
-          aria-label="Remove tab"
-        >
-          <X size={14} aria-hidden="true" />
-        </button>
+        <span className="pge-tabs__spacer" />
         <RemoveBlock thing="tab group" onRemove={remove} />
       </div>
       <div className="pge-tabs__panels" ref={panels}>

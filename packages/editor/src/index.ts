@@ -13,14 +13,14 @@
 import { createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./ui/App.js";
-import { publishArticle } from "./ui/publish.js";
+import { publishArticle, type PublishResult } from "./ui/publish.js";
 import { ArticleStore, HttpBackend, type ArticleBackend } from "./store/index.js";
 
 export * from "./model/index.js";
 export * from "./store/index.js";
 export {
   publishArticle, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH, type RenderedFigures,
-  type FigureThemes, type FigureSvgs,
+  type FigureThemes, type FigureSvgs, type PublishResult,
 } from "./ui/publish.js";
 
 /** Options `mountEditor` takes; the custom element derives them from its attributes. */
@@ -53,9 +53,10 @@ export interface EditorHandle {
   open(path: string): void;
   /**
    * Renders the whole article — pages *and* every figure, to light+dark SVG in the browser — and
-   * ships it through the backend's publish endpoint.
+   * ships it through the backend's publish endpoint. The rendered article comes back with the
+   * timestamp, so a host can show what it just published without rendering it a second time.
    */
-  publish(): Promise<{ publishedAt: string }>;
+  publish(): Promise<PublishResult>;
 }
 
 export interface PaginaEditorProps {
@@ -131,7 +132,7 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
       if (open === undefined) queued = path;
       else open(path);
     },
-    publish(): Promise<{ publishedAt: string }> {
+    publish(): Promise<PublishResult> {
       // Renders every module/inline figure to light+dark SVG on the host page's Kineglyph runtime
       // before shipping, so a published page shows its diagrams without running any JavaScript.
       return publishArticle(store);
@@ -159,7 +160,7 @@ export class PaginaEditorElement extends HTMLElement {
     this.#handle?.open(path);
   }
 
-  async publish(): Promise<{ publishedAt: string }> {
+  async publish(): Promise<PublishResult> {
     if (this.#handle === undefined) throw new Error("pagina: <pagina-editor> is not mounted");
     return await this.#handle.publish();
   }
