@@ -51,6 +51,19 @@ clearest thing on a page and the one part of it that plain text indexing cannot 
 | <kbd>↵</kbd> | open the result; with <kbd>⌘</kbd> or <kbd>Ctrl</kbd>, in a new tab |
 | <kbd>esc</kbd> | close, and put focus back where it was |
 
+Both are printed on the button — `Search` `/` `⌘K` — because a shortcut nobody can see is a
+shortcut nobody uses. ⌘K worked from the day the dialog shipped and the button said only `Search /`,
+which made it a feature for people who had already guessed it.
+
+The combo is the reader's own: the shell renders **one** HTML file, cached and served to everybody,
+so it ships saying `Ctrl K` and the client rewrites it to `⌘K` when the platform is Apple — in the
+same pass that enables the button, so the key printed on a working button is never the wrong one.
+Below 760px the `/` drops (the combo is the one that could not have been guessed); below 560px both
+keys drop and the word stays, because a viewport that narrow has no keyboard to press either on.
+
+A host with its own chrome gets the same treatment for free: anything carrying `data-pg-search-open`
+is wired, and a `data-pg-search-combo` inside it is localised.
+
 The dialog is `role="dialog" aria-modal="true"`, labelled, and traps Tab. Results are a
 `role="listbox"` the input owns through `aria-activedescendant`, so a screen reader announces the
 active result without focus ever leaving the box you are typing in. The result count is a polite

@@ -186,16 +186,25 @@ function articleHeaderHtml(
  * the control is visibly inert and its `title` says why, instead of being a box that swallows a
  * reader's question. A control that looks live and does nothing is worse than no control.
  *
- * The hint is `/` rather than `⌘K` because the shell renders one HTML file for every reader and
- * cannot know which keyboard is in front of it; `/` is the shortcut that is true everywhere. ⌘K and
- * Ctrl-K work too — the client binds both — they are simply not the ones printed on the key.
+ * **Both shortcuts are printed**, because a shortcut nobody can see is a shortcut nobody uses: the
+ * client has always bound ⌘K/Ctrl-K as well as `/`, and for as long as the button said only `Search
+ * /` that binding existed for people who already guessed it. `/` stays first — it is the one key
+ * that is true on every keyboard, and it is the one that works with no modifier — and the combo
+ * follows it.
+ *
+ * The combo is rendered `Ctrl K` and rewritten to `⌘K` by the client on Apple platforms. It has to
+ * be that way round: the shell renders **one** HTML file for every reader, cached and served to all
+ * of them, so the platform is a fact only the browser has. Ctrl is the majority default, the
+ * element carries `data-pg-search-combo` for the client to find, and the swap happens in the same
+ * pass that enables the button — so a reader never sees the wrong key on a button that works.
  *
  * A host with its own chrome renders its own trigger: anything carrying `data-pg-search-open` is
- * wired by the client, and its `disabled` attribute (if any) removed. See `docs/search.md`.
+ * wired by the client, and its `disabled` attribute (if any) removed. A `data-pg-search-combo`
+ * inside one gets the same platform treatment. See `docs/search.md`.
  */
 function searchTriggerHtml(ctx: ShellCtx): string {
   if (ctx.searchUrl === undefined) return "";
-  return `<button type="button" class="pg-search-trigger" data-pg-search-open disabled title="Search needs JavaScript"><span class="pg-search-trigger__label">Search</span><kbd>/</kbd></button>`;
+  return `<button type="button" class="pg-search-trigger" data-pg-search-open disabled title="Search needs JavaScript"><span class="pg-search-trigger__label">Search</span><kbd class="pg-search-trigger__key">/</kbd><kbd class="pg-search-trigger__key pg-search-trigger__key--combo" data-pg-search-combo>Ctrl K</kbd></button>`;
 }
 
 /** A leading `<h1>…</h1>`, if the rendered page opens with one. */

@@ -34,6 +34,42 @@ test.describe("the trigger", () => {
     await expect(trigger).not.toHaveAttribute("title", /JavaScript/);
   });
 
+  /**
+   * The shortcut that worked and could not be seen.
+   *
+   * `(metaKey || ctrlKey) && key === "k"` has been bound since the dialog shipped, and the button
+   * printed only `Search /` — so for anyone who had not already guessed it, ⌘K did not exist. Both
+   * are printed now, and the combo is the reader's own: one HTML file is rendered and cached for
+   * everybody, so it ships as `Ctrl K` and the client corrects it where the platform is Apple.
+   */
+  test("prints both shortcuts, with the combo the reader's keyboard actually has", async ({ page }) => {
+    // The served bytes say Ctrl, because the shell cannot know the keyboard.
+    expect(readFileSync(`${SITE_DIR}index.html`, "utf8")).toContain("data-pg-search-combo>Ctrl K</kbd>");
+
+    await page.goto(SITE);
+    const keys = page.locator(".pg-search-trigger kbd");
+    await expect(keys).toHaveCount(2);
+    await expect(keys.first()).toHaveText("/");
+
+    // Whatever this browser reports, the printed combo is the one its own modifier presses.
+    const apple = await page.evaluate(() =>
+      /mac|iphone|ipad|ipod/i.test(
+        (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform));
+    await expect(keys.nth(1)).toHaveText(apple ? "⌘K" : "Ctrl K");
+    // …and it is the combo that opens the dialog, so the button is not printing a lie.
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(page.locator(dialog)).toBeVisible();
+  });
+
+  test("keeps the label, not an empty box, on a phone", async ({ page }) => {
+    // Below 560px the key hints go — there is no keyboard to press them on — and the word stays.
+    // It used to be the other way round, which left the header with a button containing nothing.
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto(SITE);
+    await expect(page.locator(".pg-search-trigger__label")).toBeVisible();
+    await expect(page.locator(".pg-search-trigger kbd").first()).toBeHidden();
+  });
+
   test("opens the dialog, and the index is not fetched a moment before that", async ({ page }) => {
     const fetched: string[] = [];
     page.on("request", (r) => { if (r.url().includes("search.json")) fetched.push(r.url()); });

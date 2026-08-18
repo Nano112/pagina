@@ -92,6 +92,18 @@ if (searchUrl !== undefined && searchUrl !== "") {
     trigger.addEventListener("click", () => { open(); });
   }
 
+  // The keyboard in front of *this* reader, which is the one thing the shell could not know: it
+  // renders one HTML file for everyone and caches it, so the button ships saying `Ctrl K` and the
+  // Apple half of the audience is corrected here. Done in the same pass that enables the button,
+  // so the label and the binding are never briefly out of step. `userAgentData` first because
+  // `navigator.platform` is deprecated and lies on some iPads; the regex covers what is left.
+  const apple = /mac|iphone|ipad|ipod/i.test(
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform,
+  );
+  if (apple) {
+    for (const key of document.querySelectorAll<HTMLElement>("[data-pg-search-combo]")) key.textContent = "⌘K";
+  }
+
   document.addEventListener("keydown", (event) => {
     // ⌘K / Ctrl-K anywhere, `/` only when the reader is not already typing into something. A
     // shortcut that eats a slash inside a form field is a shortcut that broke the field.

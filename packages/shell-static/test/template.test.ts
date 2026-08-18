@@ -352,7 +352,24 @@ describe("search", () => {
     // button that looks live and does nothing — which is worse than no button.
     const html = renderPageHtml(article, "/", withSearch);
     expect(html).toContain(`data-pg-search-open disabled title="Search needs JavaScript"`);
-    expect(html).toContain(`<kbd>/</kbd>`);
+  });
+
+  /**
+   * A shortcut nobody can see is a shortcut nobody uses. ⌘K has worked since the dialog shipped —
+   * the client binds `(metaKey || ctrlKey) && "k"` and calls `preventDefault()` — and the button
+   * said only `Search /`, so it was a feature for people who had already guessed it.
+   *
+   * The combo ships as `Ctrl K` and the client rewrites it to `⌘K` on Apple platforms. It cannot
+   * be the other way round: one HTML file is rendered, cached and served to every reader, so the
+   * shell has no way to know the keyboard and Ctrl is the majority default. The marker is what the
+   * client finds it by, so it is asserted here rather than only in the client's own test.
+   */
+  it("prints both shortcuts, with the combo marked for the client to localise", () => {
+    const html = renderPageHtml(article, "/", withSearch);
+    expect(html).toContain(`<kbd class="pg-search-trigger__key">/</kbd>`);
+    expect(html).toContain(`data-pg-search-combo>Ctrl K</kbd>`);
+    // Rendered once, in the trigger, and not anywhere else on the page.
+    expect(html.match(/data-pg-search-combo/g)).toHaveLength(1);
   });
 
   it("goes with the header when a host brings its own chrome", () => {

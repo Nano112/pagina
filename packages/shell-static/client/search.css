@@ -29,11 +29,30 @@
     font-family: var(--pg-font-mono); font-size: 0.7rem; line-height: 1;
     padding: 0.15rem 0.3rem; border: 1px solid var(--pg-line); border-radius: 3px;
     background: var(--pg-bg); color: var(--pg-muted);
+    white-space: nowrap;
   }
-  /* On a phone the header is title + toggle and the label is the first thing worth dropping. */
+  /* The two keys sit closer to each other than to the label: they are alternatives to one another,
+     not two more items in a row. `Ctrl K` is the widest thing the combo key can say and the client
+     may shorten it to `⌘K` after paint, so the width is reserved up front — a header control that
+     resizes a beat after the page settles reads as a layout bug. */
+  .pg-search-trigger__key + .pg-search-trigger__key { margin-left: -0.25rem; }
+  .pg-search-trigger__key--combo { min-width: 2.6em; text-align: center; }
+
+  /* Narrowing, in the order the hints stop earning their room.
+
+     Under 760px the `/` goes: two keys and a label is more than the header row has, and the combo
+     is the one a reader could not have guessed — which is the entire point of printing it.
+
+     Under 560px both keys go and the *label* stays. A viewport that narrow is a touch device with
+     no keyboard to press either shortcut on, so the hints are decoration; the word is what the
+     control is. (It used to be the other way round, which left a phone with an empty box: with the
+     keys hidden too, nothing was rendered inside the button at all.) */
+  @media (max-width: 760px) {
+    .pg-search-trigger__key:not(.pg-search-trigger__key--combo) { display: none; }
+  }
   @media (max-width: 560px) {
-    .pg-search-trigger { padding: 0.3rem 0.5rem; }
-    .pg-search-trigger__label, .pg-search-trigger kbd { display: none; }
+    .pg-search-trigger { padding: 0.3rem 0.6rem; }
+    .pg-search-trigger kbd { display: none; }
   }
 
   /* Dialog -------------------------------------------------------------------------------------- */
