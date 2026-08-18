@@ -13,6 +13,11 @@
       "development": "./src/interactive.ts",
       "import": "./dist/interactive.js"
     },
+    "./theming": {
+      "types": "./dist/theming/index.d.ts",
+      "development": "./src/theming/index.ts",
+      "import": "./dist/theming/index.js"
+    },
     "./pagina.css": "./dist/pagina.css",
     "./pagina.tokens.css": "./dist/pagina.tokens.css",
     "./pagina.reading.css": "./dist/pagina.reading.css",

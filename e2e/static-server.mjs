@@ -51,6 +51,15 @@ const ASSETS = {
   // `tools/build-docs-site.sh` puts on the published site.
   "/vendor/pagina/demo.js": resolve(repo, "packages/editor/dist/demo.js"),
   "/vendor/pagina/editor.css": resolve(repo, "packages/editor/dist/editor.css"),
+  // The theming showcase and the theme lab, served as `tools/build-docs-site.sh` publishes them:
+  // five plain-`tsc` ESM modules that find each other by relative specifier. `e2e/theme-lab.spec.ts`
+  // drives them over the *built* site, because "a figure re-tints with the page" is a claim about
+  // pre-rendered inline SVG in a real artefact and jsdom has no opinion on it.
+  "/vendor/pagina/theming/index.js": resolve(repo, "packages/shell-static/dist/theming/index.js"),
+  "/vendor/pagina/theming/lab.js": resolve(repo, "packages/shell-static/dist/theming/lab.js"),
+  "/vendor/pagina/theming/showcase.js": resolve(repo, "packages/shell-static/dist/theming/showcase.js"),
+  "/vendor/pagina/theming/identities.js": resolve(repo, "packages/shell-static/dist/theming/identities.js"),
+  "/vendor/pagina/theming/catalogue.js": resolve(repo, "packages/shell-static/dist/theming/catalogue.js"),
   "/vendor/pagina/pagina.css": resolve(repo, "packages/shell-static/dist/pagina.css"),
   "/vendor/pagina/pagina.tokens.css": resolve(repo, "packages/shell-static/dist/pagina.tokens.css"),
   "/vendor/pagina/kineglyph-web.js": resolve(
@@ -285,8 +294,36 @@ const demoPage = () => `<!doctype html>
 </script>
 </body></html>`;
 
+/**
+ * The built figures page with the theming showcase and the theme lab bolted onto it.
+ *
+ * The page is the artefact `buildStatic` wrote — its own stylesheet link, its own pre-rendered
+ * inline-SVG figure, its own client bundle — because both claims under test are about a real
+ * published page. The lab's is "everything follows at once, including a diagram"; the showcase's is
+ * "the CSS printed under a frame is the CSS the frame is wearing". Neither survives being tested
+ * against a hand-written approximation of a page.
+ *
+ * `autoMount` reads the stylesheet URLs off the page's own `<link>`, so nothing here has to be told
+ * where the site's assets are — which is the same thing that makes it work at `/pagina/` on GitHub
+ * Pages and at `/` on a domain root.
+ */
+async function siteWithTheming(rel) {
+  const html = await readFile(resolve(SITE, rel), "utf8");
+  return html.replace(
+    "</body>",
+    `<div data-pg-theme-showcase></div>
+<div data-pg-theme-lab></div>
+<script type="module">
+  import { autoMount } from "/vendor/pagina/theming/index.js";
+  window.__paginaTheming = autoMount();
+</script>
+</body>`,
+  );
+}
+
 const HOST_PAGES = {
   "/demo": () => demoPage(),
+  "/theming": () => siteWithTheming("guide/figures/index.html"),
   "/site-dark": () => siteUnderHostTheme("index.html"),
   // A sub-page of the same article, same host, same palette — the proof that the hero is the
   // *article's* and not every page's. It is a route rather than an assertion on `/site-dark`

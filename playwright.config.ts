@@ -46,7 +46,10 @@ export default defineConfig({
       // the defect it covers.
       // `demo.spec.ts` belongs here too: the docs demo is `dist/demo.js` loading `dist/editor.js`
       // from a plain static server, which is the arrangement `tools/build-docs-site.sh` publishes.
-      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo)\.spec\.ts/,
+      // `theme-lab.spec.ts` too: it drives the showcase and the lab over a *built* site page, and
+      // its central claim — a pre-rendered figure re-tints when a `--pg-*` moves — is a fact about
+      // inline SVG in a real artefact that no dev server and no jsdom can be asked about.
+      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo|theme-lab)\.spec\.ts/,
       use: { baseURL: `http://127.0.0.1:${String(STATIC_PORT)}` },
     },
   ],

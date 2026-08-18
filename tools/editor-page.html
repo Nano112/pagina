@@ -33,13 +33,25 @@
 </head>
 <body>
 <div id="pagina-editor-app"></div>
+<!--
+  The theme lab, floating over the editor.
+
+  It is here and not only on the theming page because the editor is the surface a host worries about
+  most: "will your tool look like it belongs in my application" is answered by watching the tool's
+  own chrome, its document pane and its preview all follow one `--pg-accent`. The editor has no
+  second palette to fight — its `--pge-*` are geometry, and every colour it draws is the same
+  contract this panel writes.
+-->
+<div id="pagina-theme-lab"></div>
 <script type="module">
   import { startDemo } from "./demo.js";
+  import { mountThemeLab } from "%BASE%_pagina/theming/index.js";
   startDemo(document.getElementById("pagina-editor-app"), {
     chrome: "fullscreen",
     backHref: "../demo/",
     backLabel: "← Back to the docs",
   });
+  mountThemeLab(document.getElementById("pagina-theme-lab"));
 </script>
 </body>
 </html>

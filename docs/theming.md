@@ -18,6 +18,78 @@ If you are dropping pagina into an application that already has a layout and a C
 [Integrating under a host layout](#integrating-under-a-host-layout) first — it is one page and it
 covers the two things that are not obvious.
 
+## Six identities, one article
+
+Everything below this section is a contract described in words. This is the same contract with the
+words taken out: **one page of an article, rendered six times**, each in a real document linking a
+real pagina stylesheet, each wearing exactly the CSS printed under it — and the line count beside
+each name is counted from that CSS rather than typed next to it.
+
+They are not three tints of one look. Type, corner rhythm, density, measure and colour all move,
+one of them is deliberately nothing like pagina's default, and the last two stop at different rungs
+of [the ladder](#the-four-escape-hatches-in-order): *Broadsheet* keeps the reading layer and
+overrules five of its rules, *Bare column* drops the reading layer altogether and writes its own.
+
+The diagram inside each frame is this page's own, cloned in. Six palettes are re-tinting **one
+drawing**, with no re-render and no second copy — which is the figure half of the contract,
+demonstrated rather than asserted.
+
+Each frame is a real page and is taller than the box it is in, so the frames scroll; they are all
+cropped to the same height on purpose, because six identities are only comparable at the same crop.
+
+<div data-pg-theme-showcase></div>
+
+## The theme lab
+
+There is a **Theme** button in the corner of this page. It opens a panel of live controls that
+change this page as you move them — presets, including a dark accent-led one, and a field for every
+token in the table below.
+
+It has one rule, and the rule is the point: **every control writes a documented `--pg-*` and nothing
+else.** No control reaches past the contract, because a control that had to would be a hole in the
+contract rather than a feature of the widget. So everything follows at once — prose, code, callouts,
+tables, [the editor](demo.md), and the diagrams, which re-tint because
+[`tokens.css` points each `--kg-color-*` at the `--pg-*` that means the same thing](#kineglyph-figures).
+Scroll a figure into view and move the accent; the figure moves with it.
+
+What the panel prints is what the page is wearing — the panel *is* the `<style>` element, not a
+description of one — so **Copy the CSS** hands you a file that reproduces what you are looking at.
+Your choice is remembered on this browser, and **Reset** puts it back.
+
+Two things the export deliberately does *not* do, both because they are outside the token contract
+and a widget that quietly stepped outside it would be lying about what tokens can do:
+
+- **It does not set `color-scheme`.** A dark palette pasted into a plain `:root` leaves the browser
+  drawing light scrollbars, light form controls and a light `<select>` over it. pagina ties
+  `color-scheme` to `[data-theme]`, which its toggle sets; a host whose site is dark all the time
+  should say `:root { color-scheme: dark }` itself, once.
+- **It does not restyle syntax highlighting.** `--pg-shiki-bg` is the code block's ground and it
+  follows; the colours *of the code* are shiki's, written as inline styles that pagina has to meet
+  with `!important` (see [Override rules](#2-override-rules)). Changing those means choosing a
+  different shiki theme, not a different token.
+
+<div data-pg-theme-lab></div>
+
+<script type="module">
+/*
+ * The showcase's and the lab's bootstrap, and only their bootstrap.
+ *
+ * The implementation is `packages/shell-static/src/theming/`, built to `<base>_pagina/theming/` —
+ * checked by `tsc`, eslint and `packages/shell-static/test/theming-lab.test.ts`, for the reason the
+ * demo's was moved out of `docs/demo.md`: an inline script is the one executable thing in this
+ * repository that every lane skips.
+ *
+ * What has to stay here is URL resolution, for the same two reasons as the demo's. `rewriteLinks`
+ * in @pagina/core rewrites every relative `src` in a page to point at the article's own assets,
+ * which is right for a page and wrong for a file the article does not contain; and `import.meta.url`
+ * in an inline module is the document's own URL, so this resolves correctly whether the page is
+ * served as `/pagina/theming/` or `/pagina/theming/index.html`, and whether the site sits at a
+ * domain root or under a sub-path.
+ */
+const { autoMount } = await import(new URL("../_pagina/theming/index.js", import.meta.url).href);
+autoMount();
+</script>
+
 ## The token contract
 
 Every token is defined in the `pagina.tokens` layer with the neutral default below, and every

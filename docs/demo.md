@@ -121,6 +121,18 @@ The full-screen editor is the better place to try any of this on a small screen:
 above shares its 660 px between a document and a preview, which is enough to write a paragraph into
 and too cramped to work in.
 
+## Wearing your own theme
+
+The full-screen editor carries the same **Theme** panel the [theming page](theming.md#the-theme-lab)
+does, in the corner. It is worth opening there rather than here, because the editor is the surface a
+host worries about most: pick an accent and the toolbar, the pages sidebar, the document, the
+callout you are editing and the preview beside it all move together. There is no second palette to
+map — the editor's own `--pge-*` are pane widths and split positions, and every colour it draws is
+the same `--pg-*` a published page reads.
+
+It is not on this page's frame on purpose: a floating panel over a 660 px letterbox covers the thing
+it is meant to be showing you.
+
 ## Where to read more
 
 [The editor page](editing.md) covers the document model, the three ways to mount the editor, the

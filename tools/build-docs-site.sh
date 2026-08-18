@@ -118,6 +118,30 @@ cp "$EDITOR_DIST/editor.js" "$EDITOR_DIST/editor.css" "$OUT/editor/"
 # than shipped, so opening devtools on the site does not produce a 404 nobody can act on.
 sed '/^\/\/# sourceMappingURL=/d' "$EDITOR_DIST/demo.js" > "$OUT/editor/demo.js"
 
+# ---- 3b. the theming showcase and the theme lab ---------------------------------------------------
+# `docs/theming.md` shows the token contract instead of tabulating it — six frames of the same
+# article under six identities — and both that page and the full-screen editor carry a live lab that
+# retints the page by writing the documented `--pg-*` and nothing else.
+#
+# It ships the same way the demo does and for the same reason: it is checked code
+# (`packages/shell-static/src/theming/`, typechecked, linted and unit-tested) emitted by plain `tsc`,
+# copied into the site rather than committed into the article. An article that carried its own
+# widget would pack it into every `.pgz`, and a page of documentation is not a place for an
+# unchecked inline blob.
+#
+# `_pagina/` rather than beside the editor: this belongs to the shell, not to the editing tool, and
+# `_pagina/` is where the shell's own client already lives.
+THEMING_DIST="$REPO_ROOT/packages/shell-static/dist/theming"
+mkdir -p "$OUT/_pagina/theming"
+for f in index identities catalogue lab showcase; do
+  if [ ! -f "$THEMING_DIST/$f.js" ]; then
+    echo "error: $THEMING_DIST/$f.js does not exist — 'npm run build' has not produced the shell's theming modules" >&2
+    exit 1
+  fi
+  # As with `demo.js`: `tsc` writes a `sourceMappingURL` for a `.map` that is not published.
+  sed '/^\/\/# sourceMappingURL=/d' "$THEMING_DIST/$f.js" > "$OUT/_pagina/theming/$f.js"
+done
+
 # ---- 4. the full-screen editor -------------------------------------------------------------------
 # `<base>editor/index.html`: the same demo, the same browser storage, the whole viewport, and none
 # of the docs chrome. `%BASE%` is substituted here because the page's import map must name an
