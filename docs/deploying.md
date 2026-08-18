@@ -148,7 +148,7 @@ fault, reported as a broken feature, and answered wrongly, because the person an
 at a browser that fetched everything fresh. Hashed names make the pairing an identity: a stale HTML
 document names the assets it was written against, and those are still on the server.
 
-So you can serve `_pagina/*.js` and `_pagina/*.css` **immutably**:
+So you can serve `_pagina/*.js` and `_pagina/*.css` immutably:
 
 ```
 /_pagina/*.js   Cache-Control: public, max-age=31536000, immutable
@@ -161,7 +161,7 @@ they are addressed by name on purpose, by hosts and by agents, so give those a n
 
 !!! note "This is not a second cache-busting scheme"
 
-    [Cache-bust by content](theming.md) tells a host to stamp its published copy of `dist/pagina.css`
+    [Cache-bust by content](theming.md#cache-bust-by-content) tells a host to stamp its published copy of `dist/pagina.css`
     with `?v=<hash of that file>`. Both are content hashes and they never describe the same file. A
     **build** emits the HTML *and* the assets, controls both halves, and can therefore put the
     version in the name. A **host** copies `dist/*` out under names it chose and serves them from
@@ -169,7 +169,7 @@ they are addressed by name on purpose, by hosts and by agents, so give those a n
     Laravel package is. An [article bundle](bundles.md) carries neither: `.rendered/` is page
     *fragments*, with no asset URLs in it at all, and the host links its own copy of the stylesheet.
 
-    The tokens sheet takes the **full** sheet's hash rather than its own. `pagina.css` inlines
+    The tokens sheet takes the *full* sheet's hash rather than its own. `pagina.css` inlines
     `tokens.css`, so a tokens edit already changes it; sharing the digest keeps
     `pagina.<h>.css` ⇄ `pagina.tokens.<h>.css` derivable from each other by name, which is what a
     page linking one and a tool wanting the other rely on. The cost is that a chrome-only edit also
@@ -234,7 +234,7 @@ before it.
 
 **Check what you are about to publish.** Add `--strict-assets` to the build that deploys. The
 normal build *warns* about a file nothing in the article references (see
-[the unreferenced report](article-folder.md)) because a working build should not fail over a font
+[the unreferenced report](article-folder.md#the-unreferenced-report)) because a working build should not fail over a font
 a stylesheet pulls in. A deploy is the other case: nothing reaches that file, nothing explains why
 it is going out, and a red build is cheaper than an unpublishable-again file.
 
@@ -247,16 +247,16 @@ already the right answer. But a CI checkout is a *fresh clone*, so anything git 
 there at all and the report is the part that still does work.
 
 **Run the tests, all of them.** pagina's own `.github/workflows/test.yml` runs build, typecheck,
-lint, the unit suite **and the Playwright suite** on every push and pull request, and `npm test`
+lint, the unit suite and the Playwright suite on every push and pull request, and `npm test`
 runs the same five locally in the same order. That is deliberate: for a while `npm test` meant the
 unit suite alone and the end-to-end lane was one someone had to remember, which is how a run was
 reported green while eight browser tests were red. If a lane is optional, it is not a gate.
 
 !!! tip "Pin what you build against"
-    pagina's figure engine, Kineglyph, is a git dependency built from source. Both workflows read
-    its commit SHA from one file, `.github/kineglyph-ref`, rather than each carrying a copy:
-    an unpinned figure engine means the site's pictures can change without a commit, and two
-    pinned copies means the lane that tests and the lane that deploys can drift apart.
+    pagina's figure engine, Kineglyph, is a registry dependency, and `package-lock.json` is what
+    pins it to an exact version. Both workflows install with `npm ci` rather than `npm install`
+    for that reason: an unpinned figure engine means the site's pictures can change without a
+    commit, and a lane that resolves its own versions can drift from the lane beside it.
 
 ## Summary
 

@@ -365,8 +365,8 @@ npm run build
 ```
 
 That is the whole of it. Kineglyph is a registry dependency, so there is no sibling checkout to
-clone and nothing to `npm link`. (The two GitHub workflows still build Kineglyph from a commit
-pinned in `.github/kineglyph-ref`, so the pictures on this site cannot change without a commit
+clone and nothing to `npm link`. (`package-lock.json` pins it to an exact version and both GitHub
+workflows install with `npm ci`, so the pictures on this site cannot change without a commit
 here.)
 
 ```sh

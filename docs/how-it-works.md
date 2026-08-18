@@ -112,8 +112,8 @@ change the outcome.
 at the `--pg-*` that means the same thing. A host that mapped the tokens has themed the diagrams,
 having written nothing about diagrams.
 
-[Theming](theming.md) is the full cascade, the four escape hatches, the token table quoted out of
-the stylesheet that ships it, and a live panel that retints this page while you move it.
+[Theming](theming.md) is the full cascade, the four escape hatches, the token defaults quoted out of
+the stylesheet that ships them, and a live panel that retints this page while you move it.
 
 ## Figures are drawn, not stored
 

@@ -86,7 +86,7 @@ been deleted, a figure whose scene will not draw: each of these fails the build 
 publishing a page that is quietly wrong.
 
 That refusal is what lets this documentation quote live source instead of copying it. The token
-table on [Theming](theming.md) is read out of the stylesheet that ships it. The `article.yaml` on
+defaults on [Theming](theming.md) are read out of the stylesheet that ships them. The `article.yaml` on
 [The article folder](article-folder.md) is this article's own. If either file changed underneath
 its page, the build would go red rather than publish a stale quotation.
 

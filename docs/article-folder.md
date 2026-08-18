@@ -61,7 +61,7 @@ The fields, in full:
 | `kineglyph.widths` | several of them: the figure is drawn once per width and the page shows the one its frame fits. Default `[960, 640, 440, 320]`, at most five |
 | `kineglyph.themes` | the palettes a `<figure data-theme="…">` may name, by name. See [Theming](theming.md#one-figure-one-palette) |
 | `snippets.roots` | the directories `--8<--` may read from. Default `["."]` |
-| `exclude` | glob patterns for files that are **not** article content and must not be published |
+| `exclude` | glob patterns for files that are not article content and must not be published |
 | `exclude_gitignore` | whether a folder in a git repository also excludes what git ignores. Default `true` |
 | `nav` | the pages, in order |
 
@@ -142,7 +142,7 @@ print("hello")
 ```
 
 This is the feature that lets documentation quote code instead of copying it. The `article.yaml`
-above is a snippet; so is the token table on [Theming](theming.md). If either file changed
+above is a snippet; so are the token defaults on [Theming](theming.md). If either file changed
 underneath its page, the build would fail rather than publish a stale quotation.
 
 ### Attributes

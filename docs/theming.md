@@ -2,7 +2,7 @@
 
 pagina has one theme. Everything else on this page is a way of overriding it.
 
-That is not a simplification for the introduction; it is the whole design. Every colour, font and
+That is the whole design, stated at full strength. Every colour, font and
 radius pagina draws goes through 22 CSS custom properties named `--pg-*`, plus three more for each
 of the seven admonition kinds. A default set ships in `tokens.css`. A host, an article, a page and a figure may each redefine any subset of them,
 each at its own range, and **a level that says nothing inherits the level above it**. There is no
@@ -25,8 +25,8 @@ Two rules govern all five, and they are the only two:
 
 - **Every level writes the same `--pg-*`.** A host's file and an article's file are the same kind
   of file. Neither knows about the other, and neither needs to.
-- **Silence is inheritance, not absence.** A page with no `theme:` is not un-themed; it is wearing
-  the article's. An article with no `theme:` is wearing the host's.
+- **Silence is inheritance, not absence.** A page with no `theme:` is wearing the article's, and an
+  article with no `theme:` is wearing the host's.
 
 Most sites use exactly one level. Reach for a second when something genuinely varies at that range.
 A launch page that is dark on an otherwise light site is a page-level theme; a design system is a
@@ -115,15 +115,16 @@ paper too, which may be what you want.
 The editor uses the same contract; there is no second palette. Its own `--pge-*` properties are
 only the tool's geometry (`--pge-1`, `--pge-2`, `--pge-sidebar`, `--pge-split`).
 
-Those defaults are not transcribed into this page. They are quoted out of the stylesheet that
-ships them, `packages/shell-static/client/tokens.css`, at the moment this page was built:
+The core of that table is not transcribed into this page. It is quoted out of the stylesheet that
+ships it, `packages/shell-static/client/tokens.css`, at the moment this page was built:
 
 ```css
 --8<-- "packages/shell-static/client/tokens.css:core"
 ```
 
-If someone changes a default and forgets this page, the page changes with it, and if someone
-deletes the region, the build fails instead of publishing a table that has quietly gone wrong.
+If someone changes one of those defaults and forgets this page, the page changes with it, and if
+someone deletes the region, the build fails instead of publishing a quotation that has quietly gone
+wrong. The admonition, cover, code and figure rows above the region are still transcribed by hand.
 
 ### Structure is not themeable, and that is the point
 
@@ -257,7 +258,7 @@ theme: ./launch.css
 # The 3.0 release
 ```
 
-The page's sheet is linked **after** the article's, not instead of it. So a page that redefines one
+The page's sheet is linked *after* the article's, not instead of it. So a page that redefines one
 token keeps the article's answer for every other, which is what inheritance means one level down:
 
 ```css
@@ -312,7 +313,7 @@ arrows in a flow diagram, and an arrow is the sentence's verb, not a rule betwee
 pointed at `--pg-line-strong` it carried 1.49:1 on the figure canvas and simply vanished. It maps
 to `--pg-muted`, the token that already means *ink that is secondary but still ink*, for 4.51:1.
 `--kg-color-border` moves up to `--pg-line-strong` for the same reason: a node needs an outline
-that separates it from its ground, not a divider. A host that wants its diagrams' arrows in its
+that separates it from its ground, which is a heavier job than dividing two paragraphs. A host that wants its diagrams' arrows in its
 brand colour says so and nothing else moves:
 
 ```css
@@ -346,7 +347,7 @@ kineglyph:
 
 The rule is the same as everywhere else on this page, with one Kineglyph-specific sharpening:
 **naming a colour claims it.** A theme that names three roles overrides those three and inherits the
-other seventeen from the page. The claim is pinned on the drawing's own root, the `<svg>` when
+other twenty from the page. The claim is pinned on the drawing's own root, the `<svg>` when
 rendered and the shell when live, so it reaches that figure and nothing outside it. The figure beside
 a declared one keeps the article's colours, and neither leaks upward.
 
@@ -400,18 +401,18 @@ page like the second.
 Named rather than a path, and that is deliberate. The name has to resolve to the same palette in two
 places: the pre-render that draws the SVG a reader sees first, and the runtime that mounts over it,
 so the article declares the set once and both ends look it up. Declaring the set is also what
-keeps the answer reviewable: the palettes a folder may use are a list in one file, not a path
+keeps the answer reviewable: the palettes a folder may use are a list in one file rather than a path
 scattered across forty `<figure>` tags.
 
 A name nobody declared resolves to nothing, and nothing is inherit: the right outcome for a typo as
 much as for a decision.
 
 ```yaml
-# theme/scoped.mjs — one role claimed, nineteen inherited
+# theme/scoped.mjs — one role claimed, twenty-two inherited
 # export const light = createTheme({ colors: { canvas: "#ff00ff" } });
 ```
 
-A partial palette is the shape to reach for. A figure that claimed all twenty roles would look
+A partial palette is the shape to reach for. A figure that claimed all twenty-three roles would look
 correct whatever the page did, which is also how you would fail to notice that scoping had stopped
 working.
 
@@ -573,7 +574,7 @@ autoMount();
 ### Admonitions
 
 `note tip info warning danger example quote`, the seven kinds `!!! kind` and `??? kind` accept,
-each own **three** tokens, and every rule pagina draws for a callout reads only those:
+each own three tokens, and every rule pagina draws for a callout reads only those:
 
 | Token | Draws |
 |---|---|
@@ -582,7 +583,7 @@ each own **three** tokens, and every rule pagina draws for a callout reads only 
 | `--pg-<kind>-fg` | the title text |
 
 The title text is a token of its own rather than the hue because a hue chosen to read as a 3px
-edge is usually too light to carry text at 4.5:1 on its own tint. `--pg-tip`'s green is 3.1:1 on
+edge is usually too light to carry text at 4.5:1 on its own tint. `--pg-tip`'s green is 3.5:1 on
 white. Retint a kind by defining its three:
 
 ```css
@@ -724,7 +725,7 @@ from its own layout: the query stamp is the only handle it has, and it is what `
 the Laravel package does. A **site build** is the other case and uses the other handle: it writes
 the HTML *and* the stylesheet, so the version goes in the name (`_pagina/pagina.<hash>.css`) and
 those files can be served immutably. Same idea, two places to put the answer; see
-[Assets are named after their contents](deploying.md).
+[Assets are named after their contents](deploying.md#assets-are-named-after-their-contents).
 
 If you *read* a sheet's URL off a page to find its sibling, as the theme showcase does, match
 `pagina(\.tokens)?(\.[0-9a-f]{8})?\.css` and swap only the infix. The two names always share one
@@ -767,7 +768,7 @@ self-sufficient and what stops the editor's idea of the tokens drifting from the
 is no copy to keep in step.
 
 The `@import`s are **build inputs**. Every published artefact has them inlined: the package build
-(`scripts/build-css.mjs`) writes `dist/*.css`, a site build writes `_pagina/pagina.css`, and
+(`packages/shell-static/scripts/build-css.mjs`) writes `dist/*.css`, a site build writes `_pagina/pagina.css`, and
 Vite writes `dist/editor.css`. A host never sees an `@import`, and never needs a second request
 or a second hash. See [Cache-bust by content](#cache-bust-by-content).
 
