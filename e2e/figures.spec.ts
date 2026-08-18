@@ -31,8 +31,16 @@ const SHOTS = fileURLToPath(new URL("../test-results/figures/", import.meta.url)
 const PUBLISHED = `${SITE_BASE}guide/figures/`;
 /** The figure built from `scenes/demo.mjs` — the one with tones, edges and a caption. */
 const FIGURE = "figure.kg#kg-guide-figures-1";
-/** The server-rendered frame, and the stage the runtime mounts over it. */
-const STATIC = `${FIGURE} .kg-frame > svg`;
+/**
+ * The server-rendered frame, and the stage the runtime mounts over it.
+ *
+ * A figure carries *several* pre-rendered drawings now — one per container width — and CSS shows
+ * exactly one of them. So `STATIC` is the drawing on show rather than the drawings present, and
+ * `:visible` is load-bearing: `.first()` would read the widest whatever the container query
+ * decided, and would go on passing if selection broke entirely.
+ */
+const DRAWINGS = `${FIGURE} .kg-frame > svg`;
+const STATIC = `${DRAWINGS}:visible`;
 const LIVE = `${FIGURE} [data-kg-stage] svg`;
 
 test.beforeAll(async () => {
@@ -54,6 +62,86 @@ async function paint(page: Page, selector: string): Promise<{ canvas: string; in
 }
 
 const frame = (page: Page): Locator => page.locator(`${FIGURE} .kg-frame`);
+
+/** What a drawing is, once the browser has laid it out: which one, how big, and how legible. */
+interface Drawn {
+  /** The container width this drawing was measured for, from `data-kg-variant`. */
+  readonly variant: string | null;
+  /** The named layout it was resolved in — `wide` / `compact` / `narrow`. */
+  readonly layout: string | null;
+  readonly frameWidth: number;
+  /** Whether the frame has to scroll to show all of it. With variants it should not. */
+  readonly frameScrolls: boolean;
+  readonly width: number;
+  readonly height: number;
+  readonly viewBox: number;
+  /** Rendered width over measured width: >1 is scaled up, <1 is scaled down. */
+  readonly scale: number;
+  /** The smallest label on the glass, in CSS pixels. The number the reader actually reads. */
+  readonly minType: number;
+  readonly pageScroll: number;
+}
+
+/**
+ * The drawing the page has chosen, having first proved that it chose exactly one.
+ *
+ * The count assertion is the point of the helper. Selecting the right drawing is the whole
+ * mechanism this file now covers, and every measurement below is only meaningful once we know it
+ * is being taken from the one on show.
+ */
+async function chosen(page: Page, figure: string = FIGURE): Promise<Drawn> {
+  const all = page.locator(`${figure} .kg-frame > svg`);
+  expect(await all.count(), "the figure should carry more than one drawing").toBeGreaterThan(1);
+  await expect(page.locator(`${figure} .kg-frame > svg:visible`)).toHaveCount(1);
+
+  return await page.locator(`${figure} .kg-frame > svg:visible`).evaluate((svg) => {
+    const box = svg.getBoundingClientRect();
+    const holder = svg.parentElement!;
+    const viewBox = Number((svg.getAttribute("viewBox") ?? "0 0 1 1").split(/\s+/)[2]);
+    const scale = box.width / viewBox;
+    const type = [...svg.querySelectorAll("text")].map((t) => parseFloat(getComputedStyle(t).fontSize));
+    return {
+      variant: svg.getAttribute("data-kg-variant"),
+      layout: svg.getAttribute("data-layout"),
+      frameWidth: Math.round(holder.getBoundingClientRect().width),
+      frameScrolls: holder.scrollWidth > holder.clientWidth + 1,
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+      viewBox,
+      scale: Math.round(scale * 100) / 100,
+      minType: Math.round(Math.min(...type) * scale * 10) / 10,
+      pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+}
+
+/**
+ * Where a drawing's boxes and connectors sit, in its own coordinates.
+ *
+ * Read off the DOM rather than off a screenshot, because the thing worth pinning is the *routing*
+ * decision: three boxes sharing a y with horizontal runs between them is a row; three sharing an x
+ * with vertical runs is a column. A connector left pointing the old way after the boxes moved is
+ * the regression this catches, and it is invisible in a height measurement.
+ */
+async function routing(locator: Locator): Promise<{ boxes: { x: number; y: number }[]; runs: { dx: number; dy: number }[] }> {
+  return await locator.evaluate((svg) => {
+    const boxes = ["n:source", "n:render", "n:store"].map((id) => {
+      const el = svg.querySelector(`[data-node-id="${id}"]`)!;
+      const b = (el as SVGGraphicsElement).getBBox();
+      return { x: Math.round(b.x), y: Math.round(b.y) };
+    });
+    const seen = new Set<string>();
+    const runs: { dx: number; dy: number }[] = [];
+    for (const p of svg.querySelectorAll("path")) {
+      const d = p.getAttribute("d") ?? "";
+      const m = /^M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)$/.exec(d);
+      if (m === null || seen.has(d)) continue;
+      seen.add(d);
+      runs.push({ dx: Math.round(Number(m[3]) - Number(m[1])), dy: Math.round(Number(m[4]) - Number(m[2])) });
+    }
+    return { boxes, runs };
+  });
+}
 
 /**
  * Waits for the live figure to finish revealing itself.
@@ -86,6 +174,12 @@ test.describe("the figure a reader gets without JavaScript", () => {
     await expect(page.locator(STATIC)).toBeVisible();
     await expect(page.locator(`${FIGURE} img`)).toHaveCount(0);
     await expect(page.locator(`${FIGURE} picture`)).toHaveCount(0);
+
+    // Several drawings are in the page and exactly one of them is on show. Both halves matter:
+    // the first is what makes the figure answer for its own width with no JavaScript, the second
+    // is what stops a reader being handed the same diagram four times over.
+    await expect(page.locator(DRAWINGS)).toHaveCount(4);
+    await expect(page.locator(STATIC)).toHaveCount(1);
   });
 
   test("carries the author's words into the accessibility tree", async ({ page }) => {
@@ -178,42 +272,39 @@ test.describe("the figure once the runtime has mounted", () => {
 });
 
 test.describe("the same figure on a phone", () => {
-  // Measured with the runtime off: this is the state that used to be worst — a 960-wide diagram
-  // scaled to 390px, with its 16px type at 6px — and the state a reader sees first regardless.
+  // Measured with the runtime off: the state a reader sees first regardless, and the one this
+  // whole mechanism exists for.
   test.use({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
 
-  test("scrolls sideways instead of shrinking its type to nothing", async ({ page }) => {
+  /**
+   * This used to assert the opposite, and said so in its name: "scrolls sideways instead of
+   * shrinking its type to nothing". That was the best answer available while a figure had one
+   * drawing — the only two moves were shrink or scroll, and scrolling at least kept the labels
+   * readable. It is superseded rather than merely relaxed: the figure now carries a drawing
+   * *measured for* a phone, so there is nothing to scroll to and nothing to shrink.
+   */
+  test("is drawn for the phone rather than scaled down to it, and needs no scrolling at all", async ({ page }) => {
     await page.goto(PUBLISHED);
-    await expect(page.locator(STATIC)).toBeVisible();
+    const drawn = await chosen(page);
+    console.log("[figures] phone, no JS", JSON.stringify(drawn));
 
-    const measured = await frame(page).evaluate((el) => {
-      const svg = el.querySelector("svg")!;
-      const fig = el.closest("figure")!;
-      return {
-        scroll: el.scrollWidth,
-        client: el.clientWidth,
-        rendered: svg.getBoundingClientRect().width,
-        natural: Number(getComputedStyle(fig).getPropertyValue("--kg-w")),
-        type: [...svg.querySelectorAll("text")]
-          .map((t) => parseFloat(getComputedStyle(t).fontSize))
-          .sort((a, b) => a - b),
-      };
-    });
+    // The narrowest drawing is the one chosen for a 326px frame, and it was laid out for it —
+    // three boxes stacked into a column, not three columns squeezed side by side.
+    expect(drawn.variant).toBe("320");
+    expect(drawn.layout).toBe("narrow");
 
-    // The frame is its own scroll box, and the diagram keeps a legible size inside it.
-    expect(measured.scroll).toBeGreaterThan(measured.client);
-    const scale = measured.rendered / measured.natural;
-    expect(scale).toBeGreaterThanOrEqual(0.69);
+    // Drawn at its own size, near enough: never scaled *down*, which is the direction that costs
+    // legibility. 326 into 320 is 1.02.
+    expect(drawn.scale).toBeGreaterThanOrEqual(1);
 
-    // What that buys, in pixels on the glass. Scaled to fit this viewport instead the figure
-    // would be at 0.41, which is where a 16px label lands at 6.5px and a caption at 4.9px.
-    const onGlass = measured.type.map((size) => size * scale);
-    expect(Math.max(...onGlass)).toBeGreaterThan(11);
-    expect(Math.min(...onGlass)).toBeGreaterThan(8);
-    expect(scale).toBeGreaterThan(390 / measured.natural + 0.25);
+    // The whole diagram is on screen. Nothing to scroll to, in the frame or in the page.
+    expect(drawn.frameScrolls).toBe(false);
+    expect(drawn.width).toBeLessThanOrEqual(drawn.frameWidth + 1);
+    expect(drawn.pageScroll).toBeLessThanOrEqual(1);
 
-    // …and the *page* still does not scroll sideways: the overflow is contained by the frame.
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    // And the number that matters, on the glass: the author's own 12px, not 8.4px behind a
+    // horizontal scrollbar and not the 4.9px that scaling one 960-wide drawing to fit would give.
+    expect(drawn.minType).toBeGreaterThanOrEqual(12);
 
     await page.screenshot({ path: `${SHOTS}phone.png`, fullPage: false });
   });
@@ -305,12 +396,13 @@ test.describe("hydration does not resize the figure", () => {
       ),
     );
 
-  test("the frame and the live stage are the same height, figure for figure", async ({ browser }) => {
+  test("a figure that never mounts does not move at all, and one that does barely moves", async ({ browser }) => {
     const staticContext = await browser.newContext({ javaScriptEnabled: false, viewport: VIEWPORT });
     const staticPage = await staticContext.newPage();
     await staticPage.goto(PUBLISHED);
     await expect(staticPage.locator(STATIC)).toBeVisible();
     const before = await figureHeights(staticPage);
+    const beforeDrawn = await chosen(staticPage);
     await staticContext.close();
 
     const liveContext = await browser.newContext({ viewport: VIEWPORT });
@@ -318,15 +410,40 @@ test.describe("hydration does not resize the figure", () => {
     await livePage.goto(PUBLISHED);
     await settled(livePage);
     const after = await figureHeights(livePage);
+    const afterLive = await livePage.locator(LIVE).evaluate((svg) => ({
+      layout: svg.getAttribute("data-layout"),
+      viewBox: Number((svg.getAttribute("viewBox") ?? "0 0 1 1").split(/\s+/)[2]),
+    }));
     await liveContext.close();
 
     // Printed so a regression reads as numbers rather than as a bare boolean.
-    console.log("[figures] hydration heights", JSON.stringify({ before, after }, null, 1));
+    console.log("[figures] hydration heights", JSON.stringify({ before, after, beforeDrawn, afterLive }, null, 1));
 
-    // The quiet figure is the claim: it must not move at all. One pixel of tolerance for
-    // sub-pixel layout rounding between two renderings, and nothing more.
-    expect(Math.abs(after["kg-guide-figures-1"]! - before["kg-guide-figures-1"]!)).toBeLessThanOrEqual(1);
+    // A figure with nothing to drive is never mounted, so there is nothing to move: still exact.
     expect(Math.abs(after["inline-demo"]! - before["inline-demo"]!)).toBeLessThanOrEqual(1);
+
+    /*
+     * The mounted one used to be exact too, and deliberately is not any more.
+     *
+     * The frame quantises: it shows whichever of four drawings fits, so at a 726px column it shows
+     * the 640px drawing scaled up by 1.13. The runtime does not quantise — it measures the column
+     * and resolves the scene at 726 exactly. Same diagram, same arrangement, same reading order;
+     * the text simply wraps at a slightly different measure, so the two differ in height by a few
+     * per cent. Removing that would mean pinning the live figure to the variant's width, which
+     * costs the thing the runtime is uniquely good at: re-laying-out when the phone is turned.
+     *
+     * So the assertion is what actually matters to a reader — the page does not lurch — with a
+     * bound tight enough that the ~100px chrome regression this test was written for could never
+     * hide inside it.
+     */
+    const moved = Math.abs(after["kg-guide-figures-1"]! - before["kg-guide-figures-1"]!);
+    expect(moved).toBeLessThan(before["kg-guide-figures-1"]! * 0.12);
+    expect(moved).toBeLessThan(30);
+
+    // And it is the *same picture*: hydration must not change which arrangement the reader is
+    // looking at, only how finely it was fitted.
+    expect(afterLive.layout).toBe(beforeDrawn.layout);
+    expect(afterLive.viewBox).toBe(beforeDrawn.frameWidth);
   });
 });
 
@@ -353,7 +470,13 @@ test.describe("a figure with nothing to drive is left alone", () => {
       error: el.dataset.kineglyphError,
       stages: el.querySelectorAll("[data-kg-stage]").length,
       frameHidden: el.querySelector<HTMLElement>("[data-kg-static]")!.hidden,
+      // It carries the same four drawings as any other figure — being inert is about whether the
+      // runtime touches it, not about how many widths it was drawn for…
       frameSvgs: el.querySelectorAll(".kg-frame > svg").length,
+      // …and CSS has still chosen exactly one of them, with no JavaScript involved in that either.
+      shownSvgs: [...el.querySelectorAll<SVGElement>(".kg-frame > svg")].filter(
+        (svg) => getComputedStyle(svg).display !== "none",
+      ).length,
     }));
     expect(state).toEqual({
       inert: "true",
@@ -361,7 +484,8 @@ test.describe("a figure with nothing to drive is left alone", () => {
       error: undefined,
       stages: 0,
       frameHidden: false,
-      frameSvgs: 1,
+      frameSvgs: 4,
+      shownSvgs: 1,
     });
   });
 
@@ -413,7 +537,11 @@ test.describe("a figure may be wider than the column", () => {
     await page.evaluate(
       ([fig, caption, prose]) => {
         const f = document.querySelector(fig!)!.getBoundingClientRect();
-        const svg = document.querySelector(`${fig!} .kg-frame > svg`)!;
+        // The drawing on show, not the first one in the markup: opting in widens the frame, which
+        // is precisely the thing that makes a *different* drawing the right one.
+        const svg = [...document.querySelectorAll<SVGElement>(`${fig!} .kg-frame > svg`)].find(
+          (s) => getComputedStyle(s).display !== "none",
+        )!;
         const box = svg.getBoundingClientRect();
         const viewBox = Number((svg.getAttribute("viewBox") ?? "0 0 1 1").split(/\s+/)[2]);
         return {
@@ -422,6 +550,7 @@ test.describe("a figure may be wider than the column", () => {
           captionLeft: Math.round(document.querySelector(caption!)!.getBoundingClientRect().left),
           proseLeft: Math.round(document.querySelector(prose!)!.getBoundingClientRect().left),
           drawn: Math.round(box.width),
+          variant: Number(svg.getAttribute("data-kg-variant")),
           // What a 12px label actually lands at, which is the whole point of the token.
           scale: Math.round((box.width / viewBox) * 100) / 100,
           pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -443,10 +572,15 @@ test.describe("a figure may be wider than the column", () => {
     const after = await geometry(page);
     console.log("[figures] --pg-figure-max", JSON.stringify({ before, after }, null, 1));
 
-    // The figure grows to its natural width, so it is drawn at 1:1 and its type is its own size.
+    // The figure grows, and the wider frame earns it a wider *drawing* rather than the same one
+    // stretched: 640 measured for a 726px column becomes 960 measured for a 960px one, landing at
+    // 1:1 with its type at exactly the size it was authored.
     expect(after.figureWidth).toBeGreaterThan(before.figureWidth!);
+    expect(after.variant!).toBeGreaterThan(before.variant!);
     expect(after.scale).toBe(1);
-    expect(before.scale!).toBeLessThan(1);
+    // Before the opt-in it was the next drawing down, scaled up to fill the measure — which is
+    // the trade the variant set makes, and never the scaled-*down* type the token was added for.
+    expect(before.scale!).toBeGreaterThanOrEqual(1);
     // The prose does not move with it: only the figure's own margins changed.
     expect(after.proseLeft).toBe(before.proseLeft);
     // …and the figure is centred on the column it left, not shoved to one side.
@@ -471,30 +605,205 @@ test.describe("a figure may be wider than the column", () => {
 test.describe("a wide figure on a phone", () => {
   test.use({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
 
-  test("collapses back to the column and scrolls, rather than pushing the page sideways", async ({ page }) => {
+  /**
+   * Also superseded, and it was the sharpest statement of the old contract: "collapses back to the
+   * column and scrolls", pinned to `rendered === 672` — 960 × `--pg-figure-min-scale`, the exact
+   * width the legibility floor held a too-wide drawing at.
+   *
+   * The `min(960px, calc(100vw - 4rem))` opt-in still collapses to the column on a phone, which is
+   * the half of the claim that was about the *token* and is unchanged. What is gone is the scroll:
+   * the collapsed frame is 326px, and there is a drawing measured for that.
+   */
+  test("collapses back to the column, and there it needs no scrolling either", async ({ page }) => {
     // The value a host is told to write: the viewport term is what makes it safe here.
     await optIn(page, HOST_OPT_IN);
     await page.goto(PUBLISHED);
-    await expect(page.locator(STATIC)).toBeVisible();
+    const drawn = await chosen(page);
 
-    const measured = await frame(page).evaluate((el) => ({
-      scroll: el.scrollWidth,
-      client: el.clientWidth,
-      rendered: Math.round(el.querySelector("svg")!.getBoundingClientRect().width),
-      pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    const around = await frame(page).evaluate((el) => ({
       captionLeft: Math.round(el.closest("figure")!.querySelector("figcaption")!.getBoundingClientRect().left),
       proseLeft: Math.round(document.querySelector(".pg-content > h2")!.getBoundingClientRect().left),
     }));
-    console.log("[figures] wide figure at 390px", JSON.stringify(measured, null, 1));
+    console.log("[figures] wide figure at 390px", JSON.stringify({ ...drawn, ...around }));
 
-    // Still scrolling at the legibility floor, exactly as it did before the token existed.
-    expect(measured.scroll).toBeGreaterThan(measured.client);
-    expect(measured.rendered).toBe(672); // 960 × --pg-figure-min-scale
+    // The breakout gave back the room it could not use: the frame is the column, as before.
+    expect(drawn.frameWidth).toBeLessThanOrEqual(390);
+    // And in that column the phone drawing is the right one, at its own size, entire.
+    expect(drawn.variant).toBe("320");
+    expect(drawn.frameScrolls).toBe(false);
+    expect(drawn.scale).toBeGreaterThanOrEqual(1);
+    expect(drawn.minType).toBeGreaterThanOrEqual(12);
     // The page itself does not scroll, which is the failure a breakout invites.
-    expect(measured.pageScroll).toBeLessThanOrEqual(1);
+    expect(drawn.pageScroll).toBeLessThanOrEqual(1);
     // Below the measure there is no overhang to inset, so the caption is where it always was.
-    expect(measured.captionLeft).toBe(measured.proseLeft);
+    expect(around.captionLeft).toBe(around.proseLeft);
   });
+});
+
+/* ------------------------------------------------------------------------------------------- *
+ * One figure, drawn several times, of which the page shows one.
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * The mechanism itself, which nothing else in this file gates.
+ *
+ * A diagram's geometry is measured at publish time because SVG cannot wrap text, so the figure
+ * ships several finished drawings and CSS picks between them with a container query. Three things
+ * can break independently: the wrong one can be picked, more or fewer than one can be shown, and
+ * the whole query can fail to apply — which would leave four diagrams stacked in the page.
+ *
+ * Run with **JavaScript off** throughout, because that is the path under test: this selection is
+ * CSS, and it has to be right for a reader whose runtime never arrives as well as before it does.
+ */
+test.describe("the drawing that fits the frame", () => {
+  test.use({ javaScriptEnabled: false });
+
+  /**
+   * Viewport → the drawing that should win, for the fixture's `960 / 640 / 440 / 320` set.
+   *
+   * The rule is "the widest drawing no wider than the frame", so the frame — not the viewport —
+   * decides, and the column here is the viewport less the page's own padding. Chosen to sit either
+   * side of each boundary rather than in the middle of each band, because an off-by-one in the
+   * query is exactly what this is for.
+   */
+  const CASES: readonly { viewport: number; variant: string; layout: string }[] = [
+    { viewport: 390, variant: "320", layout: "narrow" },
+    { viewport: 430, variant: "320", layout: "narrow" },
+    { viewport: 560, variant: "440", layout: "narrow" },
+    { viewport: 820, variant: "640", layout: "compact" },
+    { viewport: 1280, variant: "640", layout: "compact" },
+  ];
+
+  for (const { viewport, variant, layout } of CASES) {
+    test(`at ${String(viewport)}px the frame shows the ${variant}px drawing, and only that one`, async ({ browser }) => {
+      const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: viewport, height: 900 } });
+      const page = await context.newPage();
+      await page.goto(PUBLISHED);
+
+      const drawn = await chosen(page); // asserts exactly one is shown
+      console.log(`[figures] variant at ${String(viewport)}px`, JSON.stringify(drawn));
+
+      expect(drawn.variant).toBe(variant);
+      expect(drawn.layout).toBe(layout);
+      // Never wider than the frame it was chosen for, so it is never scaled down and the frame
+      // never has to scroll — the two properties the whole selection rule exists to guarantee.
+      expect(drawn.viewBox).toBeLessThanOrEqual(drawn.frameWidth);
+      expect(drawn.scale).toBeGreaterThanOrEqual(1);
+      expect(drawn.frameScrolls).toBe(false);
+      expect(drawn.pageScroll).toBeLessThanOrEqual(1);
+      // The author's own type size is the floor, at every width.
+      expect(drawn.minType).toBeGreaterThanOrEqual(12);
+
+      await context.close();
+    });
+  }
+
+  test("a row of boxes becomes a column, and the connectors turn with it", async ({ browser }) => {
+    /*
+     * The part most likely to regress silently.
+     *
+     * `scenes/demo.mjs` is three boxes in a row with a labelled connector between each pair. Below
+     * the narrow breakpoint the row becomes a column — and a connector that kept its old routing
+     * would run *across* the column instead of down it, which is a diagram that still renders,
+     * still measures well, and no longer means anything. Read off the emitted path rather than a
+     * screenshot so the failure names itself.
+     */
+    const wide = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 900 } });
+    const widePage = await wide.newPage();
+    await widePage.goto(PUBLISHED);
+    await expect(widePage.locator(STATIC)).toHaveCount(1);
+    const asRow = await routing(widePage.locator(STATIC));
+    await wide.close();
+
+    const narrow = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+    const narrowPage = await narrow.newPage();
+    await narrowPage.goto(PUBLISHED);
+    await expect(narrowPage.locator(STATIC)).toHaveCount(1);
+    const asColumn = await routing(narrowPage.locator(STATIC));
+    await narrow.close();
+
+    console.log("[figures] routing", JSON.stringify({ asRow, asColumn }));
+
+    // A row: the three boxes share a top edge and step across.
+    expect(new Set(asRow.boxes.map((b) => b.y)).size).toBe(1);
+    expect(new Set(asRow.boxes.map((b) => b.x)).size).toBe(3);
+    // A column: they share a left edge and step down.
+    expect(new Set(asColumn.boxes.map((b) => b.x)).size).toBe(1);
+    expect(new Set(asColumn.boxes.map((b) => b.y)).size).toBe(3);
+
+    // And the connectors follow the arrangement: horizontal runs between the boxes of a row,
+    // vertical runs between the boxes of a column. Two of each, one per authored edge.
+    expect(asRow.runs.length).toBeGreaterThanOrEqual(2);
+    for (const run of asRow.runs) {
+      expect(run.dy).toBe(0);
+      expect(run.dx).toBeGreaterThan(0);
+    }
+    expect(asColumn.runs.length).toBeGreaterThanOrEqual(2);
+    for (const run of asColumn.runs) {
+      expect(run.dx).toBe(0);
+      expect(run.dy).toBeGreaterThan(0);
+    }
+  });
+});
+
+test.describe("the live figure agrees with the drawing it replaced", () => {
+  /**
+   * Hydration swaps a chosen drawing for a freshly resolved one, and the two have to be the same
+   * picture or the reader is shown a different diagram the moment JavaScript lands. They agree
+   * because both answer to the container: CSS picks the drawing measured nearest below the frame,
+   * and the runtime measures the frame itself. Checked at both ends of the range, since the phone
+   * is where they were most recently claimed — wrongly — to disagree.
+   */
+  for (const viewport of [390, 1280]) {
+    test(`at ${String(viewport)}px both are the same arrangement, drawn at full size`, async ({ browser }) => {
+      const noJs = await browser.newContext({ javaScriptEnabled: false, viewport: { width: viewport, height: 900 } });
+      const staticPage = await noJs.newPage();
+      await staticPage.goto(PUBLISHED);
+      const drawn = await chosen(staticPage);
+      await noJs.close();
+
+      const withJs = await browser.newContext({ viewport: { width: viewport, height: 900 } });
+      const livePage = await withJs.newPage();
+      await livePage.goto(PUBLISHED);
+      await settled(livePage);
+      const live = await livePage.locator(LIVE).evaluate((svg) => {
+        const box = svg.getBoundingClientRect();
+        const holder = svg.parentElement!;
+        const viewBox = Number((svg.getAttribute("viewBox") ?? "0 0 1 1").split(/\s+/)[2]);
+        const scale = box.width / viewBox;
+        const type = [...svg.querySelectorAll("text")].map((t) => parseFloat(getComputedStyle(t).fontSize));
+        return {
+          layout: svg.getAttribute("data-layout"),
+          viewBox,
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          minType: Math.round(Math.min(...type) * scale * 10) / 10,
+          // The bug this file now guards: the stage used to be pinned to an aspect ratio that
+          // capped its height while `overflow-y: hidden` threw the rest of the drawing away.
+          pinned: (holder as HTMLElement).style.aspectRatio,
+          hiddenBelow: holder.scrollHeight - holder.clientHeight,
+          scrollsSideways: holder.scrollWidth > holder.clientWidth + 1,
+          pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      await withJs.close();
+
+      console.log(`[figures] static vs live at ${String(viewport)}px`, JSON.stringify({ drawn, live }));
+
+      // The same arrangement, reached two different ways.
+      expect(live.layout).toBe(drawn.layout);
+      // The runtime resolved against the frame the CSS had already measured against.
+      expect(live.viewBox).toBe(drawn.frameWidth);
+      // Nothing of the drawing is cut off, and nothing has to be scrolled to.
+      expect(live.pinned).toBe("");
+      expect(live.hiddenBelow).toBeLessThanOrEqual(1);
+      expect(live.scrollsSideways).toBe(false);
+      expect(live.pageScroll).toBeLessThanOrEqual(1);
+      // Both legible, and the live one exactly at the size it was authored.
+      expect(live.minType).toBeGreaterThanOrEqual(12);
+      expect(drawn.minType).toBeGreaterThanOrEqual(12);
+    });
+  }
 });
 
 test.describe("what it looks like", () => {
