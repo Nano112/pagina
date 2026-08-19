@@ -16,6 +16,7 @@
  */
 import { parse } from "yaml";
 import { COVER_FIT } from "./config.js";
+import { parseOgConfig } from "./og.js";
 import type { CoverFit, Diagnostic, PageFrontMatter } from "./types.js";
 
 /** The opening `---` fence must be the first thing in the file, per the usual convention. */
@@ -106,11 +107,17 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     if (!Array.isArray(o["tags"]) || o["tags"].some((t) => typeof t !== "string")) bad("front matter: tags must be a list of strings");
     else tags = { tags: o["tags"] as string[] };
   }
+  // The same block `article.yaml` writes, read by the same parser — including `og: false`, which
+  // is how one page opts out of an article that draws cards. Its complaints are warnings here for
+  // the reason at the top of this file: one malformed page must not take a site's build with it.
+  const og = parseOgConfig(o["og"], `${page} front matter`);
+  for (const d of og.diagnostics) diagnostics.push({ ...d, page });
   return {
     meta: {
       ...text_("title"), ...text_("description"), ...text_("cover"), ...text_("author"),
       ...text_("theme"),
       ...coverAlt, ...coverFit, ...date("published"), ...date("updated"), ...noindex, ...tags,
+      ...(og.og === undefined ? {} : { og: og.og }),
     },
     body,
     diagnostics,

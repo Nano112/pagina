@@ -1,4 +1,5 @@
 import { parse } from "yaml";
+import { parseOgConfig } from "./og.js";
 import type { ArticleConfig, CoverFit, CoverOn, NavEntry } from "./types.js";
 
 /** Every value `cover_on` may take, in the order the doc lists them. */
@@ -190,6 +191,14 @@ export function parseArticleConfig(text: string): ArticleConfig {
   if (o.exclude_gitignore !== undefined && o.exclude_gitignore !== null && typeof o.exclude_gitignore !== "boolean")
     fail("exclude_gitignore", "must be a boolean");
   const excludeGitignore = o.exclude_gitignore !== false;
+  // `og:` is parsed by the same function a page's front matter uses, so the two spellings of one
+  // block cannot drift. What differs is what a mistake costs: everything else in `article.yaml` is
+  // a throw, and an `og` key that silently did nothing here would be the one setting in this file
+  // whose typos are invisible.
+  const ogParsed = parseOgConfig(o.og, "article.yaml");
+  const ogProblem = ogParsed.diagnostics[0];
+  // Already spelt `article.yaml: og.<key> must be …`, which is this file's own message shape.
+  if (ogProblem !== undefined) throw new Error(ogProblem.message);
   return {
     slug: str(o.slug, "slug"),
     title: str(o.title, "title"),
@@ -217,6 +226,7 @@ export function parseArticleConfig(text: string): ArticleConfig {
       ...(typeof kg.width === "number" ? { width: kg.width } : {}),
       ...(kg.widths === undefined ? {} : { widths: figureWidths(kg.widths) }),
     } }),
+    ...(ogParsed.og === undefined ? {} : { og: ogParsed.og }),
     snippets: { roots },
     exclude,
     excludeGitignore,

@@ -1,3 +1,5 @@
+import type { OgConfig } from "./og.js";
+
 export interface ContentFs {
   read(path: string): Promise<string>;                 // utf8; throws if missing
   readBinary(path: string): Promise<Uint8Array>;
@@ -79,6 +81,13 @@ export interface ArticleConfig {
     readonly width?: number;
     readonly widths?: readonly number[];
   };
+  /**
+   * The social card every page of this article gets, unless the page says otherwise.
+   *
+   * Written `og:` in `article.yaml`, and `og: false` to opt out. A page overrides it field by
+   * field — see {@link PageFrontMatter.og} and `resolveOgConfig`.
+   */
+  readonly og?: OgConfig;
   readonly snippets: { readonly roots: readonly string[] };                    // default ["."]
   /**
    * Files in the folder that are not article content, as gitignore-shaped globs.
@@ -152,6 +161,8 @@ export interface PageFrontMatter {
   /** Keeps this page out of `sitemap.xml` and gives it `<meta name="robots" content="noindex">`. */
   readonly noindex?: boolean;
   readonly tags?: readonly string[];
+  /** This page's social card, overriding the article's field by field. `og: false` opts out. */
+  readonly og?: OgConfig;
 }
 
 export interface RenderedPage {
@@ -186,6 +197,17 @@ export interface PageMeta {
   readonly coverAlt?: string;
   /** How {@link cover} fills its band. Already resolved: the page's, else the article's. */
   readonly coverFit?: CoverFit;
+  /**
+   * Site URL of the social card pagina drew for this page, when it drew one.
+   *
+   * The **third** choice for `og:image`, behind the page's cover and the article's: someone who
+   * drew a card gets their card. It is a separate field rather than a value written into
+   * {@link cover} because a card is not a cover — nothing puts it in the page's own header band,
+   * and a host that wants only real artwork can ignore this field and keep the old behaviour.
+   */
+  readonly card?: string;
+  /** Alt text for {@link card}: the author's `og.alt`, else derived from the card's own content. */
+  readonly cardAlt?: string;
   /**
    * Site URL of **this page's own** theme stylesheet — level 4 of the cascade.
    *

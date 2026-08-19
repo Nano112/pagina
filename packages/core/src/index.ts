@@ -12,6 +12,12 @@ export {
   type BundleFileRecord, type BundleLimits, type BundleManifest, type RenderedOutput,
   type VerifyBundleOptions,
 } from "./bundle.js";
+export {
+  DEFAULT_OG_CONFIG, OG_CARD_HEIGHT, OG_CARD_WIDTH, OG_DESCRIPTION_BUDGET, OG_GLYPH_POSITIONS,
+  OG_SCHEMES, OG_SLOT_WIDTH, OG_TEMPLATES, OG_TITLE_BUDGET,
+  cardAltText, clampWords, parseOgConfig, resolveOgConfig,
+  type OgConfig, type OgGlyphPosition, type OgScheme, type OgTemplate, type ResolvedOgConfig,
+} from "./og.js";
 export { ADMONITION_KINDS } from "./plugins/admonition.js";
 export { slugify } from "./plugins/anchors.js";
 export { extractFigures, inlineArticleFigures, inlineFigureSvgs, FIGURE_WIDTHS, type DrawnFigure, type FigureSvg, type FigureVariant } from "./figures.js";
