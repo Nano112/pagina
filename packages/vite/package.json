@@ -33,6 +33,7 @@
   "files": [
     "dist",
     "src",
+    "fonts",
     "LICENSE",
     "!**/*.test.*",
     "!**/*.spec.*",
