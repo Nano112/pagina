@@ -22,9 +22,10 @@ Its stylesheet arrives with opinions about `h1` that your design system already 
 
 ## The whole of what a host has to do
 
-pagina's CSS lives inside a cascade layer, and unlayered CSS beats layered CSS whatever its
-specificity. So a host's ordinary `.pg-content h2 { … }` wins over pagina's without `!important`,
-without a specificity race and without knowing pagina's selectors.
+A host's ordinary `.pg-content h2 { … }` wins over pagina's without `!important`, without a
+specificity race and without knowing pagina's selectors. That is a property of where pagina's CSS
+sits in the cascade, and [how the layer trick works](theming.md#how-the-layer-trick-works) sets out
+why it holds.
 
 Below that there are 22 `--pg-*` custom properties, plus three more for each of the seven
 admonition kinds, and every colour, font, radius and measure pagina draws reads one of them. A host

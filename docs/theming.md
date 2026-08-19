@@ -129,10 +129,10 @@ wrong. The admonition, cover, code and figure rows above the region are still tr
 ### Structure is not themeable, and that is the point
 
 Underneath every level sits something no level overrides: semantic markup with stable `pg-*` /
-`pge-*` class names, and five cascade layers whose order every pagina stylesheet declares. That is
-what makes the cascade work at all: **unlayered CSS beats layered CSS whatever its specificity**,
-so your rules win over pagina's without `!important` and without knowing pagina's selectors. See
-[How the layer trick works](#how-the-layer-trick-works).
+`pge-*` class names, and five cascade layers whose order every pagina stylesheet declares. Those
+two are the surface a host writes against, and the layer order is why what it writes wins.
+The mechanism is set out in [How the layer trick works](#how-the-layer-trick-works), and the rest
+of this page assumes it.
 
 ## Level 2 — the host
 
@@ -183,7 +183,7 @@ The file above. Where nearly everyone stops.
 
 #### 2. Override rules
 
-Ordinary CSS. Because pagina's rules are layered and yours are not, a plain selector beats them:
+Ordinary CSS. A plain selector beats pagina's:
 
 ```css
 .pg-content h2 { font-size: 2rem; letter-spacing: -0.02em; }
@@ -635,6 +635,52 @@ manifest.
 Which pages get a header is the author's call, not the host's: `cover_on` in `article.yaml` is
 `root` (the landing page only, the default), `all`, or `none`.
 
+### How the layer trick works
+
+Every pagina stylesheet begins with
+
+```css
+@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
+```
+
+and every rule in every file lives inside one of those five. Two consequences:
+
+1. **Unlayered CSS beats layered CSS, at any specificity.** In the cascade, layer order is
+   consulted *before* specificity, and the unlayered "implicit layer" sorts last, i.e. highest.
+   Your `.pg-content h2` (specificity 0,1,1) therefore beats pagina's `.pg-content h2` inside
+   `pagina.chrome`, and would beat it even if pagina's were `#id .pg-content h2`.
+2. **The declaration line fixes the order, across files.** Naming all five up front means
+   `pagina.chrome` wins over `pagina.reading` regardless of where each block appears, and,
+   because *every* pagina sheet names the same five, regardless of which sheet a host loads
+   first. `pagina.editor` is in the site sheet's list for exactly that reason, though the site
+   sheet never puts a rule in it. If you want to add to a layer yourself
+   (`@layer pagina.reading { … }`), you land in the right slot.
+
+#### Sources, and what actually ships
+
+`packages/shell-static/client/` holds three source files, and `pagina.css` is composed of the
+other two:
+
+| Source | Layers | Also ships alone as |
+|---|---|---|
+| `tokens.css` | `pagina.reset`, `pagina.tokens` | `pagina.tokens.css` |
+| `reading.css` | `pagina.reading` | `pagina.reading.css` |
+| `pagina.css` | the two above, plus `pagina.chrome` | `pagina.css` |
+
+`@pagina/editor`'s `theme.css` imports the first two, which is what makes `editor.css`
+self-sufficient and what stops the editor's idea of the tokens drifting from the shell's: there
+is no copy to keep in step.
+
+The `@import`s are **build inputs**. Every published artefact has them inlined: the package build
+(`packages/shell-static/scripts/build-css.mjs`) writes `dist/*.css`, a site build writes `_pagina/pagina.css`, and
+Vite writes `dist/editor.css`. A host never sees an `@import`, and never needs a second request
+or a second hash. See [Cache-bust by content](#cache-bust-by-content).
+
+One caveat worth knowing: the production builds minify with lightningcss, which drops the
+standalone `@layer` declaration when it can prove the order by sorting the layer *blocks* into
+declared order instead, keeping a bare `@layer pagina.editor;` for a slot it has no block for.
+The cascade is identical. The unminified `dist/*.css` artefacts keep the line verbatim.
+
 ### Integrating under a host layout
 
 Everything above is about *taste*. This section is about the two things that will otherwise cost
@@ -685,11 +731,10 @@ loads a preflight-shaped reset before pagina's assets (`e2e/host-theming.spec.ts
 
 Two caveats that remain yours:
 
-- A reset is *unlayered* by default in some setups. Unlayered CSS beats layered CSS at any
-  specificity, and pagina's rules are all layered. That asymmetry is what makes the whole cascade
-  work, so an unlayered `h1 { font-size: inherit }` will flatten pagina's headings and pagina cannot
-  and should not fight it. Put your reset in a layer (Tailwind's preflight already lives in
-  `@layer base`), or scope it away from `.pg-content`.
+- A reset is *unlayered* by default in some setups, and an unlayered sheet wins outright. That is
+  the same asymmetry the whole cascade rests on, so an unlayered `h1 { font-size: inherit }` will
+  flatten pagina's headings and pagina cannot and should not fight it. Put your reset in a layer
+  (Tailwind's preflight already lives in `@layer base`), or scope it away from `.pg-content`.
 - pagina styles the content column, not your page. `body` background, colour and font come from
   the `pagina.reset` layer, which your own body rules outrank.
 
@@ -730,49 +775,3 @@ those files can be served immutably. Same idea, two places to put the answer; se
 If you *read* a sheet's URL off a page to find its sibling, as the theme showcase does, match
 `pagina(\.tokens)?(\.[0-9a-f]{8})?\.css` and swap only the infix. The two names always share one
 hash, because the full sheet inlines the tokens sheet and so changes whenever it does.
-
-### How the layer trick works
-
-Every pagina stylesheet begins with
-
-```css
-@layer pagina.reset, pagina.tokens, pagina.reading, pagina.chrome, pagina.editor;
-```
-
-and every rule in every file lives inside one of those five. Two consequences:
-
-1. **Unlayered CSS beats layered CSS, at any specificity.** In the cascade, layer order is
-   consulted *before* specificity, and the unlayered "implicit layer" sorts last, i.e. highest.
-   Your `.pg-content h2` (specificity 0,1,1) therefore beats pagina's `.pg-content h2` inside
-   `pagina.chrome`, and would beat it even if pagina's were `#id .pg-content h2`.
-2. **The declaration line fixes the order, across files.** Naming all five up front means
-   `pagina.chrome` wins over `pagina.reading` regardless of where each block appears, and,
-   because *every* pagina sheet names the same five, regardless of which sheet a host loads
-   first. `pagina.editor` is in the site sheet's list for exactly that reason, though the site
-   sheet never puts a rule in it. If you want to add to a layer yourself
-   (`@layer pagina.reading { … }`), you land in the right slot.
-
-#### Sources, and what actually ships
-
-`packages/shell-static/client/` holds three source files, and `pagina.css` is composed of the
-other two:
-
-| Source | Layers | Also ships alone as |
-|---|---|---|
-| `tokens.css` | `pagina.reset`, `pagina.tokens` | `pagina.tokens.css` |
-| `reading.css` | `pagina.reading` | `pagina.reading.css` |
-| `pagina.css` | the two above, plus `pagina.chrome` | `pagina.css` |
-
-`@pagina/editor`'s `theme.css` imports the first two, which is what makes `editor.css`
-self-sufficient and what stops the editor's idea of the tokens drifting from the shell's: there
-is no copy to keep in step.
-
-The `@import`s are **build inputs**. Every published artefact has them inlined: the package build
-(`packages/shell-static/scripts/build-css.mjs`) writes `dist/*.css`, a site build writes `_pagina/pagina.css`, and
-Vite writes `dist/editor.css`. A host never sees an `@import`, and never needs a second request
-or a second hash. See [Cache-bust by content](#cache-bust-by-content).
-
-One caveat worth knowing: the production builds minify with lightningcss, which drops the
-standalone `@layer` declaration when it can prove the order by sorting the layer *blocks* into
-declared order instead, keeping a bare `@layer pagina.editor;` for a slot it has no block for.
-The cascade is identical. The unminified `dist/*.css` artefacts keep the line verbatim.

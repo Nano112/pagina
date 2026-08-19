@@ -102,10 +102,10 @@ above it.
 
 Two properties make that work rather than merely describe it.
 
-**Unlayered CSS beats layered CSS at any specificity.** Every pagina rule lives in one of five
-declared layers, and every pagina stylesheet opens by naming all five in order. A host's plain
-`.pg-content h2` therefore wins without `!important`, and the link order of the stylesheets cannot
-change the outcome.
+**Every pagina rule lives inside a cascade layer.** A host's plain `.pg-content h2` therefore wins
+without `!important`, and because every pagina stylesheet opens by naming the same five layers in
+the same order, which sheet the browser loads first cannot change the outcome either. Theming has
+[the reasoning](theming.md#how-the-layer-trick-works).
 
 **A published figure is inline SVG, not an image.** Every paint in it is written as
 `var(--kg-color-<role>, <the colour it was drawn with>)`, and `tokens.css` already points each role
