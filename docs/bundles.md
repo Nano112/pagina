@@ -80,9 +80,34 @@ makes packing idempotent.
 }
 ```
 
-Every field is required. `path` is always a relative posix path with no `.` or `..` segment;
+Every field above is required. `path` is always a relative posix path with no `.` or `..` segment;
 `sha256` is lowercase hex. `bundle.json` never lists itself — it is the thing the checksums are
 *in*.
+
+One optional field exists, and it is absent unless you ask for it:
+
+```jsonc
+  "attribution": [                    // only with --with-attribution; sorted by path
+    { "path": "index.md",
+      "lastEditedBy": { "id": "u1", "name": "Ada" },
+      "lastEditedAt": "2026-08-18T10:00:00.000Z" }
+  ]
+```
+
+`pagina pack` **strips attribution by default**. A `.pgz` is an export and an export leaves the
+organisation that made it, so the names of everyone who touched the article travel only when
+somebody asks:
+
+```sh
+pagina pack article                      # no names
+pagina pack article --with-attribution   # bundle.json carries the last editor of each file
+```
+
+The source is `.pagina/edits.jsonl`, the log `pagina dev --edit` keeps; a folder without one packs
+the same either way. Only files the bundle actually carries are covered, so a folder's history
+cannot export the name attached to a file the archive excluded. A present-but-malformed
+`attribution` is a refusal like any other field: an importer that half-parsed one would show a name
+it invented. See [the editor page](editing.md) for where the log comes from.
 
 `created` is deliberately outside the checksummed set, and injectable (`--created`,
 `packBundle({ created })`), because it is the one field that changes when nothing else did. With

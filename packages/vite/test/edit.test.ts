@@ -560,6 +560,48 @@ describe("pagina dev --edit", () => {
     expect(res.status).toBe(403);
   }, 30_000);
 
+  /**
+   * Two servers, one folder, two people — which is the only way two identities appear in one
+   * article on a dev server, since a server has exactly one.
+   *
+   * It is also the case a cached log would have got wrong: each server would have answered from
+   * the half of the log it wrote itself and reported "unknown" for the other's work, which is
+   * precisely the situation the conflict banner exists for.
+   */
+  it("sees an edit made by another server writing the same folder", async () => {
+    const shared = await tempDir("shared");
+    await cp(fixture, shared, { recursive: true });
+    const grace = { id: "test:grace", name: "Grace" };
+
+    const serve = async (identity: { id: string; name: string }): Promise<{ at: string; close: () => Promise<void> }> => {
+      const handler = viteEditMiddleware(shared, { base: "/e", identity });
+      const http = createServer((req, res) => { handler(req, res, () => { res.statusCode = 404; res.end(); }); });
+      await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+      return {
+        at: `http://127.0.0.1:${(http.address() as AddressInfo).port}/e`,
+        close: () => new Promise<void>((r) => http.close(() => r())),
+      };
+    };
+
+    const a = await serve(ADA);
+    const b = await serve(grace);
+    try {
+      await fetch(`${b.at}/files/shared.md`, { method: "PUT", body: "# Grace wrote this\n" });
+      // Asked of Ada's server, answered with Grace's name.
+      const { files } = (await (await fetch(`${a.at}/files`)).json()) as { files: Listed[] };
+      expect(files.find((f) => f.path === "shared.md")?.lastEditedBy).toEqual(grace);
+
+      const { edits } = (await (await fetch(`${a.at}/history?path=shared.md`)).json()) as {
+        edits: { by: { name: string } }[];
+      };
+      expect(edits[0]?.by).toEqual(grace);
+    } finally {
+      await a.close();
+      await b.close();
+      await rm(shared, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("keeps no log, and no attribution, when history is off", async () => {
     // A bare `http.Server` over the middleware rather than a second dev server: the option under
     // test belongs to the middleware, and this is the cheapest thing that is still a real request.

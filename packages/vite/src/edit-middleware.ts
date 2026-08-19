@@ -258,15 +258,16 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
   const keepHistory = opts.history !== false;
 
   /**
-   * The log, read from disk once and appended to in step with the file.
+   * The log, re-read from disk on every question rather than cached.
    *
-   * In memory as well as on disk because the listing consults it on every `GET /files`, and
-   * re-reading a growing file to answer that would make the cost of the log grow with the length of
-   * the session. The middleware is the only writer, so the two cannot drift; a log edited by hand
-   * underneath a running server is not a case worth carrying state for.
+   * A cache read once at startup would be faster and would be wrong: this middleware is not
+   * necessarily the only writer. Two `pagina dev --edit --as …` servers over one folder is exactly
+   * how two people appear in one article, and each would have answered from its own half of the
+   * log — reporting "unknown" for everything the other wrote, which is the one case the conflict
+   * banner exists for. The file is small and the listing beside it already reads and hashes every
+   * file in the folder, so this costs nothing worth keeping stale state for.
    */
-  let logOnce: Promise<LoggedEdit[]> | undefined;
-  const log = (): Promise<LoggedEdit[]> => (logOnce ??= readEditLog(root));
+  const log = (): Promise<LoggedEdit[]> => readEditLog(root);
 
   const record = async (entry: {
     path: string; action: EditAction; version: string; from?: string;
@@ -277,7 +278,6 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       at: new Date().toISOString(), by: identity,
       ...(entry.from === undefined ? {} : { from: entry.from }),
     };
-    (await log()).push(logged);
     await appendEditLog(root, logged);
     return { lastEditedBy: logged.by, lastEditedAt: logged.at };
   };

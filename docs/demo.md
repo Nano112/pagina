@@ -60,8 +60,16 @@ note.textContent =
   " The same article, the same browser storage, the whole viewport — which is how three panes are meant to be seen.";
 open.append(link, note);
 
+/*
+ * `?as=Alice` names this tab. Open a second one as somebody else and the conflict banner names
+ * them — which is the only way to see that on a page with no server to log into. A real host does
+ * not read the author from a query string; it takes it from the session it authenticated.
+ */
+const as = new URL(location.href).searchParams.get("as");
 const { startDemo } = await import(new URL("editor/demo.js", ROOT).href);
-startDemo(document.getElementById("pagina-demo"));
+startDemo(document.getElementById("pagina-demo"), {
+  ...(as === null || as.trim() === "" ? {} : { author: { id: `demo:${as}`, name: as } }),
+});
 </script>
 
 ## How this page works

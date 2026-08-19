@@ -174,11 +174,11 @@ dev server, a Laravel application, browser storage, or a test double.
 
 ### The three implementations
 
-| | Use it when | Persistence | Conflicts | Cross-tab |
-| --- | --- | --- | --- | --- |
-| `MemoryBackend` | tests, and a demo that should start clean every time | none, gone on reload | yes, versions are content hashes | `emit()`, driven by the test |
-| `LocalStorageBackend` | offline, a static site, a browser-only demo | `localStorage`, survives reload | yes, versions are a monotonic counter | yes, over the DOM `storage` event |
-| `HttpBackend` | anything with a server | whatever the server does | yes, `409` from `If-Match` | SSE, where the server offers `GET {base}/events` |
+| | Use it when | Persistence | Conflicts | Cross-tab | History |
+| --- | --- | --- | --- | --- | --- |
+| `MemoryBackend` | tests, and a demo that should start clean every time | none, gone on reload | yes, versions are content hashes | `emit()`, driven by the test | yes |
+| `LocalStorageBackend` | offline, a static site, a browser-only demo | `localStorage`, survives reload | yes, versions are a monotonic counter | yes, over the DOM `storage` event | yes |
+| `HttpBackend` | anything with a server | whatever the server does | yes, `409` from `If-Match` | SSE, where the server offers `GET {base}/events` | when the host declares it |
 
 `HttpBackend` implements the JSON REST contract specified in
 [the connectivity design note](https://github.com/Nano112/pagina/blob/main/docs/design/2026-08-17-editor-connectivity-laravel.md)
@@ -253,6 +253,126 @@ A file can be in five states: `saved`, `dirty`, `saving`, `error` (retried with 
 Two browser tabs on the same `LocalStorageBackend` namespace reach both states for real, which is
 why the demo is worth having: until it existed, those code paths had unit tests and nothing else.
 
+## Who edited what
+
+The banner above used to say *index.md changed on the server while you were editing it*, because
+whose was not something the editor could know. Nothing in the backend contract carried identity, so
+nothing downstream could.
+
+It now says **Bob changed index.md just now, while you were editing it** when the backend reports a
+person, and the old sentence word for word when it does not. Both are correct answers; the second is
+what a plain file server honestly has to say.
+
+### Identity comes from the host, never from the client
+
+`write()` takes a path, a text and an optional version. It has no author parameter and is not going
+to get one.
+
+The browser says what it is editing; the server says who is editing. An author supplied in a request
+body is a claim, and a claim is forgeable — a docs tool that lets a caller name itself records
+fiction and invites the one attack worth worrying about here, which is writing as somebody else. So
+a Laravel host reads `auth()->user()`, `pagina dev --edit` uses the identity it was started with,
+and both **ignore** anything a request says about an author. There is no field for one in the
+[HTTP contract](https://github.com/Nano112/pagina/blob/main/docs/design/2026-08-17-editor-connectivity-laravel.md),
+so anything that arrives claiming to be one did not come from pagina's client.
+
+### Two levels, because they cost differently
+
+**Attribution** is who last touched a file and when: `lastEditedBy` and `lastEditedAt` on every
+`FileEntry` and on `stat()`. One row per file, overwritten by each write, cheap enough that every
+backend keeps it.
+
+**History** is the sequence, and it is an *optional* method:
+
+```ts
+history?(path?: string, opts?: { limit?: number }): Promise<Edit[]>
+```
+
+A backend that cannot answer omits the method, and the editor hides the History panel rather than
+rendering an empty one — a panel showing nothing says *nobody has edited this*, which is a claim
+rather than an absence. `Edit` is `{ path, action, at, by, version, from? }`, newest first, where
+`action` is `write`, `upload`, `delete`, `rename` or `publish`.
+
+`Author` is `{ id, name, email?, avatarUrl? }`. `name` is required because a UI that shows a UUID is
+not attribution.
+
+### What each backend can honestly do
+
+| Backend | Attributes writes to | History |
+| --- | --- | --- |
+| `MemoryBackend` | one identity, given at construction (default: *This session*) | in memory |
+| `LocalStorageBackend` | one identity (default: *This browser*) | in that browser only, last 200 edits |
+| `viteEditMiddleware` | the `--as` name, or the OS user | `.pagina/edits.jsonl` beside the folder |
+| `HttpBackend` | nothing of its own — it reports what the server says | `GET {base}/history`, when the host declares it |
+
+The local ones are not pretending to be an audit trail, and it is worth saying where the line is.
+`pagina dev --edit` has **no authentication**: anyone who can reach the port can write any file, the
+identity is whoever started the server, and the log is a plain text file that same person can edit.
+It is useful for the thing it was built for — a conflict banner that names somebody — and it is not
+evidence. A host that needs a record has a database and an authenticated session, and implements the
+same contract over those.
+
+A **seeded** file carries no attribution at all. The seed came from whoever built the backend, not
+from a person at a keyboard, and an article that opens claiming three edits nobody made is a log
+that has started out wrong.
+
+`pagina dev --edit` goes further: it reports a file's author only while the bytes still hash to the
+version it recorded. Open a page in vim and its attribution disappears rather than crediting whoever
+last used the editor, because the honest answer to *who wrote this* is then nobody we know of.
+
+Publishing is an edit too. `publish()` resolves to `{ publishedAt, publishedBy, article }`, and the
+dev server writes both into `.pagina/published.json` — that is the event a reader's page is
+attributed to, and the one most worth having later.
+
+### Trying it
+
+The [demo page](demo.md) reads `?as=` so two tabs can be two people:
+
+```
+/demo/?as=Alice        # then, in a second tab
+/demo/?as=Bob
+```
+
+Type in Alice's tab, save in Bob's, and Alice gets a banner with Bob's name on it. Locally, two dev
+servers over one folder do the same thing against the file-backed log:
+
+```sh
+npx pagina dev article --edit --as Alice --port 4321
+npx pagina dev article --edit --as Bob   --port 4322
+```
+
+Neither is authentication. The demo takes its name from a query string because there is no server to
+log into, and `--as` takes it from the command line for the same reason.
+
+### Bundles carry provenance, but not by default
+
+`pagina pack` **strips attribution**, and `--with-attribution` puts it in `bundle.json`:
+
+```sh
+pagina pack article                      # no names travel
+pagina pack article --with-attribution   # bundle.json carries lastEditedBy per file
+```
+
+A `.pgz` is an export, and an export leaves the organisation it came from — to a client, a
+contractor, a public download. With a dozen pages, attribution is a staff list with a rota attached,
+so it goes only when someone asks for it. The opposite default would leak names to whoever received
+a bundle, with no error to notice and nothing to discover until afterwards.
+
+Only files the bundle actually carries are covered, so a folder's log cannot export the name against
+a file that was excluded from the archive. Attribution in a bundle is *the last edit recorded*, not
+a claim about the bytes: `pack` does not re-hash to check, because a git-tracked docs folder is
+mostly files nobody edited through the editor.
+
+### What this is not
+
+Not revision history. pagina stores no old contents, and `history` records that an edit happened
+rather than what it said, so there is nothing here to restore and no control offering to. A host
+that wants real revisions has git or a database; this is the layer that says who, so a host with
+either can join the two up.
+
+Not collaboration either: no presence, no cursors, no merge. A subscription still tells you a file
+changed rather than that someone is typing in it.
+
 ## Publishing
 
 `publish()` renders every page through `@pagina/core` *and* every figure to light and dark SVG on
@@ -285,8 +405,12 @@ Stated plainly, because finding these written down is more use than discovering 
 
 - **No page rename** from the sidebar: create and delete only. No undo across files, and no
   search.
-- **No presence and no locking.** A subscription tells you a file changed; it does not tell you who
-  is editing it. Conflict detection is the whole of the multi-user story.
+- **No presence and no locking.** A subscription tells you a file changed, and now who changed it;
+  it still does not tell you that someone is *editing* one. Conflict detection is the whole of the
+  multi-user story.
+- **One dev server is one identity.** `viteEditMiddleware` has no authentication, so it cannot tell
+  two callers apart and attributes everything to the name it was started with. Two people means two
+  servers over one folder, which works but is a workaround rather than a feature.
 - **The self-write window is time-based.** A host with live reload must not reload the editor over
   the editor's own saves; `@pagina/editor` announces every successful mutation through
   `window.__paginaSelfWrite(path, ts)` and `pagina dev --edit` drops an HMR `full-reload` landing

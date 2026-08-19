@@ -84,6 +84,16 @@ export interface DemoOptions {
   readonly page?: string;
   /** localStorage namespace. Shared by both chromes on purpose: it is one article, seen two ways. */
   readonly namespace?: string;
+  /**
+   * Who this tab writes as. Omitted, the backend's honest default ("This browser") is used.
+   *
+   * The demo reads it from `?as=` so two tabs on one browser store can be two people — which is
+   * the only way a reader can *see* the conflict banner name somebody rather than take it on
+   * trust. It is a demo affordance and it is worth being clear about what it is not: nothing
+   * authenticates it, because there is no server here to authenticate against. A real host does
+   * not let the page choose; it derives the author from the session it already has.
+   */
+  readonly author?: { id: string; name: string };
   /** Where "back" goes from the full-screen editor. Omitted, the link is not rendered. */
   readonly backHref?: string;
   readonly backLabel?: string;
@@ -246,6 +256,7 @@ async function load(host: HTMLElement, options: DemoOptions, status?: HTMLElemen
     const backend = new editor.LocalStorageBackend({
       namespace: options.namespace ?? NAMESPACE,
       seed: DEMO_SEED,
+      ...(options.author === undefined ? {} : { author: options.author }),
     });
 
     host.replaceChildren();

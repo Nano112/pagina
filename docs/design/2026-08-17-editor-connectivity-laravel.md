@@ -72,6 +72,68 @@ GET    {base}/events   (SSE, optional)      → file-changed events for other-ta
 there is no `theirs` to return in that case, so a 409 body would misdescribe what the server holds.
 A `PUT` with no `If-Match` creates or replaces unconditionally.
 
+### Attribution and history (added 2026-08-19)
+
+See `docs/design/2026-08-19-attribution.md` for the reasoning. This section is the normative wire
+format; a host implements against exactly what is written here.
+
+An **`Author`** is `{ id, name, email?, avatarUrl? }`. `id` and `name` are non-empty strings and
+both are required; `email` and `avatarUrl` are optional. A client that receives an author missing
+either required field discards it and behaves as though none were sent, so a half-filled author is
+the same as silence.
+
+Every field below is **optional for the server**. A host that does not track identity omits them,
+and the editor degrades to the wording it had before — that is a supported configuration, not a
+broken one.
+
+```
+GET    {base}/files
+  → { files: [{ path, size, version, mtime,
+                lastEditedBy?: Author, lastEditedAt?: <ISO-8601> }] }
+
+PUT    {base}/files/{path}
+  → 200 { version, lastEditedBy?: Author, lastEditedAt?: <ISO-8601> }
+  → 409 { theirs, version, message?, by?: Author, at?: <ISO-8601> }
+  → 412 { message }                                      (If-Match: * on a missing file; unchanged)
+
+POST   {base}/upload   → { path, url, version, lastEditedBy?: Author, lastEditedAt?: <ISO-8601> }
+POST   {base}/rename   → { version, lastEditedBy?: Author, lastEditedAt?: <ISO-8601> }
+POST   {base}/publish  → { publishedAt, publishedBy?: Author }
+
+GET    {base}/events   (SSE)
+  → { type, path, version?, by?: Author, at?: <ISO-8601> }
+
+GET    {base}/history?path=<path>&limit=<n>              (OPTIONAL endpoint)
+  → 200 { edits: [{ path, action, at: <ISO-8601>, by: Author, version, from? }] }
+  → 404 (or 501) when this host keeps no history
+```
+
+`action` is one of `write | upload | delete | rename | publish`. `version` is the version the edit
+produced, and is the empty string for a `delete` or a `publish`, which produce none. `from` is
+present only on a `rename` and names the old path. `path` on a `publish` row is the article's slug,
+since a publish is not about one file.
+
+`GET {base}/history` answers **newest first**. `path` filters to one file and must also match a
+rename's `from`, so a file's log does not begin at the moment it was renamed. `limit` defaults to
+**50** and is clamped to **500** — the endpoint is reachable from a browser, and an unbounded limit
+on a host with years of edits is a way to ask a server to serialise its whole log. A host that keeps
+no history must answer 404 or 501 rather than `{ "edits": [] }`: the client shows the panel only
+when the endpoint exists, and an empty list claims that nobody has edited the article.
+
+`HttpBackend` does not probe for the endpoint. A host that implements it constructs the backend with
+`history: true` (or sets the `history` attribute on `<pagina-editor>`); without that the client
+never calls it and hides the panel.
+
+**The security rule, which is not optional.** The server derives the author from the request's own
+authenticated session — `auth()->user()` in Laravel, the session in a Node host. It **must ignore
+any author named in the request**: in the body, in the query string, in a header. The editor never
+sends one and there is no field for it in this contract, so anything that arrives claiming to be an
+author came from something other than pagina's client, and believing it would let any caller write
+as anybody. Attribute the write to the session or refuse it.
+
+A host is free to store more than it returns. Nothing here asks for old file contents: `history`
+records *that* an edit happened, not what it said.
+
 ### Editor document model (TipTap nodes)
 
 doc › (heading | paragraph | bulletList | orderedList | codeBlock | blockquote | table | image |
