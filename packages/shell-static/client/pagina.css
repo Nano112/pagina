@@ -49,6 +49,15 @@
   .pg-header__edit { color: var(--pg-muted); text-decoration: none; font-size: 0.85rem; white-space: nowrap; }
   .pg-header__edit:hover { color: var(--pg-accent); }
 
+  .pg-nav-trigger {
+    display: none; align-items: center; gap: 0.4rem; min-height: 2rem;
+    border: 1px solid var(--pg-line); border-radius: var(--pg-radius);
+    padding: 0.3rem 0.65rem; color: var(--pg-fg); background: var(--pg-bg-raised);
+    font: inherit; font-size: 0.82rem; cursor: pointer;
+  }
+  .pg-nav-trigger:hover, .pg-nav-trigger:focus-visible { border-color: var(--pg-accent); color: var(--pg-accent); }
+  .pg-nav-trigger:disabled { display: none; }
+
   /* Theme toggle ------------------------------------------------------------------------------ */
   .pg-theme-toggle {
     width: 34px; height: 18px; border-radius: 999px; border: 1px solid var(--pg-line);
@@ -67,7 +76,8 @@
   }
   @media (max-width: 960px) {
     .pg-shell { grid-template-columns: 1fr; }
-    .pg-nav, .pg-toc { display: none; }
+    .pg-shell > .pg-nav, .pg-toc { display: none; }
+    .pg-nav-trigger { display: inline-flex; }
   }
 
   .pg-nav { padding: 1.5rem 1rem; border-right: 1px solid var(--pg-line); }
@@ -79,6 +89,32 @@
   .pg-nav__link { display: block; padding: 0.2rem 0; color: var(--pg-fg); text-decoration: none; }
   .pg-nav__link:hover { color: var(--pg-accent); }
   .pg-nav__link[aria-current="page"] { color: var(--pg-accent); font-weight: 600; }
+
+  /* Mobile page picker ---------------------------------------------------------------------- */
+  .pg-nav-modal[hidden] { display: none; }
+  .pg-nav-modal {
+    position: fixed; inset: 0; z-index: 40; display: flex; align-items: stretch;
+    background: color-mix(in srgb, var(--pg-fg) 34%, transparent);
+  }
+  .pg-nav-modal__panel {
+    width: min(88vw, 22rem); height: 100%; overflow: auto;
+    background: var(--pg-bg); border-right: 1px solid var(--pg-line-strong);
+    box-shadow: 0.75rem 0 2rem color-mix(in srgb, var(--pg-fg) 16%, transparent);
+  }
+  .pg-nav-modal__header {
+    position: sticky; top: 0; z-index: 1; display: flex; align-items: center;
+    justify-content: space-between; gap: 1rem; padding: 0.85rem 1rem;
+    background: var(--pg-bg); border-bottom: 1px solid var(--pg-line);
+  }
+  .pg-nav-modal__header h2 { margin: 0; color: var(--pg-fg); font: 600 1rem/1.3 var(--pg-font-display); }
+  .pg-nav-modal__close {
+    border: 1px solid var(--pg-line); border-radius: var(--pg-radius); padding: 0.3rem 0.55rem;
+    color: var(--pg-muted); background: var(--pg-bg-raised); font: inherit; cursor: pointer;
+  }
+  .pg-nav-modal__close:hover, .pg-nav-modal__close:focus-visible { color: var(--pg-accent); border-color: var(--pg-accent); }
+  .pg-nav--modal { display: block; border: 0; padding: 1rem; }
+  html[data-pg-nav-open] { overflow: hidden; }
+  @media (min-width: 961px) { .pg-nav-modal { display: none; } }
 
   .pg-main { min-width: 0; padding: 1.5rem 2rem; }
 
@@ -181,7 +217,7 @@
   @media print {
     @page { margin: 18mm 16mm; }
 
-    .pg-header, .pg-nav, .pg-toc, .pg-pager, .pg-crumbs { display: none; }
+    .pg-header, .pg-nav, .pg-nav-modal, .pg-toc, .pg-pager, .pg-crumbs { display: none; }
 
     /* The three-column grid becomes the one column that is left. `position: sticky` is measured
        against a viewport, and a sheet of paper is not one — left in place it pins the element to

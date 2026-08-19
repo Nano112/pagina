@@ -59,7 +59,17 @@ describe("renderPageHtml", () => {
     // Grouped with the other controls rather than loose in the row: four loose children under
     // `space-between` divide the free space into gaps that close to nothing, which is how the site
     // title and this link ended up touching on a narrow header.
-    expect(editing).toContain(`<div class="pg-header__actions"><a class="pg-header__edit"`);
+    expect(editing).toContain(`<div class="pg-header__actions">`);
+    expect(editing).toContain(`<a class="pg-header__edit"`);
+  });
+
+  it("renders an inert mobile page trigger and a matching accessible dialog", () => {
+    const html = renderPageHtml(article, "/g/page/", ctx);
+    expect(html).toContain(`class="pg-nav-trigger" data-pg-nav-open aria-haspopup="dialog" aria-controls="pg-nav-dialog" aria-expanded="false" disabled`);
+    expect(html).toContain(`class="pg-nav-modal" data-pg-nav-modal hidden`);
+    expect(html).toContain(`id="pg-nav-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-nav-dialog-title"`);
+    expect(html).toContain(`data-pg-nav-close aria-label="Close page navigation"`);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(2);
   });
 
   it("JSON-escapes the import-map URL instead of HTML-escaping it", () => {
@@ -167,6 +177,8 @@ describe("theme levels and chrome", () => {
   it("omits pagina's header — and only its header — under chrome: false", () => {
     const html = renderPageHtml(article, "/g/page/", { ...ctx, chrome: false });
     expect(html).not.toContain("pg-header");
+    expect(html).not.toContain("pg-nav-modal");
+    expect(html).not.toContain("data-pg-nav-open");
     expect(html).not.toContain("data-pagina-theme-toggle");
     // The sidebar, TOC and pager are the article's own navigation and stay.
     expect(html).toContain(`class="pg-nav"`);

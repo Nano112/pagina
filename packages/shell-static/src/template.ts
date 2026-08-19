@@ -218,6 +218,11 @@ function searchTriggerHtml(ctx: ShellCtx): string {
   return `<button type="button" class="pg-search-trigger" data-pg-search-open disabled title="Search needs JavaScript"><span class="pg-search-trigger__label">Search</span><kbd class="pg-search-trigger__key">/</kbd><kbd class="pg-search-trigger__key pg-search-trigger__key--combo" data-pg-search-combo>Ctrl K</kbd></button>`;
 }
 
+/** Mobile replacement for the site rail. Enabled by the client only when its dialog is wired. */
+function navigationTriggerHtml(): string {
+  return `<button type="button" class="pg-nav-trigger" data-pg-nav-open aria-haspopup="dialog" aria-controls="pg-nav-dialog" aria-expanded="false" disabled title="Page navigation needs JavaScript"><span aria-hidden="true">☰</span><span>Pages</span></button>`;
+}
+
 /** A leading `<h1>…</h1>`, if the rendered page opens with one. */
 const LEADING_H1 = /^\s*<h1\b[^>]*>[\s\S]*?<\/h1>/;
 /**
@@ -307,7 +312,7 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   // one group with a gap is the arrangement a header actually has.
   const header = ctx.chrome === false
     ? ""
-    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><div class="pg-header__actions">${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></div></header>`;
+    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><div class="pg-header__actions">${navigationTriggerHtml()}${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></div></header>`;
   // The article header, above the content and under the breadcrumbs, on the pages `cover_on`
   // names. `?? "root"` is for a manifest assembled by hand rather than by `renderArticle` — the
   // default has to be the same one `article.yaml` documents, wherever the manifest came from.
@@ -327,6 +332,10 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }),
     ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
   }));
+  const siteNavigation = navHtml(article.manifest.nav, href, ctx.base);
+  const mobileNavigation = ctx.chrome === false
+    ? ""
+    : `<div class="pg-nav-modal" data-pg-nav-modal hidden><section class="pg-nav-modal__panel" id="pg-nav-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-nav-dialog-title"><header class="pg-nav-modal__header"><h2 id="pg-nav-dialog-title">Pages</h2><button type="button" class="pg-nav-modal__close" data-pg-nav-close aria-label="Close page navigation">Close</button></header><nav class="pg-nav pg-nav--modal" aria-label="Pages">${siteNavigation}</nav></section></div>`;
   return `<!doctype html>
 <html lang="en" data-theme="light"${ctx.kineglyphThemeUrl === undefined ? "" : ` data-kg-theme="${esc(ctx.kineglyphThemeUrl)}"`}${ctx.kineglyphThemeUrls === undefined ? "" : ` data-kg-themes="${esc(JSON.stringify(ctx.kineglyphThemeUrls))}"`}${ctx.searchUrl === undefined ? "" : ` data-pg-search="${esc(ctx.searchUrl)}" data-pg-base="${esc(ctx.base)}"`}>
 <head>
@@ -337,9 +346,9 @@ ${THEME_INIT_SCRIPT}
 ${stylesheetHtml(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}
 </head>
 <body>
-${header}${cover}
+${header}${mobileNavigation}${cover}
 <div class="pg-shell">
-<nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
+<nav class="pg-nav" aria-label="Site">${siteNavigation}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${articleHeader}<article class="pg-content">${contentHtml}</article><nav class="pg-pager">${prev}${next}</nav></main>
 ${tocHtml}
 </div>

@@ -91,6 +91,81 @@ document.querySelector("[data-pagina-theme-toggle]")?.addEventListener("click", 
 
 wireTabs(document);
 
+// --- mobile page navigation -----------------------------------------------------------------
+// The desktop rail is hidden below the shell breakpoint. Its server-rendered twin becomes a
+// modal drawer here, with the same current-page state and links rather than a separate nav model.
+
+const navTrigger =
+  document.querySelector<HTMLButtonElement>("[data-pg-nav-open]");
+const navModal = document.querySelector<HTMLElement>("[data-pg-nav-modal]");
+const navDialog =
+  navModal?.querySelector<HTMLElement>('[role="dialog"]') ?? null;
+const navClose =
+  navModal?.querySelector<HTMLButtonElement>("[data-pg-nav-close]") ?? null;
+if (
+  navTrigger !== null &&
+  navModal !== null &&
+  navDialog !== null &&
+  navClose !== null
+) {
+  const trigger = navTrigger;
+  const modal = navModal;
+  const dialog = navDialog;
+  const close = navClose;
+  const focusableSelector =
+    'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const closeNavigation = (): void => {
+    if (modal.hidden) return;
+    modal.hidden = true;
+    root.removeAttribute("data-pg-nav-open");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.focus();
+  };
+  const openNavigation = (): void => {
+    modal.hidden = false;
+    root.setAttribute("data-pg-nav-open", "true");
+    trigger.setAttribute("aria-expanded", "true");
+    (
+      dialog.querySelector<HTMLElement>('[aria-current="page"]') ?? close
+    ).focus();
+  };
+  trigger.disabled = false;
+  trigger.removeAttribute("title");
+  trigger.addEventListener("click", openNavigation);
+  close.addEventListener("click", closeNavigation);
+  modal.addEventListener("pointerdown", (event) => {
+    if (event.target === modal) closeNavigation();
+  });
+  modal.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeNavigation();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const stops = [
+      ...dialog.querySelectorAll<HTMLElement>(focusableSelector),
+    ].filter(
+      (element) =>
+        !element.hasAttribute("disabled") &&
+        element.getAttribute("aria-hidden") !== "true",
+    );
+    if (stops.length === 0) return;
+    const first = stops[0];
+    const last = stops.at(-1);
+    if (first === undefined || last === undefined) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  for (const link of dialog.querySelectorAll<HTMLAnchorElement>("a[href]"))
+    link.addEventListener("click", closeNavigation);
+}
+
 // --- search -----------------------------------------------------------------------------------
 // Wired here, loaded elsewhere. This block is a listener and a dynamic `import()`; the dialog, its
 // styles' behaviour and — much the largest part — the index itself are fetched the first time a

@@ -17,7 +17,10 @@ const INDEX = `${SITE}_pagina/search.json`;
 const SITE_DIR = fileURLToPath(new URL(".tmp/site/", import.meta.url));
 
 /** The dialog's own elements, so a rename shows up as one failure rather than fifteen. */
-const dialog = "[role='dialog']";
+// The search dialog specifically. It was `[role='dialog']` while the site had exactly one;
+// the mobile page-navigation modal is a second, so a bare role selector now matches two and
+// Playwright's strict mode rightly refuses to guess which one a test meant.
+const dialog = ".pg-search__dialog[role='dialog']";
 const input = ".pg-search__input";
 const results = "[role='listbox'] [role='option']";
 
