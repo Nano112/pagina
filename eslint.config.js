@@ -5,7 +5,10 @@ export default tseslint.config(
   // third-party JS that has no business in our lint report. Gitignored for the same reason.
   // `fixtures/` is not our code: it is other people's pages and programs, vendored verbatim so the
   // parser is tested against markup somebody actually wrote. Linting it would mean editing it.
-  { ignores: ["**/dist/**", "**/node_modules/**", "e2e/.tmp/**", "fixtures/**"] },
+  // Build output, kept in step with .gitignore. `site/` and `.release/` are written by
+  // `tools/build-docs-site.sh` and the release script into the working tree, so linting after
+  // either one used to fail on thousands of errors in generated files nobody wrote.
+  { ignores: ["**/dist/**", "**/node_modules/**", "e2e/.tmp/**", "fixtures/**", "site/**", ".release/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
