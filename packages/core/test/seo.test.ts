@@ -221,10 +221,60 @@ describe("pageSeo", () => {
     });
   });
 
-  it("falls back to a summary card when there is no cover", () => {
+  it("falls back to a summary card when there is neither a cover nor a drawn one", () => {
     const seo = pageSeo(manifest({ siteUrl: "https://x.test" }), "/");
     expect(seo.meta.find((t) => t.name === "twitter:card")?.content).toBe("summary");
     expect(seo.meta.some((t) => t.property === "og:image")).toBe(false);
+    // No image, so nothing to describe: an `image:alt` on its own describes nothing.
+    expect(seo.meta.some((t) => (t.name ?? t.property)?.endsWith("image:alt"))).toBe(false);
+  });
+
+  // ---------------------------------------------------------------- the three ways to have one
+  //
+  // Precedence, top to bottom: the page's own cover, the article's, and the card pagina drew. The
+  // first two are artwork somebody made and the third is the floor — see `og.ts`.
+  describe("og:image precedence", () => {
+    const at = (m: Manifest, href: string, key: string): string | undefined =>
+      pageSeo(m, href).meta.find((t) => (t.name ?? t.property) === key)?.content;
+
+    it("prefers the page's cover over the article's and over the card", () => {
+      const m = manifest(
+        { siteUrl: "https://x.test", cover: "/media/article.png" },
+        { "/g/": { cover: "/media/page.png", coverAlt: "the page's", card: "/_pagina/og/g.1234abcd.png", cardAlt: "the card's" } },
+      );
+      expect(at(m, "/g/", "og:image")).toBe("https://x.test/media/page.png");
+      expect(at(m, "/g/", "og:image:alt")).toBe("the page's");
+    });
+
+    it("prefers the article's cover over the card", () => {
+      const m = manifest(
+        { siteUrl: "https://x.test", cover: "/media/article.png" },
+        { "/g/": { card: "/_pagina/og/g.1234abcd.png", cardAlt: "the card's" } },
+      );
+      expect(at(m, "/g/", "og:image")).toBe("https://x.test/media/article.png");
+      // No `coverAlt` was resolved for this page, so the article's title stands in — never "".
+      expect(at(m, "/g/", "og:image:alt")).toBe("The Site");
+    });
+
+    it("uses the drawn card when there is no cover anywhere, and describes it", () => {
+      const m = manifest(
+        { siteUrl: "https://x.test" },
+        { "/g/": { card: "/_pagina/og/g.1234abcd.png", cardAlt: "Card from The Site: A Page" } },
+      );
+      expect(at(m, "/g/", "og:image")).toBe("https://x.test/_pagina/og/g.1234abcd.png");
+      expect(at(m, "/g/", "twitter:image")).toBe("https://x.test/_pagina/og/g.1234abcd.png");
+      expect(at(m, "/g/", "og:image:alt")).toBe("Card from The Site: A Page");
+      expect(at(m, "/g/", "twitter:image:alt")).toBe("Card from The Site: A Page");
+      // The whole point of drawing one: the card stops being the small, imageless kind.
+      expect(at(m, "/g/", "twitter:card")).toBe("summary_large_image");
+      expect(pageSeo(m, "/g/").jsonLd).toMatchObject({ image: ["https://x.test/_pagina/og/g.1234abcd.png"] });
+    });
+
+    it("still omits the image tags without a site URL, card or no card", () => {
+      const m = manifest({}, { "/g/": { card: "/_pagina/og/g.1234abcd.png", cardAlt: "a card" } });
+      expect(at(m, "/g/", "og:image")).toBeUndefined();
+      expect(at(m, "/g/", "twitter:card")).toBe("summary");
+    });
   });
 
   it("does not repeat the article title when a page carries it", () => {

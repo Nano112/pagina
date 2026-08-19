@@ -272,7 +272,15 @@ export function pageSeo(manifest: Manifest, href: string, opts: SeoOptions = {})
   const canonical = opts.mirrorOf === undefined || opts.mirrorOf === ""
     ? absoluteUrl(withBase(base, href), siteUrl)
     : deploymentUrl(opts.mirrorOf, href);
-  const image = absoluteUrl(page.cover ?? article.cover, siteUrl) ?? page.cover ?? article.cover;
+  // Three ways to have a picture, in this order: the page's own cover, the article's, and the card
+  // pagina drew. The author's image wins — someone who made artwork for this page gets their
+  // artwork — and the drawn card is the floor, so that "what does this page share as" is never
+  // "nothing". See `docs/design/2026-08-19-og-cards.md`.
+  const artwork = page.cover ?? article.cover;
+  const shareImage = artwork ?? page.card;
+  // `page.coverAlt` has already run its own chain (the author's, else the article title).
+  const shareAlt = artwork === undefined ? page.cardAlt : page.coverAlt ?? article.title;
+  const image = absoluteUrl(shareImage, siteUrl) ?? shareImage;
   const noindex = page.noindex === true || article.status !== "published";
 
   if (siteUrl === undefined || siteUrl === "")
@@ -304,8 +312,12 @@ export function pageSeo(manifest: Manifest, href: string, opts: SeoOptions = {})
   add(prop("og:url", canonical));
   // Only an absolute image is worth emitting: every consumer of `og:image` fetches it from a
   // different origin, so a site-absolute path is a guaranteed 404 for all of them.
-  const ogImage = absoluteUrl(page.cover ?? article.cover, siteUrl);
+  const ogImage = absoluteUrl(shareImage, siteUrl);
   add(prop("og:image", ogImage));
+  // An image with no alt text is the accessibility gap social cards reliably ship, and a card in
+  // particular is *made of* text a screen reader is then not given. Emitted only alongside an
+  // image, because an `image:alt` with no image describes nothing.
+  if (ogImage !== undefined) add(prop("og:image:alt", shareAlt));
   add(prop("article:published_time", page.published ?? article.published));
   add(prop("article:modified_time", page.updated ?? article.updated));
   add(prop("article:author", page.author ?? article.author));
@@ -315,6 +327,7 @@ export function pageSeo(manifest: Manifest, href: string, opts: SeoOptions = {})
   add(named("twitter:title", page.title));
   add(named("twitter:description", description));
   add(named("twitter:image", ogImage));
+  if (ogImage !== undefined) add(named("twitter:image:alt", shareAlt));
 
   const author = page.author ?? article.author;
   const published = page.published ?? article.published;
