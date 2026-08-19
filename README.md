@@ -23,6 +23,11 @@ Design goals, in order:
 - **Search is a file, not a service.** A build writes one `search.json` indexed by *section*, and a
   page fetches it the first time someone presses `/` — never before. No server, no post-processing
   step, no runtime dependency. See **[docs/search.md](docs/search.md)**.
+- **Every page shares as a picture.** A page with no cover used to emit no `og:image` at all. A
+  build now draws one: the page's title and description, set in the article's own palette, with a
+  Kineglyph scene or a mark derived from the slug in the slot beside it. Embedded fonts and a
+  content-addressed name, so a card built in CI is the card built on a laptop. See
+  [Social cards](docs/social-cards.md).
 - **An article travels as one file.** `pagina pack` **builds** a bundle rather than zipping a
   folder: it resolves the snippets that live outside it, copies only the media a page actually
   references, carries the pre-rendered output, and checksums every file. `pagina unpack` verifies
@@ -124,6 +129,8 @@ published: 2026-08-17
 updated: 2026-08-18
 noindex: true               # keep this page out of the sitemap and ask crawlers to skip it
 tags: [one, two]
+og:                         # this page's social card; `og: false` to opt out
+  glyph: scenes/how.mjs     # a Kineglyph scene, drawn into the card's slot
 ---
 ```
 
@@ -148,6 +155,8 @@ The renderer resolves all of it once, into the manifest, so a consumer never re-
 | `description` | **resolved**: page front matter → `article.yaml` → the page's first paragraph, whitespace collapsed and truncated to 160 characters on a word boundary |
 | `cover` | **resolved** site URL: page front matter → `article.yaml` |
 | `coverAlt` | **resolved** alt text: the page's `cover_alt` (only when the page also overrode `cover`) → `article.yaml`'s `cover_alt` → the article title. Present whenever `cover` is, and never `""` |
+| `card` | site URL of the **social card** a build drew for this page, when it drew one. Third choice for `og:image`, behind the page's cover and the article's |
+| `cardAlt` | alt text for `card`: the author's `og.alt`, else a sentence made from the card's own title and description |
 | `author`, `published`, `updated`, `tags` | resolved the same way |
 | `noindex` | `true` for a page that asked for it and for **every** page of a `status: draft` article; absent otherwise |
 | `readingMinutes` | **a number**: whole minutes, minimum 1. Absent when the page has no prose |

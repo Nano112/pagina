@@ -14,6 +14,15 @@ site_url: https://nano112.github.io/pagina/
 # only committed artwork is a test fixture's placeholder gradient — and a cover invented for the
 # occasion is worse than none: it is the first thing a reader sees and the first thing a social
 # card shows. The figures on the pages are drawn from real scenes instead.
+#
+# Which is exactly the case social cards exist for: with no cover, every page of this article used
+# to share as a line of blue text. Every one of them now shares as a drawn card instead. There is
+# nothing to write to get that — the block below is the default spelt out, kept because this is the
+# article that documents the setting and an article that does not exercise its own contract is a
+# contract nobody believes. See `social-cards.md`.
+og:
+  template: editorial
+  scheme: light
 
 kineglyph:
   # No `theme:` either, and that is the point rather than an omission. An article that declares
@@ -59,4 +68,5 @@ nav:
     children:
       - { title: Article bundles, page: bundles.md }
       - { title: Deploying, page: deploying.md }
+      - { title: Social cards, page: social-cards.md }
       - { title: Search, page: search.md }

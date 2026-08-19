@@ -4,6 +4,12 @@ description: >-
   The technical account: five packages, one render behind three outputs, a folder walk that decides
   what a page is, a token cascade, figures that are drawn rather than stored, and an index that is
   a file.
+# This page's card puts a drawing in the slot the procedural mark would otherwise fill — the same
+# scene the page shows, resolved at the slot's width, so it lays itself out as a column. The card
+# stays type-led, which is what survives being 300px wide in a timeline; the glyph is what tells a
+# reader at full size which page this is.
+og:
+  glyph: scenes/publishing.mjs
 ---
 
 # How pagina works

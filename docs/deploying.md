@@ -268,3 +268,4 @@ reported green while eight browser tests were red. If a lane is optional, it is 
 | `404.html` | written at `/` | written at `<base>` | written |
 | `canonical` / `og:url` | its own URL | its own URL, base included | the **primary's** URL |
 | `og:image` | its own | its own | its own |
+| social cards | drawn per page | drawn per page | drawn per page ([Social cards](social-cards.md)) |
