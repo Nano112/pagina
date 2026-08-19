@@ -1,6 +1,6 @@
 {
   "name": "@pagina/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Article model for pagina: parses an article folder of YAML and Markdown into a typed manifest plus HTML fragments, and builds the section-level search index.",
   "license": "MIT",
   "author": "Harrison (https://github.com/Nano112)",

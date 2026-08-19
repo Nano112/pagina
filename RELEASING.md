@@ -32,11 +32,11 @@ so a fresh clone can `npm ci && npm test` with no sibling checkout, and reinstal
 
 | Package | Version |
 | --- | --- |
-| `@pagina/core` | 0.1.0 |
-| `@pagina/shell-static` | 0.1.0 |
-| `@pagina/vite` | 0.1.0 |
-| `@pagina/editor` | 0.1.0 |
-| `@pagina/cli` | 0.1.0 |
+| `@pagina/core` | 0.3.0 |
+| `@pagina/shell-static` | 0.3.0 |
+| `@pagina/vite` | 0.3.0 |
+| `@pagina/editor` | 0.3.0 |
+| `@pagina/cli` | 0.3.0 |
 
 Intra-repo dependencies are caret ranges rather than `"*"`, which resolve from the workspace today
 and from the registry after this release.

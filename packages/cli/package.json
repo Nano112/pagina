@@ -1,6 +1,6 @@
 {
   "name": "@pagina/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command line interface for pagina: `pagina dev`, `pagina build`, `pagina pack`, and `pagina unpack` over an article folder.",
   "license": "MIT",
   "author": "Harrison (https://github.com/Nano112)",
@@ -43,13 +43,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pagina/core": "^0.2.0",
-    "@pagina/vite": "^0.2.0",
-    "@pagina/shell-static": "^0.2.0"
+    "@pagina/core": "^0.3.0",
+    "@pagina/vite": "^0.3.0",
+    "@pagina/shell-static": "^0.3.0"
   },
   "peerDependencies": {
-    "@kineglyph/core": "^0.2.0",
-    "@kineglyph/export": "^0.3.0",
-    "@kineglyph/web": "^0.2.0"
+    "@kineglyph/core": "^0.3.0",
+    "@kineglyph/export": "^0.4.0",
+    "@kineglyph/web": "^0.3.0"
   }
 }

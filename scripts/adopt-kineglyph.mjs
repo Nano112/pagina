@@ -30,10 +30,19 @@ const CHECK = process.argv.includes("--check");
 const RUNTIME_DEP = "vite";
 const PEER_ONLY = ["cli", "shell-static"];
 
+/**
+ * Keep these in step with the ranges in the five `package.json`s — this script rewrites them, so a
+ * stale entry here quietly *downgrades* the repo the next time anyone runs it.
+ *
+ * A caret on a `0.x` version does not cross a minor: `^0.2.0` will not install 0.3.0. Kineglyph
+ * ships breaking changes in 0.x minors (legitimately, and without a changelog), so each of these
+ * has to be raised by hand and the suite run — see
+ * `docs/design/2026-08-19-kineglyph-runtime-is-a-directory.md` for what the last one cost.
+ */
 const RANGES = {
-  "@kineglyph/core": "^0.1.0",
-  "@kineglyph/export": "^0.2.0",
-  "@kineglyph/web": "^0.1.0",
+  "@kineglyph/core": "^0.3.0",
+  "@kineglyph/export": "^0.4.0",
+  "@kineglyph/web": "^0.3.0",
 };
 
 const changes = [];
