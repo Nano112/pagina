@@ -1,3 +1,9 @@
+---
+description: >-
+  One site-url settles sub-paths, robots.txt, the 404 page and the canonical a mirror points home
+  with. Then content-hashed assets, llms.txt and CI.
+---
+
 # Deploying: sub-paths, two homes, and which copy counts
 
 [Install](install.md#publish-to-github-pages) has the short version: one `--site-url`, one

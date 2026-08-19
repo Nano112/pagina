@@ -1,3 +1,9 @@
+---
+description: >-
+  The WYSIWYG editor writes the markdown files themselves, with no second document format: three ways
+  to mount it, the backend contract, how conflicts end.
+---
+
 # The editor
 
 pagina ships a WYSIWYG editor for an article folder. It is a three-pane page: files on the left,

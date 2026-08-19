@@ -1,3 +1,9 @@
+---
+description: >-
+  Every colour, font and radius pagina draws goes through 22 custom properties, overridable at five
+  levels: default, host, article, page, figure.
+---
+
 # Theming
 
 pagina has one theme. Everything else on this page is a way of overriding it.

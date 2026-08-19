@@ -1,3 +1,9 @@
+---
+description: >-
+  Packing an article folder into one portable .pgz file: what goes inside it, what pack refuses to
+  guess at, and why unpack treats a bundle as hostile.
+---
+
 # Article bundles
 
 An article is a folder. A **bundle** is that folder made portable: one file, everything it needs

@@ -1,3 +1,9 @@
+---
+description: >-
+  pagina's editor, running in this page against your browser's own storage. No server, nothing
+  uploaded, and the conflict banner two tabs get is real.
+---
+
 # Try the editor
 
 Below is pagina's editor, running in this page. It is the same build a `pagina dev --edit` session

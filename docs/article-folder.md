@@ -1,3 +1,9 @@
+---
+description: >-
+  The nav is the index: what article.yaml declares, the four additions pagina makes to CommonMark, and
+  which files a build refuses to publish.
+---
+
 # The article folder
 
 An article is a directory with an `article.yaml` in it. Everything else, how many pages, how they
