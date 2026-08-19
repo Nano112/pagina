@@ -117,6 +117,15 @@ export async function walkReferences(o: WalkReferencesOptions): Promise<Referenc
   for (const [href, meta] of Object.entries(o.manifest.pages))
     want(toFolderPath(meta.cover ?? "", o.base), `${href} (cover)`);
   if (o.config.kineglyph?.theme !== undefined) want(joinPosix(o.config.kineglyph.theme), "article.yaml (kineglyph.theme)");
+  // A social card's glyph is a scene module the article ships, reached from `og.glyph` rather than
+  // from a `<figure>`. Without this a scene drawn only on a card is an orphan to the containment
+  // report and is left out of every bundle — which is the same file being called unnecessary here
+  // and required over there.
+  if (o.config.og?.glyph !== undefined) want(joinPosix(o.config.og.glyph), "article.yaml (og.glyph)");
+  for (const page of Object.values(o.article)) {
+    const glyph = page.frontMatter.og?.glyph;
+    if (glyph !== undefined) want(joinPosix(glyph), `${page.path} (og.glyph)`);
+  }
   // Levels 3 and 4 of the theme cascade are files in the folder like any other, so they are
   // referenced like any other: a stylesheet nothing points at is not "unused", it is the article's
   // theme, and a check that reported it as an orphan would teach authors to ignore the check.

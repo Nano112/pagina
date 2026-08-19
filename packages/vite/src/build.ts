@@ -7,6 +7,7 @@ import { LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, bui
 import { NodeContentFs } from "./node-fs.js";
 import { emptyArticleDiagnostic, resolveArticle } from "./article.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
+import { generateOgCards, withOgCards } from "./og-cards.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 
 // `Shell`/`ShellContext` are defined in `@pagina/core` so a shell package can type itself
@@ -363,7 +364,19 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
     files.push(SEARCH_INDEX_PATH);
     searchUrl = `${base.replace(/\/$/, "")}/${SEARCH_INDEX_PATH}`;
   }
-  const pages = await o.shell.render(inlined.article, {
+  // The social cards. Drawn from the *inlined* article's manifest, because that is the one whose
+  // descriptions and reading times are final, and before the shell renders, because the card's URL
+  // has to be in `PageMeta` by the time `pageSeo` reads it. A page with a cover is skipped inside:
+  // an author's image wins, and a rasteriser is not spent on a picture nothing will reference.
+  const tokensSrc = resolve(o.shell.clientEntry, "../tokens.css");
+  const cards = await generateOgCards({
+    article: inlined.article, config, folder: o.folder, outDir: o.outDir, base,
+    ...(existsSync(tokensSrc) ? { tokensCss: await readFile(tokensSrc, "utf8") } : {}),
+  });
+  diagnostics.push(...cards.diagnostics);
+  files.push(...cards.files);
+  const withCards: RenderedArticle = { ...inlined.article, manifest: withOgCards(inlined.article.manifest, cards.cards) };
+  const pages = await o.shell.render(withCards, {
     base, ...urls, dev: false,
     ...(searchUrl === undefined ? {} : { searchUrl }),
     ...(o.theme === undefined ? {} : { theme: o.theme }),
@@ -377,7 +390,7 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   }
   // The two files a standalone static site needs and a hosted one does not: a host that mounts
   // pagina inside its own site serves its own robots and folds these pages into its own sitemap.
-  const siteUrl = o.siteUrl ?? article.manifest.article.siteUrl;
+  const siteUrl = o.siteUrl ?? withCards.manifest.article.siteUrl;
   const seoOpts = {
     base,
     ...(o.siteUrl === undefined ? {} : { siteUrl: o.siteUrl }),
@@ -386,14 +399,14 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   // A deployment's URL and its base have to agree, and only this layer knows both. Checked once
   // for the build: it is a fact about where the site is going, not about any one page.
   diagnostics.push(...deploymentDiagnostics(siteUrl, base));
-  const sitemap = sitemapXml(article.manifest, seoOpts);
+  const sitemap = sitemapXml(withCards.manifest, seoOpts);
   // A mirror having no sitemap is the intended outcome of `mirrorOf`, not something that went
   // wrong, so it is not reported — a warning a build cannot act on trains people to ignore warnings.
   if (sitemap === undefined && o.mirrorOf === undefined) {
     diagnostics.push({
       severity: "warning",
       code: "sitemap-skipped",
-      message: article.manifest.article.status === "published"
+      message: withCards.manifest.article.status === "published"
         ? "no site_url is configured, so no sitemap.xml was written; set `site_url` in article.yaml or pass --site-url"
         : "the article is a draft, so no sitemap.xml was written and robots.txt disallows everything",
     });
@@ -401,21 +414,21 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
     await write(o.outDir, "sitemap.xml", sitemap);
     files.push("sitemap.xml");
   }
-  const robots = robotsPlacement(article.manifest, seoOpts);
+  const robots = robotsPlacement(withCards.manifest, seoOpts);
   if (robots.outPath !== undefined) {
     await write(o.outDir, robots.outPath, robots.content);
     files.push(robots.outPath);
   }
-  await write(o.outDir, "_pagina/manifest.json", JSON.stringify(article.manifest, null, 2));
+  await write(o.outDir, "_pagina/manifest.json", JSON.stringify(withCards.manifest, null, 2));
   files.push("_pagina/manifest.json");
   // The front door for a reader that is a program: `llms.txt` at the site root by convention, and
   // the same walk with the sections kept next to the manifest it is projected from. Both are
   // derived from data three files above already wrote, and neither is in `sitemap.xml` — they are
   // for something that was handed the address, not for something crawling towards it.
   const llmsOpts = { ...seoOpts, search: o.search !== false };
-  await write(o.outDir, LLMS_TXT_PATH, llmsTxt(article.manifest, llmsOpts));
+  await write(o.outDir, LLMS_TXT_PATH, llmsTxt(withCards.manifest, llmsOpts));
   files.push(LLMS_TXT_PATH);
-  await write(o.outDir, LLMS_JSON_PATH, serializeLlmsJson(llmsJson(article.manifest, llmsOpts)));
+  await write(o.outDir, LLMS_JSON_PATH, serializeLlmsJson(llmsJson(withCards.manifest, llmsOpts)));
   files.push(LLMS_JSON_PATH);
   return { files, diagnostics, robots };
 }

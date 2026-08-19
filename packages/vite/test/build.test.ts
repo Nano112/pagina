@@ -189,6 +189,58 @@ describe("buildStatic", () => {
     expect(html).toContain('property="og:image" content="https://user.github.io/Project/media/cover.svg"');
   }, 60_000);
 
+  /**
+   * The tags a build actually emits, on a folder with no cover — which is what most articles are.
+   *
+   * Everything below `pageSeo` is unit-tested; what this asserts is the wiring between the card
+   * files, the manifest and the `<head>`, on real HTML from the real shell. The failure it exists
+   * to catch is the quiet one: a card written to disk under a name no page names.
+   */
+  it("gives every page of a cover-less article a card, and points its head at it", async () => {
+    const folder = await variant((yaml) => yaml.replace("cover: media/cover.svg\n", ""));
+    const outDir = await tempDir("build-og-cards");
+    const r = await buildStatic({
+      folder, outDir, shell: staticShell, strict: true, base: "/docs/", siteUrl: "https://host.example",
+    });
+    expect(r.diagnostics.filter((d) => d.code.startsWith("og-"))).toEqual([]);
+    const cards = r.files.filter((f) => f.startsWith("_pagina/og/"));
+    expect(cards).toHaveLength(3);
+    for (const page of ["index.html", "guide/tabs/index.html", "guide/figures/index.html"]) {
+      const html = await readFile(join(outDir, page), "utf8");
+      const images = [...html.matchAll(/<meta property="og:image" content="([^"]+)">/g)].map((m) => m[1]!);
+      // Exactly one, absolute, and a file this build wrote.
+      expect(images, page).toHaveLength(1);
+      expect(images[0]!.startsWith("https://host.example/docs/_pagina/og/")).toBe(true);
+      expect(existsSync(join(outDir, images[0]!.replace("https://host.example/docs/", "")))).toBe(true);
+      expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
+      expect(html).toContain(`<meta name="twitter:image" content="${images[0]!}">`);
+      expect(html).toMatch(/<meta name="twitter:image:alt" content="Card from Fixture Docs: /);
+    }
+    // A drawn card is not a cover: nothing puts it in the page's own header band.
+    expect(await readFile(join(outDir, "index.html"), "utf8")).not.toContain("pg-cover");
+  }, 90_000);
+
+  it("counts a scene that only a card draws as a file the article reaches", async () => {
+    // The fixture keeps its cover here: what is under test is the *walk*, and dropping the cover
+    // would only orphan `media/cover.svg` and fail on that instead.
+    const folder = await variant((yaml) => `${yaml}\nog:\n  glyph: scenes/card-only.mjs\n`);
+    await writeFile(join(folder, "scenes/card-only.mjs"), [
+      'import { figure } from "kineglyph";',
+      'export default figure("card-only", { title: "Only on the card" }, (f) => {',
+      '  f.root(f.stack([f.text("only on the card", { textStyle: "body" })], { width: 300, height: 160, padding: 20 }));',
+      "});",
+      "",
+    ].join("\n"));
+    const outDir = await tempDir("build-og-glyph-ref");
+    // `--strict-assets`: a file nothing reaches fails the build. A scene drawn only on a card is
+    // reached, and a report that said otherwise would teach an author to widen `exclude`.
+    const r = await buildStatic({
+      folder, outDir, shell: staticShell, strict: true, strictAssets: true, siteUrl: "https://host.example",
+    });
+    expect(r.diagnostics.map((d) => d.code)).not.toContain("unreferenced-file");
+    expect(r.diagnostics.filter((d) => d.code.startsWith("og-"))).toEqual([]);
+  }, 90_000);
+
   it("warns when site_url carries a path the build is not served at", async () => {
     const folder = await variant((yaml) => yaml.replace("site_url: https://fixture.example", "site_url: https://fixture.example/docs/"));
     const outDir = await tempDir("build-pathmismatch");
