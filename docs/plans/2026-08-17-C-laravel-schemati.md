@@ -13,7 +13,9 @@ migrations, Livewire components, publishable assets), `ArticleStore` on a config
 (`articles/{slug}/…`), controllers implementing pagina's HTTP contract (`/api/articles/{slug}/…`),
 Livewire pages `pagina::articles.index|show|edit`, Blade shell (layout slots for the host app),
 policies (`viewAny/view/create/update/publish`), built editor + kineglyph runtime assets under
-`resources/dist` (copied from `@pagina/editor` `dist/` and `@kineglyph/web` `dist/kineglyph-web.js`).
+`resources/dist` (copied from `@pagina/editor` `dist/` and the whole of `@kineglyph/web` `dist/` —
+since `@kineglyph/web` 0.3.0 `kineglyph-web.js` statically imports hashed sibling chunks, so the
+single file is no longer enough; see `docs/design/2026-08-19-kineglyph-runtime-is-a-directory.md`).
 Rendering: publish payload = `{ manifest, pages: {href: html}, figures: {id: {light: svg, dark: svg}} }`
 produced by the editor (`store.renderAll()` + Kineglyph `renderSvg` per theme) → stored under
 `articles/{slug}/.rendered/`; `show` reads it. Drafts preview in the editor only.
@@ -45,7 +47,7 @@ against schemati unless the ledger says the user asked — it doesn't; leave the
 **Tests (Pest):** as author: list/read/write/409/upload/rename/delete/publish; as other user: 403; path traversal rejected; article.yaml bootstrapped from row.
 
 ### Task C2 — Livewire pages + Blade shell + assets
-**Files:** `packages/pagina-laravel/src/Livewire/{ArticleIndex,ArticleShow,ArticleEdit}.php`, `resources/views/{layouts/app,livewire/index,livewire/show,livewire/edit,partials/shell-nav,partials/shell-toc}.blade.php`, `resources/dist/{editor.js,editor.iife.js,editor.css,kineglyph-web.js,pagina.css}` (copied by a script `packages/pagina-laravel/scripts/sync-assets.sh` from `../../../pagina` and `../../../kineglyph` builds — document; commit the built files), publishable via `php artisan vendor:publish --tag=pagina-assets` to `public/vendor/pagina`; SP registers Livewire components + routes `GET /articles`, `/articles/{article:slug}`, `/articles/{article:slug}/{page?}` (wildcard), `/articles/{article:slug}/edit`.
+**Files:** `packages/pagina-laravel/src/Livewire/{ArticleIndex,ArticleShow,ArticleEdit}.php`, `resources/views/{layouts/app,livewire/index,livewire/show,livewire/edit,partials/shell-nav,partials/shell-toc}.blade.php`, `resources/dist/{editor.js,editor.iife.js,editor.css,pagina.css}` plus all of `@kineglyph/web`'s `dist/` (copied by a script `packages/pagina-laravel/scripts/sync-assets.sh` from `../../../pagina` and `../../../kineglyph` builds — document; commit the built files), publishable via `php artisan vendor:publish --tag=pagina-assets` to `public/vendor/pagina`; SP registers Livewire components + routes `GET /articles`, `/articles/{article:slug}`, `/articles/{article:slug}/{page?}` (wildcard), `/articles/{article:slug}/edit`.
 **Produces:** `show`: reads `.rendered/manifest.json` + the requested page fragment; Blade shell mirrors pagina's static shell (sidebar nav from manifest, TOC, prev/next, breadcrumbs, theme toggle) using `pagina.css` for content styles + host layout; import map `kineglyph` → published `kineglyph-web.js`; `mountAll` on load (small inline module); model-viewer script when needed. `edit`: Livewire page that renders `<pagina-editor backend-url="/api/articles/{slug}" page="{path}" headers='{"X-CSRF-TOKEN": "…"}'>` + loads `editor.iife.js`/`editor.css` (published assets), plus a "Publish" button that calls the editor's `publish()` (custom element method / event) and shows status; on publish success Livewire refreshes `pagina_published_at`. `index`: list published (and own drafts) with links; create-new form (title → slug → creates row + `article.yaml` + `index.md`).
 **Tests:** show renders published page (fixture rendered payload seeded via `ArticleStore::publish`); unpublished → 404 for non-authors; edit page contains `<pagina-editor` with correct attributes; index lists.
 

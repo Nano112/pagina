@@ -6,8 +6,8 @@
  * pipeline hides a whole class of bundle defect — it defines `process.env.NODE_ENV`, polyfills
  * CJS interop, and rewrites bare specifiers, so a bundle that cannot survive on its own still
  * works there. The Laravel package (`packages/pagina-laravel` in schemati) publishes
- * `editor.js`, `editor.css` and `kineglyph-web.js` into `public/vendor/pagina/` and links them
- * from a Blade view; this page is that view's shape, down to the import map and the
+ * `editor.js`, `editor.css` and `@kineglyph/web`'s `dist/` into `public/vendor/pagina/` and links
+ * them from a Blade view; this page is that view's shape, down to the import map and the
  * `defineElement()` call, so what passes here is what will load there.
  *
  * `viteEditMiddleware` is used for the contract only. Despite the package it lives in, it is a
@@ -67,6 +67,25 @@ const ASSETS = {
     "../dist/kineglyph-web.js",
   ),
 };
+
+/**
+ * `@kineglyph/web`'s `dist/`, because since 0.3.0 the runtime is a *directory*, not a file.
+ *
+ * Up to 0.2.0 `dist/kineglyph-web.js` was self-contained apart from one `import()` of the lab
+ * editor, which never fired on a page with no lab. 0.3.0 splits a shared `rolldown-runtime-*.js`
+ * out of it and imports that *statically*, on the first line — so a host that copies the one file
+ * a host used to copy serves a module whose very first import 404s. The import map's `kineglyph`
+ * entry then fails to load, `RenderedHtml` never resolves it, and `<pagina-editor>` sits in the
+ * DOM with no `.ProseMirror` in it, silently, with nothing in the network log but one missing
+ * script. That is what the 0.2.0 → 0.3.0 bump did to sixteen specs here.
+ *
+ * The fix is to stop treating the runtime as a single artefact: a host publishes the whole `dist/`
+ * (see `docs/design/2026-08-19-kineglyph-runtime-is-a-directory.md`). Serving it flat under the
+ * same `/vendor/pagina/` prefix is what `sync-assets.sh` copying the folder produces, and it needs
+ * no knowledge of which chunks a given release happens to emit — the hashes change every time.
+ */
+const KINEGLYPH_DIST = resolve(require_.resolve("@kineglyph/web/package.json"), "../dist");
+const VENDOR = "/vendor/pagina/";
 
 const TYPES = {
   ".js": "text/javascript; charset=utf-8",
@@ -358,6 +377,19 @@ createServer((req, res) => {
           res.end(`missing built asset: ${asset} — run \`npm run build\``);
         }
         return;
+      }
+      // A chunk of the Kineglyph runtime, beside it, exactly as a host that published the folder
+      // would serve it. Flat only — a `/` in the remainder is not a file this directory holds.
+      if (path.startsWith(VENDOR) && !path.slice(VENDOR.length).includes("/")) {
+        const file = resolve(KINEGLYPH_DIST, path.slice(VENDOR.length));
+        if (file.startsWith(`${KINEGLYPH_DIST}/`)) {
+          try {
+            const bytes = await readFile(file);
+            res.setHeader("content-type", TYPES[extname(file)] ?? "application/octet-stream");
+            res.end(bytes);
+            return;
+          } catch { /* not a runtime chunk either — fall through to the 404 below */ }
+        }
       }
       if (path === "/" || path === "/edit") {
         res.setHeader("content-type", "text/html; charset=utf-8");

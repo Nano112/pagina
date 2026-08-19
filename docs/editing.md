@@ -107,6 +107,15 @@ Three forms, one implementation. Pick by what the host page already is.
     specifier*, a configuration requirement rather than a bug. React *is* bundled: a host page must not
     have to install it.
 
+!!! danger "The runtime is a folder, not a file"
+    Whatever the import map points at, publish **all** of `@kineglyph/web`'s `dist/` — since
+    `@kineglyph/web` 0.3.0 its bundle entry begins with a static `import` of a hashed sibling chunk,
+    so copying `kineglyph-web.js` alone serves a module whose first line 404s. A module that fails
+    to load throws nothing anyone can catch: the editor simply never mounts, and `<pagina-editor>`
+    stays in the DOM un-upgraded. A site built by `pagina build` has this handled — it bundles the
+    runtime into `_pagina/` itself. See
+    [the design note](https://github.com/Nano112/pagina/blob/main/docs/design/2026-08-19-kineglyph-runtime-is-a-directory.md).
+
 ## What the document is made of
 
 Everything below is a node in the editor's schema and a construct in the dialect. The right-hand
