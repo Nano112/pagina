@@ -549,6 +549,59 @@
     cursor: default;
   }
 
+  /* History -------------------------------------------------------------------------------------
+     One line per edit, wrapping rather than truncating: the name is the part that matters and a
+     name cut off at the pane's edge is the one thing this panel must not do. */
+  .pge-history {
+    list-style: none;
+    margin: 0;
+    padding: 0 6px;
+    overflow: auto;
+    max-block-size: 32vh;
+    font-size: 0.8em;
+    line-height: 1.45;
+  }
+
+  .pge-history__row {
+    padding-block: 3px;
+    border-block-end: 1px solid var(--pg-line);
+    color: var(--pg-muted);
+  }
+
+  .pge-history__row:last-child {
+    border-block-end: 0;
+  }
+
+  .pge-history__who {
+    color: var(--pg-fg);
+    font-weight: 600;
+  }
+
+  .pge-history__path,
+  .pge-history__from {
+    font-family: var(--pg-font-mono);
+    font-size: 0.95em;
+    overflow-wrap: anywhere;
+  }
+
+  .pge-history__link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--pg-accent);
+    cursor: pointer;
+  }
+
+  .pge-history__link:hover {
+    text-decoration: underline;
+  }
+
+  .pge-history__when {
+    display: block;
+    font-size: 0.9em;
+    color: var(--pg-muted);
+  }
+
   .pge-sidebar__hint {
     margin: auto 6px 0;
     font-size: 0.8em;

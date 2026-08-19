@@ -199,6 +199,84 @@ describe("the ZIP codec", () => {
   });
 });
 
+/**
+ * A bundle carries a staff list only when somebody asks for one.
+ *
+ * Both directions are asserted, because a default that leaks names is discovered afterwards or not
+ * at all — there is no error to notice, only a file that went somewhere with more in it than the
+ * sender meant.
+ */
+describe("packBundle and attribution", () => {
+  const LOG = [
+    { path: "index.md", action: "write", at: "2026-08-18T10:00:00.000Z", by: { id: "u1", name: "Ada" }, version: "aaa" },
+    { path: "guide/tabs.md", action: "write", at: "2026-08-18T11:00:00.000Z", by: { id: "u2", name: "Grace" }, version: "bbb" },
+    // A file the bundle does not carry. Its author must not travel either.
+    { path: "planning/notes.txt", action: "write", at: "2026-08-18T12:00:00.000Z", by: { id: "u3", name: "Katherine" }, version: "ccc" },
+  ];
+
+  const withLog = async (): Promise<string> => await copyFixture(async (f) => {
+    await mkdir(join(f, ".pagina"), { recursive: true });
+    await writeFile(join(f, ".pagina/edits.jsonl"), `${LOG.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf8");
+  });
+
+  it("strips attribution by default, and says nothing about it in the bundle", async () => {
+    const folder = await withLog();
+    const out = join(await temp("out"), "a.pgz");
+    const r = await packBundle({ folder, out, created: CREATED });
+
+    expect(r.manifest.attribution).toBeUndefined();
+    // Not merely absent from the parsed manifest — absent from the bytes. A name that survives in
+    // `bundle.json` has left the building whether or not a reader looks for it.
+    const archive = readZip(new Uint8Array(await readFile(out)), DEFAULT_BUNDLE_LIMITS);
+    for (const entry of archive) expect(utf8(entry.data)).not.toMatch(/Ada|Grace|Katherine/);
+  });
+
+  it("includes it on request, covering only the files the bundle actually carries", async () => {
+    const folder = await withLog();
+    const out = join(await temp("out"), "a.pgz");
+    const r = await packBundle({ folder, out, created: CREATED, withAttribution: true });
+
+    expect(r.manifest.attribution).toEqual([
+      { path: "guide/tabs.md", lastEditedBy: { id: "u2", name: "Grace" }, lastEditedAt: "2026-08-18T11:00:00.000Z" },
+      { path: "index.md", lastEditedBy: { id: "u1", name: "Ada" }, lastEditedAt: "2026-08-18T10:00:00.000Z" },
+    ]);
+    // `planning/notes.txt` is not in the bundle, so neither is Katherine: a folder's history must
+    // not be a way to export the name of a file that was excluded from the archive.
+    expect(JSON.stringify(r.manifest)).not.toMatch(/Katherine/);
+
+    // And it survives the round trip a receiving host makes.
+    const dir = join(await temp("in"), "article");
+    expect((await unpackBundle({ file: out, dir })).manifest.attribution).toEqual(r.manifest.attribution);
+  });
+
+  it("packs the same either way when the folder has no log", async () => {
+    const folder = await copyFixture();
+    const bare = await packBundle({ folder, out: join(await temp("a"), "a.pgz"), created: CREATED });
+    const asked = await packBundle({ folder, out: join(await temp("b"), "b.pgz"), created: CREATED, withAttribution: true });
+    expect(bare.manifest.attribution).toBeUndefined();
+    expect(asked.manifest.attribution).toEqual([]);
+  });
+
+  it("refuses a bundle whose attribution is malformed rather than showing an invented name", async () => {
+    const folder = await withLog();
+    const out = join(await temp("out"), "a.pgz");
+    await packBundle({ folder, out, created: CREATED, withAttribution: true });
+    const entries = readZip(new Uint8Array(await readFile(out)), DEFAULT_BUNDLE_LIMITS);
+    const descriptor = entries.find((e) => e.path === BUNDLE_MANIFEST_PATH)!;
+    const manifest = JSON.parse(utf8(descriptor.data)) as Record<string, unknown>;
+    manifest["attribution"] = [{ path: "index.md", lastEditedBy: { id: "u1" }, lastEditedAt: "2026-08-18T10:00:00.000Z" }];
+    const forged = writeZip([
+      ...entries.filter((e) => e.path !== BUNDLE_MANIFEST_PATH),
+      { path: BUNDLE_MANIFEST_PATH, data: bytes(JSON.stringify(manifest)) },
+    ]);
+    const file = join(await temp("forged"), "forged.pgz");
+    await writeFile(file, forged);
+    const dest = join(await temp("dest"), "x");
+    const e = await refusal(() => unpackBundle({ file, dir: dest }));
+    expect(e.message).toMatch(/lastEditedBy/);
+  });
+});
+
 describe("packBundle", () => {
   it("carries the pages, their assets, their snippets and the rendered output — and nothing else", async () => {
     const folder = await copyFixture(async (f) => {

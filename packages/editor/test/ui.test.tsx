@@ -119,9 +119,38 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function mount(page = "index.md"): Promise<void> {
+/**
+ * A backend that tracks nobody: every method delegated, but change events carrying no author and
+ * no `history` method at all.
+ *
+ * Delegated explicitly rather than through `Object.create`, because `MemoryBackend`'s state lives
+ * in `#private` fields and a prototype-linked object is not an instance as far as those are
+ * concerned — the methods throw on the first call rather than working through.
+ */
+function anonymousBackend(
+  inner: MemoryBackend,
+  listeners: Set<(ev: { type: "changed" | "deleted"; path: string; version?: string }) => void>,
+): MemoryBackend {
+  return {
+    list: () => inner.list(),
+    read: (p: string) => inner.read(p),
+    readBinary: (p: string) => inner.readBinary(p),
+    write: (p: string, t: string, o?: unknown) => inner.write(p, t, o as never),
+    upload: (f: Blob | File, p?: string) => (p === undefined ? inner.upload(f) : inner.upload(f, p)),
+    delete: (p: string) => inner.delete(p),
+    rename: (a: string, b: string) => inner.rename(a, b),
+    stat: (p: string) => inner.stat(p),
+    publish: (payload: unknown) => inner.publish(payload as never),
+    subscribe(cb: (ev: { type: "changed" | "deleted"; path: string; version?: string }) => void) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+  } as unknown as MemoryBackend;
+}
+
+async function mount(page = "index.md", over: MemoryBackend = backend): Promise<void> {
   await act(async () => {
-    handle = mountEditor(host, { backend, page });
+    handle = mountEditor(host, { backend: over, page });
   });
   await settle();
 }
@@ -269,5 +298,78 @@ describe("mountEditor", () => {
     await settle();
     expect(host.querySelector(".pge-conflict")).toBeNull();
     expect(editorOf().getText()).toContain("Theirs");
+  });
+
+  /**
+   * The reason the whole feature exists, on screen.
+   *
+   * "index.md changed on the server" tells an author they have a decision. "Alice changed index.md"
+   * tells them enough to make it. Both sentences are asserted, because the fallback is not a
+   * degraded path to be tolerated — it is the correct thing to say when nobody knows who wrote.
+   */
+  it("names the person in the conflict banner", async () => {
+    await mount();
+    await act(async () => {
+      editorOf().commands.insertContentAt(editorOf().state.doc.content.size, "<p>Mine</p>");
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    await act(async () => {
+      await backend.emit({
+        type: "changed", path: "index.md", text: "# Theirs\n",
+        by: { id: "u-alice", name: "Alice" },
+      });
+    });
+    await settle();
+
+    const named = host.querySelector(".pge-conflict")?.textContent ?? "";
+    expect(named).toContain("Alice");
+    expect(named).toContain("index.md");
+    expect(named).toContain("while you were editing it");
+    // The old wording is gone when there is a better one: two sentences saying the same thing in
+    // one banner is worse than either.
+    expect(named).not.toContain("changed on the server");
+  });
+
+  it("falls back to today's wording when the backend reports nobody", async () => {
+    // A backend that tracks no identity is not a broken one — a plain file server is exactly this
+    // — so the sentence it produces has to stay good. This is the path that must not rot.
+    const anonymous = new MemoryBackend(files());
+    const listeners = new Set<(ev: { type: "changed" | "deleted"; path: string; version?: string }) => void>();
+    await mount("index.md", anonymousBackend(anonymous, listeners));
+    await act(async () => {
+      editorOf().commands.insertContentAt(editorOf().state.doc.content.size, "<p>Mine</p>");
+      await vi.advanceTimersByTimeAsync(450);
+    });
+    await act(async () => {
+      for (const cb of listeners) cb({ type: "changed", path: "index.md", version: "later" });
+    });
+    await settle();
+
+    const text = host.querySelector(".pge-conflict")?.textContent ?? "";
+    expect(text).toContain("index.md");
+    expect(text).toContain("changed on the server while you were editing it");
+  });
+});
+
+describe("the history panel", () => {
+  it("is absent when the backend keeps no history, and lists edits when it does", async () => {
+    const { MemoryBackend: Memory } = await import("../src/store/memory-backend.js");
+    const { ArticleStore } = await import("../src/store/article-store.js");
+
+    const keeping = new Memory(files(), { author: { id: "u1", name: "Ada" } });
+    const store = new ArticleStore(keeping);
+    expect(store.hasHistory).toBe(true);
+    await store.load();
+    await store.createFile("new.md", "# New\n");
+    const edits = await store.history();
+    expect(edits[0]).toMatchObject({ path: "new.md", action: "write", by: { name: "Ada" } });
+    store.destroy();
+
+    // A backend with no `history` method: the store says so, and `Sidebar` renders nothing at all
+    // rather than an empty list, which would read as "nobody has edited this".
+    const other = new ArticleStore(anonymousBackend(new Memory(files()), new Set()));
+    expect(other.hasHistory).toBe(false);
+    await expect(other.history()).rejects.toThrow(/keeps no history/);
+    other.destroy();
   });
 });

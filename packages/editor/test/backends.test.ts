@@ -8,7 +8,7 @@
  * only that backend has — header shapes, ETag parsing, error bodies.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { describeBackendContract } from "./backend-contract.js";
+import { describeBackendContract, OTHER } from "./backend-contract.js";
 import { MemoryBackend } from "../src/store/memory-backend.js";
 import { HttpBackend } from "../src/store/http-backend.js";
 import {
@@ -83,6 +83,16 @@ function httpServer(seed: Record<string, string>): {
     try {
       if (rest === "/files" && method === "GET") return json({ files: await store.list() });
 
+      // The optional half of the contract, implemented — so `HttpBackend`'s history path is
+      // exercised over a real request/response rather than asserted against a stub.
+      if (rest === "/history" && method === "GET") {
+        const path = url.searchParams.get("path") ?? undefined;
+        const limit = Number(url.searchParams.get("limit") ?? NaN);
+        return json({
+          edits: await store.history(path, Number.isFinite(limit) ? { limit } : undefined),
+        });
+      }
+
       if (rest.startsWith("/files/")) {
         const path = rest.slice("/files/".length).split("/").map(decodeURIComponent).join("/");
         if (method === "GET") {
@@ -116,10 +126,14 @@ function httpServer(seed: Record<string, string>): {
       }
       return json({ message: `no route for ${method} ${rest}` }, 404);
     } catch (e) {
-      // The server half of the contract: a conflict is a 409 carrying the other side.
+      // The server half of the contract: a conflict is a 409 carrying the other side — including
+      // *who* the other side was, which is what the editor's banner turns into a name.
       if (e instanceof BackendError && e.status === 409) {
-        const conflict = e as { theirs?: string; version?: string };
-        return json({ message: e.message, theirs: conflict.theirs, version: conflict.version }, 409);
+        const conflict = e as { theirs?: string; version?: string; by?: unknown; at?: string };
+        return json({
+          message: e.message, theirs: conflict.theirs, version: conflict.version,
+          by: conflict.by, at: conflict.at,
+        }, 409);
       }
       if (e instanceof BackendError && e.status !== undefined) return json({ message: e.message }, e.status);
       throw e;
@@ -151,13 +165,21 @@ function httpServer(seed: Record<string, string>): {
 
 // --- the contract, three times ------------------------------------------------------------------
 
+/** Who each identity-owning backend under test is. Named, so the assertions read as people. */
+const ALICE = { id: "contract:alice", name: "Alice" };
+
 describe("MemoryBackend / the contract", () => {
   describeBackendContract((seed) => {
-    const backend = new MemoryBackend(seed);
+    const backend = new MemoryBackend(seed, { author: ALICE });
     return {
       backend,
+      expectedAuthor: ALICE,
       external: async (ev) => {
-        await backend.emit(ev.text === undefined ? ev : { type: ev.type, path: ev.path, text: ev.text });
+        await backend.emit({
+          type: ev.type, path: ev.path,
+          ...(ev.text === undefined ? {} : { text: ev.text }),
+          ...(ev.by === undefined ? {} : { by: ev.by }),
+        });
       },
     };
   });
@@ -167,16 +189,24 @@ describe("LocalStorageBackend / the contract", () => {
   describeBackendContract((seed) => {
     const storage = new FakeStorage();
     const events = new FakeWindow();
-    const backend = new LocalStorageBackend({ namespace: "contract", storage, events, seed });
+    const backend = new LocalStorageBackend({ namespace: "contract", storage, events, seed, author: ALICE });
     // A second instance on the same storage *is* the second tab: it writes, and the events its
-    // writes produce are delivered to the first, which is exactly the browser's behaviour.
-    const otherTab = new LocalStorageBackend({ namespace: "contract", storage, events: null });
+    // writes produce are delivered to the first, which is exactly the browser's behaviour. Giving
+    // it its own identity is what makes the two-people conflict reachable here rather than only in
+    // a browser: one namespace, one store, two names.
+    const otherTab = new LocalStorageBackend({ namespace: "contract", storage, events: null, author: OTHER });
     storage.drain();
     return {
       backend,
+      expectedAuthor: ALICE,
       external: async (ev) => {
-        if (ev.type === "deleted") await otherTab.delete(ev.path);
-        else await otherTab.write(ev.path, ev.text ?? "");
+        // `by` decides *which tab* writes, rather than being passed alongside the write: that is
+        // the honest simulation, because a browser tab cannot declare an author either.
+        const tab = ev.by === undefined
+          ? otherTab
+          : new LocalStorageBackend({ namespace: "contract", storage, events: null, author: ev.by });
+        if (ev.type === "deleted") await tab.delete(ev.path);
+        else await tab.write(ev.path, ev.text ?? "");
         for (const change of storage.drain()) events.dispatch({ ...change, storageArea: storage });
       },
       cleanup: () => { backend.destroy(); },
@@ -187,17 +217,24 @@ describe("LocalStorageBackend / the contract", () => {
 describe("HttpBackend / the contract", () => {
   describeBackendContract((seed) => {
     const server = httpServer(seed);
-    const backend = new HttpBackend({ baseUrl: server.base, fetch: server.fetch });
+    const backend = new HttpBackend({ baseUrl: server.base, fetch: server.fetch, history: true });
     return {
       backend,
+      // Deliberately none: `HttpBackend` has no identity of its own and reports only what a server
+      // tells it. The attribution assertions that need one are skipped, and the ones that read a
+      // server's answer — the conflict's `by`, history — still run.
       external: async (ev) => {
-        if (ev.type === "deleted") await server.store.emit({ type: "deleted", path: ev.path });
-        else await server.store.emit({ type: "changed", path: ev.path, text: ev.text ?? "" });
+        await server.store.emit({
+          type: ev.type, path: ev.path,
+          ...(ev.text === undefined ? {} : { text: ev.text }),
+          ...(ev.by === undefined ? {} : { by: ev.by }),
+        });
         const latest = await server.store.stat(ev.path);
         for (const source of server.sse) {
           source.push({
             type: ev.type, path: ev.path,
             ...(latest === null ? {} : { version: latest.version }),
+            ...(ev.by === undefined ? {} : { by: ev.by }),
           });
         }
       },

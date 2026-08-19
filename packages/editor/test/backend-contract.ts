@@ -12,8 +12,11 @@
  * is exercised end to end rather than through response stubs shaped to match the assertions.
  */
 import { expect, it } from "vitest";
-import type { ArticleBackend } from "../src/store/types.js";
+import type { ArticleBackend, Author } from "../src/store/types.js";
 import { BackendError, ConflictError } from "../src/store/types.js";
+
+/** The other person, for the tests that need two. */
+export const OTHER: Author = { id: "contract:bob", name: "Bob" };
 
 /** What a backend has to supply for the suite to drive it. */
 export interface BackendUnderTest {
@@ -22,8 +25,20 @@ export interface BackendUnderTest {
    * Applies a change the way something *other than this backend instance* would — a second tab, a
    * second process, a server-side edit — and delivers whatever notification the transport carries.
    * This is the only part of the contract that cannot be exercised through the interface itself.
+   *
+   * `by` names the person who made it, where the transport can carry one. That is not decoration:
+   * the two-tab conflict the banner exists for arrives through here, so a suite that could not
+   * express "somebody else did this" could not check the feature at all.
    */
-  external(ev: { type: "changed" | "deleted"; path: string; text?: string }): Promise<void>;
+  external(ev: { type: "changed" | "deleted"; path: string; text?: string; by?: Author }): Promise<void>;
+  /**
+   * Who this backend attributes *its own* writes to, when it attributes them at all.
+   *
+   * Omitted for a backend with no identity of its own — `HttpBackend` reports whatever its server
+   * says, and has no answer of its own to give. The attribution tests are skipped in that case
+   * rather than asserted loosely.
+   */
+  readonly expectedAuthor?: Author;
   cleanup?(): void;
 }
 
@@ -227,6 +242,160 @@ export function describeBackendContract(make: BackendFactory): void {
     off?.();
     await external({ type: "changed", path: "index.md", text: "# After unsubscribe\n" });
     expect(seen.filter((e) => e.path === "index.md")).toHaveLength(1);
+    cleanup?.();
+  });
+
+  // --- attribution -------------------------------------------------------------------------------
+
+  it("attributes a write to the backend's own identity, and reports it from stat and list", async () => {
+    const { backend, expectedAuthor, cleanup } = await setUp();
+    if (expectedAuthor === undefined) { cleanup?.(); return; }
+    const before = Date.now();
+    await backend.write("index.md", "# Attributed\n");
+
+    const entry = await backend.stat("index.md");
+    expect(entry?.lastEditedBy).toEqual(expectedAuthor);
+    expect(Number.isNaN(Date.parse(entry?.lastEditedAt ?? ""))).toBe(false);
+    expect(Date.parse(entry!.lastEditedAt!)).toBeGreaterThanOrEqual(before - 1000);
+
+    // `list` and `stat` must agree: they are the same fact, and a UI reads whichever is to hand.
+    const listed = (await backend.list()).find((f) => f.path === "index.md");
+    expect(listed?.lastEditedBy).toEqual(expectedAuthor);
+    expect(listed?.lastEditedAt).toEqual(entry?.lastEditedAt);
+    cleanup?.();
+  });
+
+  /**
+   * The security property, at the interface.
+   *
+   * `write()` has no author parameter, so the only way a caller could name itself is by smuggling
+   * one through the options bag. Every backend must ignore it — this is a compile-time guarantee
+   * cast away deliberately, because the check that matters is what happens at runtime when
+   * something does it anyway.
+   */
+  it("ignores an author a caller tries to smuggle into a write", async () => {
+    const { backend, expectedAuthor, cleanup } = await setUp();
+    if (expectedAuthor === undefined) { cleanup?.(); return; }
+    const forged = { id: "mallory", name: "Mallory" };
+    await backend.write("index.md", "# Forged\n", {
+      author: forged, by: forged, lastEditedBy: forged,
+    } as never);
+
+    const entry = await backend.stat("index.md");
+    expect(entry?.lastEditedBy).toEqual(expectedAuthor);
+    expect(JSON.stringify(entry)).not.toMatch(/mallory/i);
+    cleanup?.();
+  });
+
+  /**
+   * The reason the whole feature exists, asserted at the interface: a 409 must name the person who
+   * actually wrote, not the caller who just got refused.
+   *
+   * Every backend can do this, including `HttpBackend`, whose server puts the author in the 409
+   * body. So it is asserted for all of them rather than gated on `expectedAuthor` — the conflict
+   * banner is the payoff, and a backend that dropped this would still pass every other test here.
+   */
+  it("names the other side in a conflict, so the banner can name a person", async () => {
+    const { backend, external, expectedAuthor, cleanup } = await setUp();
+    const stale = (await backend.read("index.md")).version;
+    await external({ type: "changed", path: "index.md", text: "# Theirs\n", by: OTHER });
+
+    const error = await backend.write("index.md", "# Mine\n", { version: stale }).then(
+      () => undefined, (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(ConflictError);
+    const conflict = error as ConflictError;
+    expect(conflict.theirs).toEqual("# Theirs\n");
+    expect(conflict.by).toEqual(OTHER);
+    if (expectedAuthor !== undefined) expect(conflict.by).not.toEqual(expectedAuthor);
+    expect(Number.isNaN(Date.parse(conflict.at ?? ""))).toBe(false);
+    cleanup?.();
+  });
+
+  it("names the other side on a change notification too — the two-tab case", async () => {
+    const { backend, external, cleanup } = await setUp();
+    const seen: { path: string; by?: { name: string } }[] = [];
+    const off = backend.subscribe?.((ev) => { seen.push({ path: ev.path, ...(ev.by === undefined ? {} : { by: ev.by }) }); });
+
+    await external({ type: "changed", path: "index.md", text: "# From Bob\n", by: OTHER });
+    // A 409 is the *other* half of the conflict story. This is the half an author actually meets,
+    // with two tabs open, and an anonymous event here would leave the banner anonymous with it.
+    expect(seen.find((e) => e.path === "index.md")?.by).toEqual(OTHER);
+    off?.();
+    cleanup?.();
+  });
+
+  it("records who published", async () => {
+    const { backend, expectedAuthor, cleanup } = await setUp();
+    if (expectedAuthor === undefined) { cleanup?.(); return; }
+    const record = await backend.publish({
+      manifest: { article: { slug: "demo", title: "Demo" }, pages: [], assets: [], nav: [] } as never,
+      pages: { "/": "<h1>Demo</h1>" },
+      figures: {},
+    });
+    expect(record.publishedBy).toEqual(expectedAuthor);
+    cleanup?.();
+  });
+
+  it("leaves a seeded file unattributed, because nobody edited it", async () => {
+    const { backend, expectedAuthor, cleanup } = await setUp();
+    if (expectedAuthor === undefined) { cleanup?.(); return; }
+    // The seed came from whoever built the backend, not from a person at a keyboard. Claiming
+    // otherwise would make the first thing any panel shows untrue.
+    const entry = await backend.stat("index.md");
+    expect(entry?.lastEditedBy).toBeUndefined();
+    expect(entry?.lastEditedAt).toBeUndefined();
+    cleanup?.();
+  });
+
+  // --- history, for the backends that keep one ---------------------------------------------------
+
+  it("keeps history newest-first, filtered by path and capped — or omits the method entirely", async () => {
+    const { backend, cleanup } = await setUp();
+    if (backend.history === undefined) {
+      // Which is a valid answer, and the one the editor reads as "hide the panel". Asserting the
+      // shape of the *absence* is the point: `history` must be missing, not an empty function.
+      expect(backend.history).toBeUndefined();
+      cleanup?.();
+      return;
+    }
+    await backend.write("index.md", "# One\n");
+    await backend.write("index.md", "# Two\n");
+    await backend.write("guide/tabs.md", "# Elsewhere\n");
+
+    const all = await backend.history();
+    expect(all.length).toBeGreaterThanOrEqual(3);
+    for (const edit of all) {
+      expect(edit.by.id).toBeTypeOf("string");
+      expect(edit.by.name).not.toEqual("");
+      expect(Number.isNaN(Date.parse(edit.at))).toBe(false);
+    }
+    const times = all.map((e) => Date.parse(e.at));
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+
+    const mine = await backend.history("index.md");
+    expect(mine.map((e) => e.path)).toEqual(["index.md", "index.md"]);
+    expect(mine.every((e) => e.action === "write")).toBe(true);
+
+    expect(await backend.history("index.md", { limit: 1 })).toHaveLength(1);
+    cleanup?.();
+  });
+
+  it("records a rename in history against the new path, naming the old one", async () => {
+    const { backend, cleanup } = await setUp();
+    if (backend.history === undefined) { cleanup?.(); return; }
+    await backend.rename("guide/tabs.md", "guide/panels.md");
+    const [latest] = await backend.history("guide/panels.md");
+    expect(latest).toMatchObject({ path: "guide/panels.md", action: "rename", from: "guide/tabs.md" });
+    cleanup?.();
+  });
+
+  it("records a delete, so the log says the file went rather than going quiet", async () => {
+    const { backend, cleanup } = await setUp();
+    if (backend.history === undefined) { cleanup?.(); return; }
+    await backend.delete("guide/tabs.md");
+    const [latest] = await backend.history("guide/tabs.md");
+    expect(latest).toMatchObject({ path: "guide/tabs.md", action: "delete" });
     cleanup?.();
   });
 }

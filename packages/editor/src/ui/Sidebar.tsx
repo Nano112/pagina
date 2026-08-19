@@ -17,6 +17,7 @@ import { ARTICLE_YAML, type ArticleStore } from "../store/index.js";
 import { useStoreRevision } from "./useStore.js";
 import { addNavEntry, navSections, removeNavEntry } from "./article-yaml.js";
 import { ArticleSettings } from "./ArticleSettings.js";
+import { HistoryPanel } from "./History.js";
 import { slugify } from "./paths.js";
 
 const isMarkdown = (path: string): boolean => path.endsWith(".md");
@@ -290,6 +291,10 @@ export function Sidebar({ store, current, onOpen }: SidebarProps): ReactNode {
           </div>
         </>
       ) : null}
+
+      {/* Renders nothing at all when the backend keeps no log — an empty panel would say "nobody
+          has edited this", which is a claim, not an absence. */}
+      <HistoryPanel store={store} onOpen={onOpen} />
 
       <p className="pge-sidebar__hint">Drop files here to upload.</p>
       {busy === undefined ? null : <p className="pge-sidebar__error">{busy}</p>}

@@ -26,12 +26,49 @@ function ago(iso: string, now: number): string {
   return `${Math.round(seconds / 3600)}h ago`;
 }
 
-function ConflictBanner({ store, file }: { readonly store: ArticleStore; readonly file: FileState }): ReactNode {
+/**
+ * What the banner says, in the two cases it has.
+ *
+ * With a name it is a sentence about a person: *Alice changed index.md 2m ago, while you were
+ * editing it.* Without one it is the sentence this banner has always shown. The difference is not
+ * cosmetic — the first tells you whether to keep your version, and the second only tells you that
+ * you have a decision to make.
+ *
+ * The name is what the *backend* reported, never anything the browser supplied.
+ */
+function conflictSentence(file: FileState, now: number): ReactNode {
+  const deleted = file.conflict?.kind === "deleted";
+  const by = file.conflict?.by;
+  const at = file.conflict?.at;
+  const verb = deleted ? "deleted" : "changed";
+  if (by === undefined) {
+    return (
+      <>
+        <strong>{file.path}</strong>{" "}
+        {deleted
+          ? "was deleted on the server while you were editing it."
+          : "changed on the server while you were editing it."}
+      </>
+    );
+  }
+  return (
+    <>
+      <strong>{by.name}</strong>
+      {` ${verb} `}
+      <strong>{file.path}</strong>
+      {at === undefined ? "" : ` ${ago(at, now)}`}
+      , while you were editing it.
+    </>
+  );
+}
+
+function ConflictBanner(
+  { store, file, now }: { readonly store: ArticleStore; readonly file: FileState; readonly now: number },
+): ReactNode {
   const deleted = file.conflict?.kind === "deleted";
   return (
     <div className="pge-conflict" role="alert">
-      <strong>{file.path}</strong>{" "}
-      {deleted ? "was deleted on the server while you were editing it." : "changed on the server while you were editing it."}
+      {conflictSentence(file, now)}
       <span className="pge-conflict__actions">
         <button type="button" className="pge-btn" onClick={() => void store.resolveConflict(file.path, "theirs")}>
           {deleted ? "Accept deletion" : "Reload theirs"}
@@ -74,7 +111,7 @@ export function StatusBar({ store, path, onSave, notice }: StatusBarProps): Reac
   return (
     <>
       {conflicts.map((file) => (
-        <ConflictBanner key={file.path} store={store} file={file} />
+        <ConflictBanner key={file.path} store={store} file={file} now={now} />
       ))}
       <footer className="pge-status" data-state={status.state}>
         <span className="pge-status__dot" aria-hidden="true" />
