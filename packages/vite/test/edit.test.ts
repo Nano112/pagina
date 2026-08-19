@@ -3,10 +3,11 @@ import { cp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
+import { createServer } from "node:http";
 import { tempDir } from "../../../test/tmp.js";
 import type { ViteDevServer } from "vite";
 import { HttpBackend } from "@pagina/editor/store";
-import { createDevServer, pagePathForHref, renderEditPage } from "../src/index.js";
+import { createDevServer, pagePathForHref, renderEditPage, viteEditMiddleware } from "../src/index.js";
 import { stubShell } from "./stub-shell.js";
 
 const fixture = new URL("../../core/test/fixture/", import.meta.url).pathname;
@@ -54,6 +55,9 @@ describe("renderEditPage", () => {
 /** `"v1"` / `W/"v1"` → `v1`, matching what `HttpBackend` does client-side. */
 const unquote = (raw: string | null): string => (raw ?? "").replace(/^W\//, "").replace(/^"|"$/g, "");
 
+/** Who the server under test was told it is. Every write must be attributed to exactly this. */
+const ADA = { id: "test:ada", name: "Ada" } as const;
+
 describe("pagina dev --edit", () => {
   let server: ViteDevServer;
   let folder: string;
@@ -72,7 +76,12 @@ describe("pagina dev --edit", () => {
     await writeFile(join(outside, "secret.txt"), "top secret\n");
     await symlink(join(outside, "secret.txt"), join(folder, "escape.txt"));
     await symlink(outside, join(folder, "escape-dir"));
-    server = await createDevServer({ folder, shell: stubShell, port: 0, host: "127.0.0.1", edit: true });
+    // A named identity rather than the OS user, so the attribution assertions below say something
+    // about *what the server was configured with* rather than about whoever is running the suite.
+    server = await createDevServer({
+      folder, shell: stubShell, port: 0, host: "127.0.0.1", edit: true,
+      identity: ADA,
+    });
     await server.listen();
     const addr = server.httpServer!.address() as AddressInfo;
     origin = `http://127.0.0.1:${addr.port}`;
@@ -377,12 +386,201 @@ describe("pagina dev --edit", () => {
     expect(await readFile(join(folder, ".pagina/rendered/pages/index.html"), "utf8")).toBe("<h1>Home</h1>");
     expect(await readFile(join(folder, ".pagina/rendered/pages/guide-tabs.html"), "utf8")).toBe("<h1>Tabs</h1>");
     expect(await readFile(join(folder, ".pagina/rendered/figures/inline-demo.light.svg"), "utf8")).toBe("<svg>light</svg>");
-    expect(JSON.parse(await readFile(join(folder, ".pagina/published.json"), "utf8"))).toEqual({ publishedAt });
+    // `published.json` records who published as well as when: it is the event a reader's page is
+    // attributed to, so a host reading this file gets both without a second lookup.
+    expect(JSON.parse(await readFile(join(folder, ".pagina/published.json"), "utf8"))).toEqual({
+      publishedAt, publishedBy: { id: "test:ada", name: "Ada" },
+    });
   }, 30_000);
 
   it("keeps .pagina/ out of the listing", async () => {
     const { files } = (await (await fetch(`${api}/files`)).json()) as { files: { path: string }[] };
     expect(files.some((f) => f.path.startsWith(".pagina/"))).toBe(false);
+  }, 30_000);
+
+  // --- who edited what -------------------------------------------------------------------------
+
+  interface Listed { path: string; version: string; lastEditedBy?: { id: string; name: string }; lastEditedAt?: string }
+  const listing = async (): Promise<Listed[]> =>
+    ((await (await fetch(`${api}/files`)).json()) as { files: Listed[] }).files;
+  const entry = async (path: string): Promise<Listed | undefined> =>
+    (await listing()).find((f) => f.path === path);
+
+  it("attributes a write to the identity it was configured with, and reports it in the listing", async () => {
+    const before = Date.now();
+    const res = await fetch(`${api}/files/attributed.md`, { method: "PUT", body: "# Mine\n" });
+    expect(res.status).toBe(200);
+    const written = (await res.json()) as { version: string; lastEditedBy?: unknown; lastEditedAt?: string };
+    expect(written.lastEditedBy).toEqual(ADA);
+
+    const listed = await entry("attributed.md");
+    expect(listed?.lastEditedBy).toEqual(ADA);
+    expect(Date.parse(listed?.lastEditedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
+  }, 30_000);
+
+  /**
+   * The security property, tested the way an attacker would reach for it.
+   *
+   * Every one of these is a way a caller might try to name itself: a JSON body with an `author`,
+   * the fields the response uses, a plausible header, a query parameter. The server must attribute
+   * all of them to its own identity — because the alternative is a docs tool where anyone who can
+   * reach the endpoint can write as anybody, which is the one attack that matters here.
+   */
+  it("ignores an author the caller names, however it names it", async () => {
+    const mallory = { id: "mallory", name: "Mallory" };
+    const attempts: { label: string; url: string; init: RequestInit }[] = [
+      {
+        label: "a JSON body claiming an author",
+        url: `${api}/files/forged-body.md`,
+        init: {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: "# Forged\n", author: mallory, lastEditedBy: mallory, by: mallory }),
+        },
+      },
+      {
+        label: "headers claiming an author",
+        url: `${api}/files/forged-headers.md`,
+        init: {
+          method: "PUT",
+          headers: {
+            "content-type": "text/plain",
+            "x-pagina-author": JSON.stringify(mallory),
+            "x-author": "Mallory",
+            "x-forwarded-user": "mallory",
+            from: "mallory@example.com",
+          },
+          body: "# Forged\n",
+        },
+      },
+      {
+        label: "a query string claiming an author",
+        url: `${api}/files/forged-query.md?author=Mallory&lastEditedBy=Mallory&by=mallory`,
+        init: { method: "PUT", body: "# Forged\n" },
+      },
+    ];
+
+    for (const attempt of attempts) {
+      const res = await fetch(attempt.url, attempt.init);
+      expect(res.status, attempt.label).toBe(200);
+      const path = new URL(attempt.url).pathname.split("/").pop()!;
+      const listed = await entry(path);
+      expect(listed?.lastEditedBy, attempt.label).toEqual(ADA);
+      expect(JSON.stringify(listed), attempt.label).not.toMatch(/mallory/i);
+    }
+
+    // And the log itself — the record that outlives the response — names nobody but the server.
+    const log = await readFile(join(folder, ".pagina/edits.jsonl"), "utf8");
+    expect(log).not.toMatch(/mallory/i);
+    expect(log).toMatch(/"name":"Ada"/);
+
+    // A forged upload is a forged write too: the same rule, a different endpoint.
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1, 2, 3])], "forged.bin"), "forged.bin");
+    form.append("path", "media/forged.bin");
+    form.append("author", JSON.stringify(mallory));
+    const upload = (await (await fetch(`${api}/upload`, { method: "POST", body: form })).json()) as {
+      lastEditedBy?: unknown;
+    };
+    expect(upload.lastEditedBy).toEqual(ADA);
+  }, 60_000);
+
+  it("names the other side in a 409, so the banner can name a person", async () => {
+    await fetch(`${api}/files/contested.md`, { method: "PUT", body: "# One\n" });
+    const stale = unquote((await fetch(`${api}/files/contested.md`)).headers.get("etag"));
+    await fetch(`${api}/files/contested.md`, {
+      method: "PUT", headers: { "if-match": `"${stale}"` }, body: "# Theirs\n",
+    });
+
+    const res = await fetch(`${api}/files/contested.md`, {
+      method: "PUT", headers: { "if-match": `"${stale}"` }, body: "# Mine\n",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { theirs: string; version: string; by?: unknown; at?: string };
+    expect(body.theirs).toBe("# Theirs\n");
+    expect(body.by).toEqual(ADA);
+    expect(Number.isNaN(Date.parse(body.at ?? ""))).toBe(false);
+  }, 30_000);
+
+  it("forgets attribution when the file changes underneath it", async () => {
+    await fetch(`${api}/files/edited-elsewhere.md`, { method: "PUT", body: "# Through the editor\n" });
+    expect((await entry("edited-elsewhere.md"))?.lastEditedBy).toEqual(ADA);
+
+    // The author opens the file in vim. The log's last entry no longer describes these bytes, so
+    // the honest answer to "who wrote this" is nobody we know of — not whoever last used the editor.
+    await writeFile(join(folder, "edited-elsewhere.md"), "# By hand\n");
+    const listed = await entry("edited-elsewhere.md");
+    expect(listed?.lastEditedBy).toBeUndefined();
+    expect(listed?.lastEditedAt).toBeUndefined();
+  }, 30_000);
+
+  it("serves the edit log newest first, filtered by path and capped", async () => {
+    await fetch(`${api}/files/logged.md`, { method: "PUT", body: "# One\n" });
+    await fetch(`${api}/files/logged.md`, { method: "PUT", body: "# Two\n" });
+
+    const all = (await (await fetch(`${api}/history`)).json()) as {
+      edits: { path: string; action: string; at: string; by: { name: string }; version: string }[];
+    };
+    expect(all.edits.length).toBeGreaterThan(1);
+    for (const edit of all.edits) expect(edit.by).toEqual(ADA);
+    // Newest first, which is the order a panel reads in.
+    const times = all.edits.map((e) => Date.parse(e.at));
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+
+    const mine = (await (await fetch(`${api}/history?path=logged.md`)).json()) as {
+      edits: { path: string }[];
+    };
+    expect(mine.edits.map((e) => e.path)).toEqual(["logged.md", "logged.md"]);
+
+    const capped = (await (await fetch(`${api}/history?path=logged.md&limit=1`)).json()) as {
+      edits: { path: string }[];
+    };
+    expect(capped.edits).toHaveLength(1);
+  }, 30_000);
+
+  it("records a rename against the new path and drops the old one", async () => {
+    await fetch(`${api}/files/before.md`, { method: "PUT", body: "# Moves\n" });
+    await fetch(`${api}/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from: "before.md", to: "after.md" }),
+    });
+    expect((await entry("after.md"))?.lastEditedBy).toEqual(ADA);
+    expect(await entry("before.md")).toBeUndefined();
+
+    const { edits } = (await (await fetch(`${api}/history?path=after.md`)).json()) as {
+      edits: { action: string; from?: string }[];
+    };
+    expect(edits[0]).toMatchObject({ action: "rename", from: "before.md" });
+  }, 30_000);
+
+  it("keeps the log out of the listing and refuses a write to it", async () => {
+    expect((await listing()).some((f) => f.path.includes("edits.jsonl"))).toBe(false);
+    const res = await fetch(`${api}/files/.pagina/edits.jsonl`, { method: "PUT", body: "[]" });
+    expect(res.status).toBe(403);
+  }, 30_000);
+
+  it("keeps no log, and no attribution, when history is off", async () => {
+    // A bare `http.Server` over the middleware rather than a second dev server: the option under
+    // test belongs to the middleware, and this is the cheapest thing that is still a real request.
+    const bare = await tempDir("no-history");
+    await cp(fixture, bare, { recursive: true });
+    const handler = viteEditMiddleware(bare, { base: "/e", history: false });
+    const http = createServer((req, res) => { handler(req, res, () => { res.statusCode = 404; res.end(); }); });
+    await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
+    const at = `http://127.0.0.1:${(http.address() as AddressInfo).port}/e`;
+    try {
+      await fetch(`${at}/files/quiet.md`, { method: "PUT", body: "# No record\n" });
+      const { files } = (await (await fetch(`${at}/files`)).json()) as { files: Listed[] };
+      expect(files.find((f) => f.path === "quiet.md")?.lastEditedBy).toBeUndefined();
+      // 404, not an empty list: the editor decides whether the panel exists at all from this, and
+      // "no history kept" is a different answer from "a history with nothing in it".
+      expect((await fetch(`${at}/history`)).status).toBe(404);
+      expect(existsSync(join(bare, ".pagina/edits.jsonl"))).toBe(false);
+    } finally {
+      await new Promise<void>((r) => http.close(() => r()));
+      await rm(bare, { recursive: true, force: true });
+    }
   }, 30_000);
 
   it("streams file events over SSE", async () => {

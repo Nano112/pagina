@@ -3,26 +3,40 @@
  * (`docs/design/2026-08-17-editor-connectivity-laravel.md`), over a plain article folder.
  *
  * ```
- * GET    {base}/files                        → { files: [{ path, size, version, mtime }] }
+ * GET    {base}/files                        → { files: [{ path, size, version, mtime,
+ *                                                          lastEditedBy?, lastEditedAt? }] }
  * GET    {base}/files/{path}                 → text or binary; ETag = version
- * PUT    {base}/files/{path} (If-Match: v)   → { version }        409 → { theirs, version }
+ * PUT    {base}/files/{path} (If-Match: v)   → { version, lastEditedBy, lastEditedAt }
+ *                                              409 → { theirs, version, by?, at? }
  *                            (If-Match: *)   → the file must already exist; 412 when it does not
  * DELETE {base}/files/{path}                 → 204
- * POST   {base}/upload  (multipart file,path?) → { path, url, version }
- * POST   {base}/rename  { from, to }         → { version }
- * POST   {base}/publish { manifest, pages, figures } → { publishedAt }
- * GET    {base}/events  (SSE)                → { type, path, version } frames
+ * POST   {base}/upload  (multipart file,path?) → { path, url, version, lastEditedBy, lastEditedAt }
+ * POST   {base}/rename  { from, to }         → { version, lastEditedBy, lastEditedAt }
+ * POST   {base}/publish { manifest, pages, figures } → { publishedAt, publishedBy }
+ * GET    {base}/history?path&limit           → { edits: [{ path, action, at, by, version, from? }] }
+ * GET    {base}/events  (SSE)                → { type, path, version, by?, at? } frames
  * ```
  *
  * `@pagina/editor`'s `HttpBackend` is the reference client; nothing here may drift from it.
  * Versions are the sha1 of the file's bytes, so two servers handing out the same version for the
  * same content is a feature (a no-op write is not a conflict) and mtime jitter is not.
+ *
+ * **The author is never read from the request.** Not from the body, not from a header, not from the
+ * query string — there is no code path here that looks. Every write is attributed to the identity
+ * this middleware was constructed with, which is the security property the whole feature rests on:
+ * a caller that names itself is making a claim, and a docs tool that believed it would let anyone
+ * write as anyone. See {@link EditMiddlewareOptions.identity}.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir, readFile, readdir, realpath, rename as renameFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Author } from "@pagina/core";
+import {
+  appendEditLog, attributionFor, latestByPath, osIdentity, readEditLog,
+  type EditAction, type LoggedEdit,
+} from "./edit-log.js";
 
 /** A connect-style middleware, which is what `vite.middlewares.use` takes. */
 export type EditMiddleware = (req: IncomingMessage, res: ServerResponse, next: (err?: unknown) => void) => void;
@@ -43,10 +57,40 @@ export interface EditMiddlewareOptions {
   readonly siteBase?: string;
   /** Watcher to source SSE events from. Omitted → the middleware starts its own on first client. */
   readonly watcher?: EditWatcher;
+  /**
+   * Who every write through this middleware is attributed to.
+   *
+   * Configured here — by the person starting the server — rather than taken from the request,
+   * because the request comes from a browser and a browser's claim about who is using it is worth
+   * nothing. Defaults to the OS user; see {@link osIdentity}.
+   *
+   * A single-user dev server recording one name is the honest limit of what this can know. It has
+   * no authentication, so it cannot tell two callers apart; what it can do is say who it *is*, and
+   * that is enough to make the conflict banner name somebody.
+   */
+  readonly identity?: Author;
+  /**
+   * Keep the append-only edit log at `.pagina/edits.jsonl`, and serve `GET {base}/history` from it.
+   * Default `true`.
+   *
+   * Turn it off and attribution goes with it: the log is where the listing's `lastEditedBy` comes
+   * from, so a server with no log reports no authors and the editor's history panel disappears —
+   * which is the documented way to run this without leaving a record on disk.
+   */
+  readonly history?: boolean;
 }
 
 /** Everything the editor writes that is not content lives here, and is never editable content. */
 const PRIVATE_DIR = ".pagina";
+
+/**
+ * `GET /history` defaults and ceiling, matching `@pagina/editor`'s `historyLimit`.
+ *
+ * The ceiling is not a courtesy: the endpoint is reachable from a browser, and an unbounded `limit`
+ * on a long-running server is a way to ask it to serialise its whole log into one response.
+ */
+const HISTORY_DEFAULT = 50;
+const HISTORY_MAX = 500;
 
 /** Request body caps. A `.md` page is kilobytes; the ceilings only stop a runaway or a prank. */
 const LIMIT_TEXT = 5 * 1024 * 1024;
@@ -209,6 +253,42 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
   const root = resolve(folder);
   const base = (opts.base ?? "/__pagina/edit").replace(/\/+$/, "");
   const siteBase = (opts.siteBase ?? "/").replace(/\/+$/, "");
+  // Resolved once, here, from configuration. There is deliberately no per-request equivalent.
+  const identity = opts.identity ?? osIdentity();
+  const keepHistory = opts.history !== false;
+
+  /**
+   * The log, read from disk once and appended to in step with the file.
+   *
+   * In memory as well as on disk because the listing consults it on every `GET /files`, and
+   * re-reading a growing file to answer that would make the cost of the log grow with the length of
+   * the session. The middleware is the only writer, so the two cannot drift; a log edited by hand
+   * underneath a running server is not a case worth carrying state for.
+   */
+  let logOnce: Promise<LoggedEdit[]> | undefined;
+  const log = (): Promise<LoggedEdit[]> => (logOnce ??= readEditLog(root));
+
+  const record = async (entry: {
+    path: string; action: EditAction; version: string; from?: string;
+  }): Promise<{ lastEditedBy: Author; lastEditedAt: string } | undefined> => {
+    if (!keepHistory) return undefined;
+    const logged: LoggedEdit = {
+      path: entry.path, action: entry.action, version: entry.version,
+      at: new Date().toISOString(), by: identity,
+      ...(entry.from === undefined ? {} : { from: entry.from }),
+    };
+    (await log()).push(logged);
+    await appendEditLog(root, logged);
+    return { lastEditedBy: logged.by, lastEditedAt: logged.at };
+  };
+
+  /** What the listing and the SSE frames report for a path, given the bytes currently on disk. */
+  const attributionOf = async (path: string, version: string): Promise<
+    { lastEditedBy: Author; lastEditedAt: string } | undefined
+  > => {
+    if (!keepHistory) return undefined;
+    return attributionFor(latestByPath(await log()), path, version);
+  };
 
   // The folder itself is often reached through a symlink (`/tmp` → `/private/tmp` on macOS), so
   // containment has to compare real path against real path or every request would look like an
@@ -274,8 +354,14 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     try { return await readFile(path); } catch { return undefined; }
   };
 
-  const listFiles = async (): Promise<{ path: string; size: number; version: string; mtime: string }[]> => {
-    const out: { path: string; size: number; version: string; mtime: string }[] = [];
+  interface ListedFile {
+    path: string; size: number; version: string; mtime: string;
+    lastEditedBy?: Author; lastEditedAt?: string;
+  }
+
+  const listFiles = async (): Promise<ListedFile[]> => {
+    const latest = keepHistory ? latestByPath(await log()) : undefined;
+    const out: ListedFile[] = [];
     const walk = async (dir: string): Promise<void> => {
       let entries;
       try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
@@ -289,11 +375,14 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         if (entry.isDirectory()) { await walk(path); continue; }
         if (!entry.isFile()) continue;
         const [bytes, info] = await Promise.all([readFile(path), stat(path)]);
+        const rel = relative(root, path).split("\\").join("/");
+        const version = sha1(bytes);
         out.push({
-          path: relative(root, path).split("\\").join("/"),
+          path: rel,
           size: info.size,
-          version: sha1(bytes),
+          version,
           mtime: info.mtime.toISOString(),
+          ...(latest === undefined ? {} : attributionFor(latest, rel, version) ?? {}),
         });
       }
     };
@@ -310,10 +399,17 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
     if (clients.size === 0) return;
     if (rel.split("/").some((s) => s.startsWith(".") || s === "node_modules")) return;
     const bytes = kind === "changed" ? await readContent(rel).catch(() => undefined) : undefined;
+    const version = bytes === undefined ? undefined : sha1(bytes);
+    // Attribution goes on the frame, not just on the listing, because the conflict an author
+    // actually meets — a second tab saving under them — arrives here rather than as a 409. The
+    // version gate in `attributionFor` still applies, so a change made by something other than
+    // this middleware arrives anonymous, which is what it is.
+    const whose = version === undefined ? undefined : await attributionOf(rel, version);
     const frame = `data: ${JSON.stringify({
       type: bytes === undefined && kind === "changed" ? "deleted" : kind,
       path: rel,
-      ...(bytes === undefined ? {} : { version: sha1(bytes) }),
+      ...(version === undefined ? {} : { version }),
+      ...(whose === undefined ? {} : { by: whose.lastEditedBy, at: whose.lastEditedAt }),
     })}\n\n`;
     for (const client of clients) client.write(frame);
   };
@@ -391,16 +487,24 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
             return;
           }
         } else if (expected !== "" && (current === undefined || sha1(current) !== expected)) {
+          const theirVersion = current === undefined ? "" : sha1(current);
+          // Who they were, when we know: this is what turns "index.md changed on the server" into
+          // "Alice changed index.md two minutes ago" in the editor's banner.
+          const whose = current === undefined ? undefined : await attributionOf(rel, theirVersion);
           sendJson(res, 409, {
             theirs: current === undefined ? "" : current.toString("utf8"),
-            version: current === undefined ? "" : sha1(current),
+            version: theirVersion,
             message: `${rel} changed on the server`,
+            ...(whose === undefined ? {} : { by: whose.lastEditedBy, at: whose.lastEditedAt }),
           });
           return;
         }
         const version = await atomicWrite(path, text);
+        // Recorded *after* the write lands, so the log never claims an edit that did not happen.
+        // The identity is the middleware's, and nothing in `req` was consulted to choose it.
+        const attribution = await record({ path: rel, action: "write", version });
         res.setHeader("etag", `"${version}"`);
-        sendJson(res, 200, { version });
+        sendJson(res, 200, { version, ...attribution });
         return;
       }
 
@@ -409,6 +513,7 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         const path = await inside(rel);
         try { await stat(path); } catch { throw new HttpError(404, `no such file: ${rel}`); }
         await rm(path, { recursive: true, force: true });
+        await record({ path: rel, action: "delete", version: "" });
         res.statusCode = 204;
         res.end();
         return;
@@ -429,7 +534,9 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
       try { await stat(source); } catch { throw new HttpError(404, `no such file: ${from}`); }
       await mkdir(dirname(target), { recursive: true });
       await renameFile(source, target);
-      sendJson(res, 200, { version: sha1((await readContent(to)) ?? Buffer.alloc(0)) });
+      const version = sha1((await readContent(to)) ?? Buffer.alloc(0));
+      const attribution = await record({ path: to, action: "rename", version, from });
+      sendJson(res, 200, { version, ...attribution });
       return;
     }
 
@@ -445,7 +552,8 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
         ? `media/${sanitiseName(file.filename ?? "upload.bin")}`
         : toRelPath(given, { decode: false });
       const version = await writeContent(rel, file.data);
-      sendJson(res, 200, { path: rel, url: `${siteBase}/${rel}`, version });
+      const attribution = await record({ path: rel, action: "upload", version });
+      sendJson(res, 200, { path: rel, url: `${siteBase}/${rel}`, version, ...attribution });
       return;
     }
 
@@ -473,9 +581,34 @@ export function viteEditMiddleware(folder: string, opts: EditMiddlewareOptions =
           await atomicWrite(join(out, "figures", `${sanitiseName(id)}.${sanitiseName(theme)}.svg`), String(svg));
         }
       }
-      const publishedAt = new Date().toISOString();
-      await atomicWrite(join(privateDir, "published.json"), JSON.stringify({ publishedAt }, null, 2));
-      sendJson(res, 200, { publishedAt });
+      // Publishing is an edit too, and it is the one a reader's page is attributed to — so it goes
+      // into `published.json` beside the timestamp, and into the log beside everything else.
+      const record_: { publishedAt: string; publishedBy?: Author } = {
+        publishedAt: new Date().toISOString(),
+        ...(keepHistory ? { publishedBy: identity } : {}),
+      };
+      await atomicWrite(join(privateDir, "published.json"), JSON.stringify(record_, null, 2));
+      const slug = (payload.manifest as { article?: { slug?: unknown } } | undefined)?.article?.slug;
+      await record({
+        path: typeof slug === "string" && slug !== "" ? slug : "article",
+        action: "publish", version: "",
+      });
+      sendJson(res, 200, record_);
+      return;
+    }
+
+    if (rest === "/history" && (method === "GET" || method === "HEAD")) {
+      // Absent, not empty. A server that keeps no log must not answer as though it kept one and
+      // nothing had happened — the editor decides whether the panel exists from this.
+      if (!keepHistory) throw new HttpError(404, "this server keeps no edit history");
+      const wanted = url.searchParams.get("path") ?? undefined;
+      const asked = Number(url.searchParams.get("limit") ?? NaN);
+      const limit = Number.isFinite(asked) ? Math.max(0, Math.min(HISTORY_MAX, Math.floor(asked))) : HISTORY_DEFAULT;
+      const all = await log();
+      const matching = wanted === undefined
+        ? all
+        : all.filter((e) => e.path === wanted || e.from === wanted);
+      sendJson(res, 200, { edits: matching.slice(Math.max(0, matching.length - limit)).reverse() });
       return;
     }
 

@@ -15,8 +15,9 @@ import {
   BUNDLE_MANIFEST_PATH, BundleError, DEFAULT_BUNDLE_LIMITS, buildBundleContents, buildSearchIndex,
   inlineArticleFigures, parseArticleConfig, parseBundleManifest, renderArticle, serializeSearchIndex,
   verifyBundleEntries,
-  type BundleEntry, type BundleLimits, type BundleManifest, type Diagnostic, type RenderedOutput,
+  type Author, type BundleEntry, type BundleLimits, type BundleManifest, type Diagnostic, type RenderedOutput,
 } from "@pagina/core";
+import { latestByPath, readEditLog } from "./edit-log.js";
 import { NodeContentFs } from "./node-fs.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 import { readZip, writeZip } from "./zip.js";
@@ -54,6 +55,18 @@ export interface PackOptions {
   readonly created?: string;
   /** Report rather than refuse. Default `false`. */
   readonly strict?: boolean;
+  /**
+   * Carry the folder's attribution into `bundle.json`. Default `false`.
+   *
+   * The default is the point, and it is off. A `.pgz` is an export and an export leaves — to a
+   * client, a contractor, a public download — and attribution is personal data: with a dozen pages
+   * it is a staff list with a rota attached. So the names travel only when somebody asks for them,
+   * because the failure mode of the other default is one nobody discovers until afterwards.
+   *
+   * Source is `.pagina/edits.jsonl`, the log `pagina dev --edit` keeps. A folder without one packs
+   * the same either way.
+   */
+  readonly withAttribution?: boolean;
 }
 
 export interface PackResult {
@@ -102,6 +115,25 @@ async function refuseEscapingSymlinks(folder: string): Promise<void> {
   await walk(root);
 }
 
+/**
+ * The folder's last-edit-per-path, read from the dev server's log.
+ *
+ * Deliberately *not* version-gated the way the live listing is. A pack is a snapshot of what is in
+ * the folder now, and re-hashing every file a second time to decide whether the log still describes
+ * it would say "unknown" for every file an author touched outside the editor — which, for a
+ * git-tracked docs folder, is most of them. The bundle's attribution is therefore "the last edit we
+ * recorded", stated as that in the docs, rather than a claim about the bytes.
+ */
+async function folderAttribution(
+  folder: string,
+): Promise<Map<string, { lastEditedBy: Author; lastEditedAt: string }>> {
+  const out = new Map<string, { lastEditedBy: Author; lastEditedAt: string }>();
+  for (const [path, entry] of latestByPath(await readEditLog(resolve(folder)))) {
+    out.set(path, { lastEditedBy: entry.by, lastEditedAt: entry.at });
+  }
+  return out;
+}
+
 export async function packBundle(o: PackOptions): Promise<PackResult> {
   const base = o.base ?? "/";
   await refuseEscapingSymlinks(o.folder);
@@ -134,6 +166,7 @@ export async function packBundle(o: PackOptions): Promise<PackResult> {
     pagina: PAGINA_VERSION,
     created: o.created ?? new Date().toISOString(),
     ...(o.strict === undefined ? {} : { strict: o.strict }),
+    ...(o.withAttribution === true ? { attribution: await folderAttribution(o.folder) } : {}),
   });
   const archive = writeZip(built.entries);
   await mkdir(dirname(resolve(o.out)), { recursive: true });

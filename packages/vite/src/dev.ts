@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type MarkdownIt from "markdown-it";
 import { createServer, type ViteDevServer } from "vite";
-import { SEARCH_INDEX_PATH, buildSearchIndex, inlineArticleFigures, serializeSearchIndex, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
+import { SEARCH_INDEX_PATH, buildSearchIndex, inlineArticleFigures, serializeSearchIndex, type Author, type DrawnFigure, type RenderedArticle, type Shell, type ThemeLevel } from "@pagina/core";
 import { emptyArticleDiagnostic, resolveArticle, type ResolvedArticle } from "./article.js";
 import { kineglyphRoot, resolveKineglyphBundle } from "./kineglyph.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, type KineglyphThemes, type PrerenderedFigure } from "./prerender.js";
@@ -27,6 +27,8 @@ export interface DevServerOptions {
   /** Serve the editor: the HTTP contract at `/__pagina/edit` and the host page at `/__edit/`.
    *  Off by default — it makes the folder writable over HTTP, so it is opt-in per run. */
   readonly edit?: boolean;
+  /** Who `--edit` attributes writes to. Defaults to the OS user; never taken from a request. */
+  readonly identity?: Author;
   /** How much pagina CSS the pages link: `"full"` (default), `"tokens"` or `"none"`. */
   readonly theme?: ThemeLevel;
   /** Render pagina's own header row. Default `true`; `false` when a host supplies chrome. */
@@ -273,6 +275,7 @@ export async function createDevServer(o: DevServerOptions): Promise<ViteDevServe
             base: EDIT_API_BASE,
             siteBase: base,
             watcher: s.watcher as unknown as EditWatcher,
+            ...(o.identity === undefined ? {} : { identity: o.identity }),
           }));
         }
 

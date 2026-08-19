@@ -6,13 +6,13 @@ import { staticShell, createHighlightedMarkdown } from "@pagina/shell-static";
 import { BundleError, PaginaBuildError } from "@pagina/core";
 
 const USAGE = [
-  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--strict-assets] [--no-search] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
-  "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>]",
+  "usage: pagina dev|build <folder> [--out dist] [--base /] [--port 4321] [--host <addr>] [--edit] [--as <name>] [--no-strict] [--theme full|tokens|none] [--no-chrome] [--strict-assets] [--no-search] [--site-url https://example.com/path/] [--mirror-of https://primary.example/path/]",
+  "       pagina pack [folder] [-o article.pgz] [--base /] [--created <iso8601>] [--with-attribution]",
   "       pagina unpack <article.pgz> [dir] [--force]",
 ].join("\n");
 
 let positionals: string[];
-let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "no-search"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
+let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; as?: string; "with-attribution"?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "no-search"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
 // Asking for help is not a usage error: it goes to stdout and exits 0, so `pagina --help` can
 // be piped and the first command the docs tell a reader to run does not report failure. This
 // sits above parseArgs because parseArgs throws on a flag it was not told about, and that
@@ -31,6 +31,10 @@ try {
       port: { type: "string" },
       host: { type: "string" },
       edit: { type: "boolean" },
+      // Who `--edit` records as the author. See `docs/editing.md`.
+      as: { type: "string" },
+      // Bundles carry no attribution unless asked: it is a staff list, and an export leaves.
+      "with-attribution": { type: "boolean" },
       "no-strict": { type: "boolean" },
       theme: { type: "string" },
       "no-chrome": { type: "boolean" },
@@ -153,6 +157,7 @@ if (cmd === "pack") {
       folder, out, base,
       ...(md === undefined ? {} : { md }),
       ...(values.created === undefined ? {} : { created: values.created }),
+      ...(values["with-attribution"] === true ? { withAttribution: true } : {}),
     });
     for (const d of r.diagnostics) console.warn(`[${d.severity}] ${d.code} ${d.page ?? ""}: ${d.message}`);
     console.log(`pagina: packed ${r.manifest.slug} — ${String(r.manifest.files.length)} files, ${String(r.size)} bytes → ${out}`);
@@ -189,6 +194,9 @@ if (cmd === "pack") {
     folder, shell: staticShell, base, md: md!, port, ...theming, ...seo,
     ...(host === undefined ? {} : { host }),
     ...(values.edit === true ? { edit: true } : {}),
+    // `--as` names who the edit log records. Configuration, not a request field: the server is
+    // told once who it is, and nothing a browser sends can change that answer.
+    ...(values.as === undefined ? {} : { identity: { id: `cli:${values.as}`, name: values.as } }),
   });
   await server.listen();
   server.printUrls();

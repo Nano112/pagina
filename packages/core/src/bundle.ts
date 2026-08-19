@@ -13,11 +13,12 @@
  * without pulling in a builder.
  */
 import { parseDocument } from "yaml";
-import type { ArticleConfig, ContentFs, Diagnostic, Manifest, RenderedArticle } from "./types.js";
+import type { ArticleConfig, Author, ContentFs, Diagnostic, Manifest, RenderedArticle } from "./types.js";
 import { pageSlug } from "./render-page.js";
 import { SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";
 import { walkReferences } from "./references.js";
 import { SEARCH_INDEX_BUNDLE_PATH } from "./search.js";
+import { parseAuthor, parseInstant } from "./author.js";
 
 /**
  * The bundle format version.
@@ -72,6 +73,24 @@ export interface BundleManifest {
    * author knows exactly which parts of their article will not survive an air gap.
    */
   readonly external: readonly string[];
+  /**
+   * Who last edited each file, when the packer was asked to include it.
+   *
+   * **Absent by default, and that is the decision.** A `.pgz` is an export, and an export leaves
+   * the organisation it came from; attribution is personal data — a staff list, effectively — so
+   * `pack` strips it unless `--with-attribution` says otherwise. The opposite default would leak
+   * names to whoever receives a bundle, which is not a thing to discover afterwards.
+   *
+   * Entries are sorted by path, and only cover files the bundle actually carries.
+   */
+  readonly attribution?: readonly BundleAttribution[];
+}
+
+/** One file's attribution inside a bundle. */
+export interface BundleAttribution {
+  readonly path: string;
+  readonly lastEditedBy: Author;
+  readonly lastEditedAt: string;
 }
 
 /** One decoded archive member, before anything has been written to disk. */
@@ -243,6 +262,25 @@ export function parseBundleManifest(text: string): BundleManifest {
     need(typeof u === "string", `bundle.json external[${String(i)}] must be a string`);
     return u as string;
   });
+  // Optional, because a bundle packed without `--with-attribution` has none — which is the default
+  // and the common case. Present but malformed is still a refusal: a descriptor that half-parses is
+  // how an importer ends up showing a name it made up.
+  let attribution: BundleAttribution[] | undefined;
+  if (o["attribution"] !== undefined) {
+    need(Array.isArray(o["attribution"]), "bundle.json `attribution` must be an array");
+    attribution = (o["attribution"] as unknown[]).map((entry, i) => {
+      const label = `bundle.json attribution[${String(i)}]`;
+      need(entry !== null && typeof entry === "object" && !Array.isArray(entry), `${label} must be an object`);
+      const a = entry as Record<string, unknown>;
+      need(typeof a["path"] === "string", `${label}.path must be a string`);
+      assertSafeBundlePath(a["path"] as string, `${label}.path`);
+      const by = parseAuthor(a["lastEditedBy"]);
+      const at = parseInstant(a["lastEditedAt"]);
+      need(by !== undefined, `${label}.lastEditedBy must be an author with an id and a name`);
+      need(at !== undefined, `${label}.lastEditedAt must be an ISO-8601 instant`);
+      return { path: a["path"] as string, lastEditedBy: by!, lastEditedAt: at! };
+    });
+  }
   return {
     format: BUNDLE_FORMAT,
     pagina: o["pagina"] as string,
@@ -253,6 +291,7 @@ export function parseBundleManifest(text: string): BundleManifest {
     totalSize: o["totalSize"] as number,
     files,
     external,
+    ...(attribution === undefined ? {} : { attribution }),
   };
 }
 
@@ -354,6 +393,15 @@ export interface BuildBundleOptions {
   readonly created: string;
   /** Report rather than throw. Default `false`: pack refuses rather than guesses. */
   readonly strict?: boolean;
+  /**
+   * Attribution to carry, keyed by folder-relative path. Omitted → the bundle carries none.
+   *
+   * The caller decides, and the caller's default is to pass nothing: see
+   * {@link BundleManifest.attribution}. Entries for paths the bundle does not carry are dropped
+   * rather than exported, so a folder's history cannot smuggle out the name of a file that was
+   * excluded from the archive.
+   */
+  readonly attribution?: ReadonlyMap<string, { lastEditedBy: Author; lastEditedAt: string }>;
 }
 
 export interface BuiltBundle {
@@ -516,6 +564,12 @@ export async function buildBundleContents(o: BuildBundleOptions): Promise<BuiltB
   const sorted = [...files.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const records: BundleFileRecord[] = [];
   for (const [path, data] of sorted) records.push({ path, size: data.byteLength, sha256: await sha256Hex(data) });
+  // Intersected with what the archive actually carries, and sorted with everything else so that
+  // two packs of one folder still produce one byte sequence.
+  const attribution = o.attribution === undefined ? undefined : records.flatMap((r) => {
+    const found = o.attribution?.get(r.path);
+    return found === undefined ? [] : [{ path: r.path, ...found }];
+  });
   const manifest: BundleManifest = {
     format: BUNDLE_FORMAT,
     pagina: o.pagina,
@@ -526,6 +580,7 @@ export async function buildBundleContents(o: BuildBundleOptions): Promise<BuiltB
     totalSize: records.reduce((n, r) => n + r.size, 0),
     files: records,
     external: [...external].sort(),
+    ...(attribution === undefined ? {} : { attribution }),
   };
   const entries: BundleEntry[] = sorted.map(([path, data]) => ({ path, data }));
   entries.push({ path: BUNDLE_MANIFEST_PATH, data: bytes(`${JSON.stringify(manifest, null, 2)}\n`) });

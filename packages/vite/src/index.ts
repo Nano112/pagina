@@ -29,5 +29,9 @@ export {
   type EditMiddleware, type EditMiddlewareOptions, type EditWatcher,
 } from "./edit-middleware.js";
 export {
+  EDIT_LOG_PATH, appendEditLog, attributionFor, latestByPath, osIdentity, readEditLog,
+  type EditAction, type LoggedEdit,
+} from "./edit-log.js";
+export {
   renderEditPage, pagePathForHref, SELF_WRITE_GUARD, SELF_WRITE_WINDOW_MS, type EditPageContext,
 } from "./edit-page.js";
