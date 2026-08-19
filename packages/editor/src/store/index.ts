@@ -18,6 +18,10 @@ export {
 } from "./local-storage-backend.js";
 export {
   BackendError, ConflictError,
-  type ArticleBackend, type BackendChange, type FileEntry, type PublishPayload,
-  type UploadResult, type WriteOptions,
+  type ArticleBackend, type Author, type BackendChange, type Edit, type EditAction,
+  type FileEntry, type HistoryOptions, type PublishPayload, type PublishRecord,
+  type UploadResult, type WriteOptions, type WriteRecord,
 } from "./types.js";
+export {
+  HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, LOCAL_AUTHOR, MEMORY_AUTHOR, historyLimit, selectHistory,
+} from "./attribution.js";

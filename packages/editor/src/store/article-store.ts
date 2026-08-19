@@ -14,7 +14,9 @@ import {
   parseArticleConfig, renderArticle, renderPage,
   type ArticleConfig, type ContentFs, type NavEntry, type NavPage, type RenderedArticle, type RenderedPage,
 } from "@pagina/core";
-import type { ArticleBackend, BackendChange, FileEntry, UploadResult } from "./types.js";
+import type {
+  ArticleBackend, Author, BackendChange, Edit, FileEntry, HistoryOptions, PublishRecord, UploadResult,
+} from "./types.js";
 import { ConflictError } from "./types.js";
 import { noteSelfWrite } from "./self-write.js";
 
@@ -30,10 +32,18 @@ export const ARTICLE_YAML = "article.yaml";
  * (an SSE event does not), in which case it is fetched when the author actually asks to see it.
  * `deleted` has no text to fetch and no version to match against — the two resolutions are "accept
  * the deletion" and "put the file back".
+ *
+ * `by` and `at` are carried on **both** shapes, because both are things a person did, and knowing
+ * which person is the difference between a banner an author can act on and one they can only
+ * obey. They are optional throughout: a backend that does not know says nothing, and the banner
+ * falls back to naming the file.
  */
 export type FileConflict =
-  | { readonly kind: "changed"; readonly theirs?: string; readonly version?: string }
-  | { readonly kind: "deleted" };
+  | {
+      readonly kind: "changed"; readonly theirs?: string; readonly version?: string;
+      readonly by?: Author; readonly at?: string;
+    }
+  | { readonly kind: "deleted"; readonly by?: Author; readonly at?: string };
 
 export interface FileState {
   readonly path: string;
@@ -48,6 +58,9 @@ export interface FileState {
   readonly conflict?: FileConflict;
   /** Convenience view of `conflict.theirs` — the server's text, when it is already known. */
   readonly theirs?: string;
+  /** Who last wrote this file, as the backend reported it. Absent when the backend does not know. */
+  readonly lastEditedBy?: Author;
+  readonly lastEditedAt?: string;
 }
 
 export interface StoreStatus {
@@ -107,6 +120,8 @@ interface Record_ {
   error: string | undefined;
   /** Set exactly while `status === "conflict"`; the single source of truth for the banner. */
   conflict: FileConflict | undefined;
+  lastEditedBy: Author | undefined;
+  lastEditedAt: string | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   attempt: number;
   saving: Promise<void> | undefined;
@@ -177,7 +192,27 @@ export class ArticleStore {
       ...(r.error === undefined ? {} : { error: r.error }),
       ...(r.conflict === undefined ? {} : { conflict: r.conflict }),
       ...(r.conflict?.kind === "changed" && r.conflict.theirs !== undefined ? { theirs: r.conflict.theirs } : {}),
+      ...(r.lastEditedBy === undefined ? {} : { lastEditedBy: r.lastEditedBy }),
+      ...(r.lastEditedAt === undefined ? {} : { lastEditedAt: r.lastEditedAt }),
     };
+  }
+
+  /**
+   * Whether this store's backend can answer for the sequence of edits, rather than just the last
+   * one. What the UI asks before deciding a history panel exists at all.
+   */
+  get hasHistory(): boolean { return typeof this.#backend.history === "function"; }
+
+  /**
+   * The edit log, newest first; `path` narrows it to one file.
+   *
+   * Throws when the backend keeps none — callers check {@link hasHistory} first, and a store that
+   * answered `[]` here would be indistinguishable from a host that has a log and no edits in it.
+   */
+  async history(path?: string, opts?: HistoryOptions): Promise<Edit[]> {
+    const fn = this.#backend.history;
+    if (fn === undefined) throw new Error("ArticleStore: this backend keeps no history");
+    return await fn.call(this.#backend, path, opts);
   }
 
   // ------------------------------------------------------------------------------------- lifecycle
@@ -314,12 +349,28 @@ export class ArticleStore {
     await this.#save(r);
   }
 
+  /**
+   * Records the attribution a mutation came back with, on both the mirror record and the listing
+   * entry, so `files` and `list()` cannot disagree about who touched a file last.
+   */
+  #attribute(r: Record_, written: { lastEditedBy?: Author; lastEditedAt?: string }): FileEntry {
+    if (written.lastEditedBy !== undefined) r.lastEditedBy = written.lastEditedBy;
+    if (written.lastEditedAt !== undefined) r.lastEditedAt = written.lastEditedAt;
+    const entry: FileEntry = {
+      path: r.path, version: r.version,
+      ...(r.lastEditedBy === undefined ? {} : { lastEditedBy: r.lastEditedBy }),
+      ...(r.lastEditedAt === undefined ? {} : { lastEditedAt: r.lastEditedAt }),
+    };
+    this.#entries.set(r.path, entry);
+    return entry;
+  }
+
   /** Creates a file on the backend and in the mirror. */
   async createFile(path: string, text = ""): Promise<FileState> {
-    const { version } = await this.#backend.write(path, text);
+    const written = await this.#backend.write(path, text);
     noteSelfWrite(path);
-    const r = this.#adopt(path, text, version);
-    this.#entries.set(path, { path, version });
+    const r = this.#adopt(path, text, written.version);
+    this.#attribute(r, written);
     this.#emit("files", undefined);
     return this.#snapshot(r);
   }
@@ -330,7 +381,7 @@ export class ArticleStore {
     noteSelfWrite(result.path);
     const r = this.#rec(result.path);
     r.version = result.version; r.dirty = false; r.status = "saved";
-    this.#entries.set(result.path, { path: result.path, version: result.version });
+    this.#attribute(r, result);
     this.#emit("files", undefined);
     return result;
   }
@@ -343,14 +394,14 @@ export class ArticleStore {
   }
 
   async renameFile(from: string, to: string): Promise<void> {
-    const { version } = await this.#backend.rename(from, to);
+    const written = await this.#backend.rename(from, to);
     noteSelfWrite(from);
     noteSelfWrite(to);
     const old = this.#recs.get(from);
     this.#forget(from);
     const r = this.#rec(to);
-    r.text = old?.text; r.bytes = old?.bytes; r.version = version; r.dirty = false; r.status = "saved";
-    this.#entries.set(to, { path: to, version });
+    r.text = old?.text; r.bytes = old?.bytes; r.version = written.version; r.dirty = false; r.status = "saved";
+    this.#attribute(r, written);
     this.#emit("files", undefined);
   }
 
@@ -388,7 +439,7 @@ export class ArticleStore {
   async publish(
     figures: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
     rendered_?: RenderedArticle,
-  ): Promise<{ publishedAt: string }> {
+  ): Promise<PublishRecord> {
     const rendered = rendered_ ?? await this.renderAll();
     const pages = Object.fromEntries(Object.entries(rendered.pages).map(([href, page]) => [href, page.html]));
     return await this.#backend.publish({ manifest: rendered.manifest, pages, figures });
@@ -444,9 +495,11 @@ export class ArticleStore {
   #rec(path: string): Record_ {
     let r = this.#recs.get(path);
     if (r === undefined) {
+      const entry = this.#entries.get(path);
       r = {
-        path, text: undefined, bytes: undefined, version: this.#entries.get(path)?.version ?? "",
+        path, text: undefined, bytes: undefined, version: entry?.version ?? "",
         dirty: false, status: "saved", error: undefined, conflict: undefined,
+        lastEditedBy: entry?.lastEditedBy, lastEditedAt: entry?.lastEditedAt,
         timer: undefined, attempt: 0, saving: undefined,
       };
       this.#recs.set(path, r);
@@ -530,12 +583,22 @@ export class ArticleStore {
       const text = r.text ?? "";
       this.#setStatus(r, "saving");
       try {
-        const { version } = await this.#backend.write(r.path, text, r.version === "" ? {} : { version: r.version });
+        const written = await this.#backend.write(r.path, text, r.version === "" ? {} : { version: r.version });
+        const { version } = written;
         noteSelfWrite(r.path);
         r.version = version;
         r.attempt = 0;
         r.error = undefined;
-        this.#entries.set(r.path, { path: r.path, version });
+        // A backend that reports attribution on the write saves the store a re-list to learn what
+        // it already just told us. One that does not leaves the previous answer alone rather than
+        // clearing it: silence is "I do not track this", not "nobody edited it".
+        if (written.lastEditedBy !== undefined) r.lastEditedBy = written.lastEditedBy;
+        if (written.lastEditedAt !== undefined) r.lastEditedAt = written.lastEditedAt;
+        this.#entries.set(r.path, {
+          path: r.path, version,
+          ...(r.lastEditedBy === undefined ? {} : { lastEditedBy: r.lastEditedBy }),
+          ...(r.lastEditedAt === undefined ? {} : { lastEditedAt: r.lastEditedAt }),
+        });
         this.#lastSavedAt = new Date().toISOString();
         if (r.text !== text) continue;   // a newer edit arrived mid-flight; save it too
         r.dirty = false;
@@ -544,7 +607,11 @@ export class ArticleStore {
         return;
       } catch (e) {
         if (e instanceof ConflictError) {
-          this.#enterConflict(r, { kind: "changed", theirs: e.theirs, version: e.version }, e.message);
+          this.#enterConflict(r, {
+            kind: "changed", theirs: e.theirs, version: e.version,
+            ...(e.by === undefined ? {} : { by: e.by }),
+            ...(e.at === undefined ? {} : { at: e.at }),
+          }, e.message);
           return;
         }
         r.attempt += 1;
@@ -560,11 +627,17 @@ export class ArticleStore {
   async #onExternal(ev: BackendChange): Promise<void> {
     if (this.#destroyed) return;
     const r = this.#recs.get(ev.path);
+    // Who the event says did it. This is the path the two-tab conflict actually takes — a 409 is
+    // the *other* half — so dropping it here would leave the banner anonymous in the common case.
+    const who = {
+      ...(ev.by === undefined ? {} : { by: ev.by }),
+      ...(ev.at === undefined ? {} : { at: ev.at }),
+    };
     if (ev.type === "deleted") {
       if (r?.dirty === true) {
         // Unsaved work against a file that no longer exists: hold it and let the author decide,
         // rather than letting the queued write quietly resurrect the file.
-        this.#enterConflict(r, { kind: "deleted" }, `${ev.path} was deleted on the server`);
+        this.#enterConflict(r, { kind: "deleted", ...who }, `${ev.path} was deleted on the server`);
         return;
       }
       this.#forget(ev.path);
@@ -572,14 +645,23 @@ export class ArticleStore {
       return;
     }
     if (r === undefined) {
-      this.#entries.set(ev.path, { path: ev.path, ...(ev.version === undefined ? {} : { version: ev.version }) } as FileEntry);
+      this.#entries.set(ev.path, {
+        path: ev.path,
+        ...(ev.version === undefined ? {} : { version: ev.version }),
+        ...(ev.by === undefined ? {} : { lastEditedBy: ev.by }),
+        ...(ev.at === undefined ? {} : { lastEditedAt: ev.at }),
+      } as FileEntry);
       this.#emit("files", undefined);
       return;
     }
+    if (ev.by !== undefined) r.lastEditedBy = ev.by;
+    if (ev.at !== undefined) r.lastEditedAt = ev.at;
     if (r.dirty) {
       // Someone else moved while we were editing: flag it, but leave the local text on screen. The
       // server's text is fetched only if the author actually asks to see it.
-      this.#enterConflict(r, { kind: "changed", ...(ev.version === undefined ? {} : { version: ev.version }) }, `${ev.path} changed on the server`);
+      this.#enterConflict(r, {
+        kind: "changed", ...(ev.version === undefined ? {} : { version: ev.version }), ...who,
+      }, `${ev.path} changed on the server`);
       return;
     }
     if (r.text === undefined && r.bytes === undefined) {

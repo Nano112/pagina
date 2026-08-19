@@ -1,5 +1,24 @@
 import type { OgConfig } from "./og.js";
 
+/**
+ * A person, as the host that authenticated them describes them.
+ *
+ * It lives in core rather than in the editor because two unrelated things need the same shape: the
+ * editor's backend contract, which reports who last wrote a file, and `bundle.json`, which can
+ * carry that across a `pack`. Two structurally identical `Author` types in two packages is the
+ * arrangement in which they drift.
+ *
+ * `id` is the host's own identifier — a database key, an LDAP uid, a username. `name` is what the
+ * person is called, and is **required**, because a UI that shows a UUID is not attribution. Neither
+ * is ever supplied by the browser; see the write path in `docs/editing.md`.
+ */
+export interface Author {
+  readonly id: string;
+  readonly name: string;
+  readonly email?: string;
+  readonly avatarUrl?: string;
+}
+
 export interface ContentFs {
   read(path: string): Promise<string>;                 // utf8; throws if missing
   readBinary(path: string): Promise<Uint8Array>;

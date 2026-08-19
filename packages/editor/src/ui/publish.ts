@@ -23,7 +23,7 @@ import {
   seekTimeline,
   withFontFamily,
 } from "kineglyph";
-import { inlineArticleFigures, type RenderedArticle } from "@pagina/core";
+import { inlineArticleFigures, type Author, type RenderedArticle } from "@pagina/core";
 import type { ArticleStore } from "../store/index.js";
 import { evaluateModule, evaluateSceneModule } from "./kineglyph.js";
 
@@ -172,6 +172,12 @@ async function sceneSource(store: ArticleStore, path: string): Promise<string> {
  */
 export interface PublishResult {
   readonly publishedAt: string;
+  /**
+   * Who published, when the backend reports it. Publishing is an edit too, and it is the event a
+   * reader's page is attributed to — so a host that shows "last published by" on the article gets
+   * it from here rather than by guessing at whoever is logged in now.
+   */
+  readonly publishedBy?: Author;
   readonly article: RenderedArticle;
 }
 
@@ -196,6 +202,10 @@ export async function publishArticle(store: ArticleStore): Promise<PublishResult
     return svg === undefined ? undefined : { svg, needsRuntime: needsRuntime[id] ?? true };
   });
   for (const diagnostic of inlined.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
-  const { publishedAt } = await store.publish(figures, inlined.article);
-  return { publishedAt, article: inlined.article };
+  const { publishedAt, publishedBy } = await store.publish(figures, inlined.article);
+  return {
+    publishedAt,
+    ...(publishedBy === undefined ? {} : { publishedBy }),
+    article: inlined.article,
+  };
 }

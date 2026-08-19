@@ -25,10 +25,13 @@
  * is never reused, so a stale version cannot accidentally match a file that was deleted and
  * recreated under the same path. The counter deliberately survives {@link reset}.
  */
+import { parseAuthor, parseInstant } from "@pagina/core";
 import type {
-  ArticleBackend, BackendChange, FileEntry, PublishPayload, UploadResult, WriteOptions,
+  ArticleBackend, Author, BackendChange, Edit, EditAction, FileEntry, HistoryOptions,
+  PublishPayload, PublishRecord, UploadResult, WriteOptions, WriteRecord,
 } from "./types.js";
 import { BackendError, ConflictError } from "./types.js";
+import { LOCAL_AUTHOR, selectHistory } from "./attribution.js";
 
 /** The part of `Storage` this backend uses — small enough that a test can pass a plain object. */
 export interface StorageLike {
@@ -83,6 +86,25 @@ export interface LocalStorageBackendOptions {
   readonly latency?: number;
   /** Key prefix, ahead of the namespace. Only worth changing to avoid a clash with other software. */
   readonly keyPrefix?: string;
+  /**
+   * Who this backend attributes every write to.
+   *
+   * One browser is one person, so this is a single identity fixed at construction rather than
+   * anything a caller can pass to `write()`. Defaults to {@link LOCAL_AUTHOR}, which is named
+   * "This browser" precisely so it does not read as an account.
+   *
+   * A host page that *does* know who is sitting there — a Blade page that already rendered the
+   * user's name — should pass it, and gets a conflict banner that names a person across two tabs.
+   */
+  readonly author?: Author;
+  /**
+   * How many edits the history log keeps, oldest dropped first. Default 200.
+   *
+   * A cap rather than an unbounded log because this log shares the origin's ~5 MB with the article
+   * itself, and a history that eventually costs an author their text would be a bad trade for a
+   * panel.
+   */
+  readonly maxHistory?: number;
 }
 
 /**
@@ -111,13 +133,21 @@ export class StorageQuotaError extends BackendError {
   }
 }
 
-/** One stored file. `v` is the version, `b` marks base64, `s` is the decoded size in bytes. */
+/**
+ * One stored file. `v` is the version, `b` marks base64, `s` is the decoded size in bytes.
+ *
+ * `by`/`at` are the attribution, and are absent on a *seeded* file: the seed came from the host
+ * page, not from the person sitting here, and stamping their name on it would make the very first
+ * thing the panel shows untrue.
+ */
 interface Stored {
   v: number;
   d: string;
   s: number;
   m: string;
   b?: boolean;
+  by?: Author;
+  at?: string;
 }
 
 const encoder = new TextEncoder();
@@ -185,6 +215,9 @@ export class LocalStorageBackend implements ArticleBackend {
   readonly #filePrefix: string;
   readonly #seqKey: string;
   readonly #publishedKey: string;
+  readonly #historyKey: string;
+  readonly #author: Author;
+  readonly #maxHistory: number;
   readonly #maxBinaryBytes: number;
   readonly #latency: number;
   readonly #seed: Readonly<Record<string, string | Uint8Array>>;
@@ -215,6 +248,9 @@ export class LocalStorageBackend implements ArticleBackend {
     this.#filePrefix = `${prefix}${namespace}:file:`;
     this.#seqKey = `${prefix}${namespace}:seq`;
     this.#publishedKey = `${prefix}${namespace}:published`;
+    this.#historyKey = `${prefix}${namespace}:edits`;
+    this.#author = opts.author ?? LOCAL_AUTHOR;
+    this.#maxHistory = Math.max(0, opts.maxHistory ?? 200);
     this.#maxBinaryBytes = opts.maxBinaryBytes ?? 512 * 1024;
     this.#latency = opts.latency ?? 0;
     this.#seed = opts.seed ?? {};
@@ -272,10 +308,16 @@ export class LocalStorageBackend implements ArticleBackend {
     const rec = parsed as Partial<Stored>;
     if (typeof rec.v !== "number" || typeof rec.d !== "string") return undefined;
     this.#known.add(path);
+    // The author is re-validated on the way out, not trusted because it is in our own store: this
+    // is `localStorage`, which any script on the origin can write, so it is an input like any other.
+    const by = parseAuthor(rec.by);
+    const at = parseInstant(rec.at);
     return {
       v: rec.v, d: rec.d, s: typeof rec.s === "number" ? rec.s : rec.d.length,
       m: typeof rec.m === "string" ? rec.m : new Date(0).toISOString(),
       ...(rec.b === true ? { b: true } : {}),
+      ...(by === undefined ? {} : { by }),
+      ...(at === undefined ? {} : { at }),
     };
   }
 
@@ -284,16 +326,80 @@ export class LocalStorageBackend implements ArticleBackend {
     this.#known.add(path);
   }
 
-  #putText(path: string, text: string): number {
+  /**
+   * The attribution stamped onto a write, and the log entry recording it.
+   *
+   * `attributed: false` is the seed path: no author on the file, no entry in the log.
+   */
+  #stamp(path: string, version: number, action: EditAction, attributed: boolean, from?: string): Partial<Stored> {
+    if (!attributed) return {};
+    const at = new Date().toISOString();
+    this.#append({
+      path, action, at, by: this.#author, version: String(version),
+      ...(from === undefined ? {} : { from }),
+    });
+    return { by: this.#author, at };
+  }
+
+  #putText(path: string, text: string, opts: { attributed?: boolean; action?: EditAction; from?: string } = {}): number {
     const v = this.#nextVersion(path);
-    this.#store(path, { v, d: text, s: encoder.encode(text).byteLength, m: new Date().toISOString() });
+    const stamp = this.#stamp(path, v, opts.action ?? "write", opts.attributed !== false, opts.from);
+    this.#store(path, { v, d: text, s: encoder.encode(text).byteLength, m: new Date().toISOString(), ...stamp });
     return v;
   }
 
-  #putBytes(path: string, bytes: Uint8Array): number {
+  #putBytes(path: string, bytes: Uint8Array, opts: { attributed?: boolean; action?: EditAction } = {}): number {
     const v = this.#nextVersion(path);
-    this.#store(path, { v, d: toBase64(bytes), s: bytes.byteLength, m: new Date().toISOString(), b: true });
+    const stamp = this.#stamp(path, v, opts.action ?? "upload", opts.attributed !== false);
+    this.#store(path, { v, d: toBase64(bytes), s: bytes.byteLength, m: new Date().toISOString(), b: true, ...stamp });
     return v;
+  }
+
+  // ---- the edit log ----------------------------------------------------------------------------
+
+  /**
+   * The whole log, oldest first. Unreadable or foreign JSON under our key is treated as an empty
+   * log for the same reason a corrupt file is treated as absent: a bad key must not wedge the
+   * article, and history is the least important thing here to lose.
+   */
+  #log(): Edit[] {
+    const raw = this.#storage.getItem(this.#historyKey);
+    if (raw === null) return [];
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { return []; }
+    if (!Array.isArray(parsed)) return [];
+    const out: Edit[] = [];
+    for (const item of parsed) {
+      if (item === null || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const by = parseAuthor(o["by"]);
+      const at = parseInstant(o["at"]);
+      if (by === undefined || at === undefined || typeof o["path"] !== "string") continue;
+      out.push({
+        path: o["path"], action: (o["action"] ?? "write") as EditAction, at, by,
+        version: typeof o["version"] === "string" ? o["version"] : "",
+        ...(typeof o["from"] === "string" ? { from: o["from"] } : {}),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Appends one entry, dropping the oldest past the cap.
+   *
+   * A full store must never cost an author their text, and an edit that saved fine only to fail
+   * while writing *the note that it saved* would do exactly that — so a quota failure here is
+   * swallowed rather than thrown. History is the expendable half of this pair, and it is the half
+   * that gives way.
+   */
+  #append(entry: Edit): void {
+    if (this.#maxHistory === 0) return;
+    const log = this.#log();
+    log.push(entry);
+    const kept = log.slice(Math.max(0, log.length - this.#maxHistory));
+    try {
+      this.#storage.setItem(this.#historyKey, JSON.stringify(kept));
+    } catch { /* the file write matters; the note about it does not */ }
   }
 
   #paths(): string[] {
@@ -308,7 +414,21 @@ export class LocalStorageBackend implements ArticleBackend {
   }
 
   #entry(path: string, rec: Stored): FileEntry {
-    return { path, version: String(rec.v), size: rec.s, mtime: rec.m };
+    return {
+      path, version: String(rec.v), size: rec.s, mtime: rec.m,
+      ...(rec.by === undefined ? {} : { lastEditedBy: rec.by }),
+      ...(rec.at === undefined ? {} : { lastEditedAt: rec.at }),
+    };
+  }
+
+  /** The write record a mutation answers with. */
+  #written(path: string, version: number): WriteRecord {
+    const rec = this.#load(path);
+    return {
+      version: String(version),
+      ...(rec?.by === undefined ? {} : { lastEditedBy: rec.by }),
+      ...(rec?.at === undefined ? {} : { lastEditedAt: rec.at }),
+    };
   }
 
   #text(rec: Stored): string {
@@ -350,13 +470,16 @@ export class LocalStorageBackend implements ArticleBackend {
     return { bytes: rec.b === true ? fromBase64(rec.d) : encoder.encode(rec.d), version: String(rec.v) };
   }
 
-  async write(path: string, text: string, opts?: WriteOptions): Promise<{ version: string }> {
+  async write(path: string, text: string, opts?: WriteOptions): Promise<WriteRecord> {
     await this.#tick();
     const current = this.#load(path);
     if (opts?.version !== undefined && current !== undefined && String(current.v) !== opts.version) {
-      throw new ConflictError({ path, theirs: this.#text(current), version: String(current.v) });
+      throw new ConflictError({
+        path, theirs: this.#text(current), version: String(current.v),
+        by: current.by, at: current.at,
+      });
     }
-    return { version: String(this.#putText(path, text)) };
+    return this.#written(path, this.#putText(path, text));
   }
 
   /**
@@ -385,9 +508,9 @@ export class LocalStorageBackend implements ArticleBackend {
       );
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const version = String(this.#putBytes(target, bytes));
+    const version = this.#putBytes(target, bytes);
     const type = file.type === "" ? "application/octet-stream" : file.type;
-    return { path: target, url: `data:${type};base64,${toBase64(bytes)}`, version };
+    return { path: target, url: `data:${type};base64,${toBase64(bytes)}`, ...this.#written(target, version) };
   }
 
   async delete(path: string): Promise<void> {
@@ -395,16 +518,18 @@ export class LocalStorageBackend implements ArticleBackend {
     this.#require(path);
     this.#storage.removeItem(this.#keyOf(path));
     this.#known.delete(path);
+    this.#append({ path, action: "delete", at: new Date().toISOString(), by: this.#author, version: "" });
   }
 
-  async rename(from: string, to: string): Promise<{ version: string }> {
+  async rename(from: string, to: string): Promise<WriteRecord> {
     await this.#tick();
     const rec = this.#require(from);
     const v = this.#nextVersion(to);
-    this.#store(to, { ...rec, v, m: new Date().toISOString() });
+    const stamp = this.#stamp(to, v, "rename", true, from);
+    this.#store(to, { ...rec, v, m: new Date().toISOString(), ...stamp });
     this.#storage.removeItem(this.#keyOf(from));
     this.#known.delete(from);
-    return { version: String(v) };
+    return this.#written(to, v);
   }
 
   async stat(path: string): Promise<FileEntry | null> {
@@ -422,24 +547,40 @@ export class LocalStorageBackend implements ArticleBackend {
    * the payload stays reachable through {@link published} for the life of the page, which is what a
    * test or a preview pane actually wants.
    */
-  async publish(payload: PublishPayload): Promise<{ publishedAt: string }> {
+  async publish(payload: PublishPayload): Promise<PublishRecord> {
     await this.#tick();
     this.#published = payload;
-    const publishedAt = new Date().toISOString();
-    this.#set(this.#publishedKey, JSON.stringify({ publishedAt }), this.#publishedKey);
-    return { publishedAt };
+    const record: PublishRecord = { publishedAt: new Date().toISOString(), publishedBy: this.#author };
+    this.#set(this.#publishedKey, JSON.stringify(record), this.#publishedKey);
+    this.#append({
+      path: payload.manifest.article.slug, action: "publish", at: record.publishedAt,
+      by: this.#author, version: "",
+    });
+    return record;
+  }
+
+  /** What the last {@link publish} in *any* tab recorded, or `undefined`. */
+  get publishRecord(): PublishRecord | undefined {
+    const raw = this.#storage.getItem(this.#publishedKey);
+    if (raw === null) return undefined;
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { return undefined; }
+    if (parsed === null || typeof parsed !== "object") return undefined;
+    const o = parsed as Record<string, unknown>;
+    const publishedAt = parseInstant(o["publishedAt"]);
+    if (publishedAt === undefined) return undefined;
+    const publishedBy = parseAuthor(o["publishedBy"]);
+    return { publishedAt, ...(publishedBy === undefined ? {} : { publishedBy }) };
   }
 
   /** When {@link publish} was last called in *any* tab, or `undefined`. */
   get publishedAt(): string | undefined {
-    const raw = this.#storage.getItem(this.#publishedKey);
-    if (raw === null) return undefined;
-    try {
-      const parsed = JSON.parse(raw) as { publishedAt?: unknown };
-      return typeof parsed.publishedAt === "string" ? parsed.publishedAt : undefined;
-    } catch {
-      return undefined;
-    }
+    return this.publishRecord?.publishedAt;
+  }
+
+  async history(path?: string, opts?: HistoryOptions): Promise<Edit[]> {
+    await this.#tick();
+    return selectHistory(this.#log(), path, opts);
   }
 
   // ---- cross-tab ---------------------------------------------------------------------------
@@ -465,12 +606,23 @@ export class LocalStorageBackend implements ArticleBackend {
       return;
     }
     let version: string | undefined;
+    let by: Author | undefined;
+    let at: string | undefined;
     try {
-      const parsed = JSON.parse(ev.newValue) as { v?: unknown };
+      const parsed = JSON.parse(ev.newValue) as { v?: unknown; by?: unknown; at?: unknown };
       if (typeof parsed.v === "number") version = String(parsed.v);
+      // The other tab wrote its own identity into the record, so the change event can name it —
+      // which is what lets two tabs with two identities produce a banner that names a person.
+      by = parseAuthor(parsed.by);
+      at = parseInstant(parsed.at);
     } catch { /* a value we cannot read is still a change; report it without a version */ }
     this.#known.add(path);
-    this.#emit({ type: "changed", path, ...(version === undefined ? {} : { version }) });
+    this.#emit({
+      type: "changed", path,
+      ...(version === undefined ? {} : { version }),
+      ...(by === undefined ? {} : { by }),
+      ...(at === undefined ? {} : { at }),
+    });
   };
 
   #emit(change: BackendChange): void {
@@ -513,8 +665,11 @@ export class LocalStorageBackend implements ArticleBackend {
   ): Promise<void> {
     for (const [path, content] of Object.entries(files)) {
       if (opts.overwrite !== true && this.#load(path) !== undefined) continue;
-      if (typeof content === "string") this.#putText(path, content);
-      else this.#putBytes(path, content);
+      // Seeding is not editing: the host page supplied these, so they carry no author and produce
+      // no log entry. An article that opens claiming three edits nobody made is worse than one
+      // that opens claiming none.
+      if (typeof content === "string") this.#putText(path, content, { attributed: false });
+      else this.#putBytes(path, content, { attributed: false });
     }
     await Promise.resolve();
   }
@@ -526,6 +681,9 @@ export class LocalStorageBackend implements ArticleBackend {
       this.#known.delete(path);
     }
     this.#storage.removeItem(this.#publishedKey);
+    // The log goes with the files it describes: a history of edits to an article that is no longer
+    // there is not a record, it is debris.
+    this.#storage.removeItem(this.#historyKey);
     this.#published = undefined;
     await Promise.resolve();
   }

@@ -279,7 +279,7 @@ describe("ArticleStore", () => {
 
     const state = store.files.get("index.md")!;
     expect(state.status).toBe("conflict");
-    expect(state.conflict).toEqual({ kind: "deleted" });
+    expect(state.conflict?.kind).toEqual("deleted");
     expect(state.text).toBe("# Unsaved\n");
 
     // the queued write must not fire — that would silently recreate the file the other side removed
@@ -301,7 +301,7 @@ describe("ArticleStore", () => {
     store.setText("index.md", "# Unsaved\n");
     await b.emit({ type: "deleted", path: "index.md" });
     await vi.advanceTimersByTimeAsync(0);
-    expect(store.files.get("index.md")?.conflict).toEqual({ kind: "deleted" });
+    expect(store.files.get("index.md")?.conflict?.kind).toEqual("deleted");
 
     await store.resolveConflict("index.md", "mine");
     const state = store.files.get("index.md")!;
