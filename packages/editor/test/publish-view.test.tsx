@@ -85,7 +85,11 @@ const publish = async (): Promise<void> => {
   await act(async () => {
     host.querySelector<HTMLButtonElement>(".pge-bar__publish")!.click();
   });
-  await settle();
+  // Wait for the view, rather than for a number of scheduler turns. Publishing renders every page
+  // and every figure before the reading view exists, so the three rounds a bare `settle()` gives
+  // are a guess — and CI is the machine that gets the guess wrong: this failed there on a null
+  // click while passing every local run.
+  await settle(2_000, () => host.querySelector(".pge-published") !== null);
 };
 
 describe("Publish", () => {
