@@ -13,6 +13,15 @@ const USAGE = [
 
 let positionals: string[];
 let values: { out?: string; base?: string; port?: string; host?: string; edit?: boolean; "no-strict"?: boolean; theme?: string; "no-chrome"?: boolean; "strict-assets"?: boolean; "no-search"?: boolean; "site-url"?: string; "mirror-of"?: string; created?: string; force?: boolean };
+// Asking for help is not a usage error: it goes to stdout and exits 0, so `pagina --help` can
+// be piped and the first command the docs tell a reader to run does not report failure. This
+// sits above parseArgs because parseArgs throws on a flag it was not told about, and that
+// throw is what used to turn a help request into exit 2.
+if (process.argv.slice(2).some((a) => a === "--help" || a === "-h")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
 try {
   ({ positionals, values } = parseArgs({
     allowPositionals: true,
