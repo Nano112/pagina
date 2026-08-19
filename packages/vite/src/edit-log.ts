@@ -12,7 +12,7 @@
  * append-only in fact and not just in intention: no read-modify-write, so a crash mid-log costs the
  * last line rather than the file, and a concurrent append cannot interleave a partial record.
  */
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { parseAuthor, parseInstant, type Author } from "@pagina/core";
@@ -66,21 +66,44 @@ function parseLine(line: string): LoggedEdit | undefined {
   };
 }
 
+/**
+ * Parsed logs, keyed by file, and validated by **size**.
+ *
+ * Size is a sound key here and would not be anywhere else: this log is only ever appended to, never
+ * rewritten in place, so a file that is the same length is the same file. That is what lets the
+ * middleware re-ask on every request — which it must, because it is not necessarily the only writer
+ * — without re-parsing a log that has not moved. A log that shrinks (deleted, truncated, replaced)
+ * fails the check and is read again.
+ */
+const parsed = new Map<string, { size: number; entries: LoggedEdit[] }>();
+
 /** Reads the whole log, oldest first. A missing log is an empty one; a bad line is skipped. */
 export async function readEditLog(root: string): Promise<LoggedEdit[]> {
+  const file = join(root, ...EDIT_LOG_PATH.split("/"));
+  let size: number;
+  try {
+    size = (await stat(file)).size;
+  } catch {
+    parsed.delete(file);
+    return [];
+  }
+  const cached = parsed.get(file);
+  if (cached !== undefined && cached.size === size) return cached.entries;
+
   let text: string;
   try {
-    text = await readFile(join(root, ...EDIT_LOG_PATH.split("/")), "utf8");
+    text = await readFile(file, "utf8");
   } catch {
     return [];
   }
-  const out: LoggedEdit[] = [];
+  const entries: LoggedEdit[] = [];
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
     const entry = parseLine(line);
-    if (entry !== undefined) out.push(entry);
+    if (entry !== undefined) entries.push(entry);
   }
-  return out;
+  parsed.set(file, { size, entries });
+  return entries;
 }
 
 /** Appends one record. Creates `.pagina/` if it is not there yet. */
