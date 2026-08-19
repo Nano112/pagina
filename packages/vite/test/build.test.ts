@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { tempDir } from "../../../test/tmp.js";
 import { staticShell } from "@pagina/shell-static";
 import { buildStatic, bundleClient } from "../src/index.js";
@@ -13,6 +13,17 @@ const shellClient = new URL("../../shell-static/client/pagina.ts", import.meta.u
 
 /** `pagina.a1b2c3d4.js` → `pagina.js`: what an assertion about *which* artefact can compare on. */
 const unhashed = (url: string): string => url.replace(/\.[0-9a-f]{8}(\.(?:js|css))(?=$|[?#])/, "$1");
+
+/** Every file under `dir`, as sorted paths relative to it — the built site as a reader sees it. */
+async function walk(dir: string, root = dir): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...await walk(p, root));
+    else out.push(relative(root, p));
+  }
+  return out.sort();
+}
 
 /**
  * A throwaway copy of the fixture whose `article.yaml` has been edited.
@@ -407,4 +418,23 @@ describe("bundleClient", () => {
     expect(urls.tokensCssUrl).toBeUndefined();
     expect(existsSync(join(outDir, "_pagina/pagina.tokens.css"))).toBe(false);
   }, 60_000);
+
+  /**
+   * The defect this closes: `files` was assembled by hand at each write, and the one write that
+   * does not go through this module — `bundleClient`, which hands its output to vite — was never
+   * added to it. So a build that put 28 files on disk answered with 22, and `pagina build` printed
+   * `wrote 22 files` at a directory containing 28. The gap was the client, its stylesheet, the
+   * tokens sheet, the kineglyph runtime and the two code-split chunks.
+   *
+   * The assertion is the whole set rather than the count, because a count can be made to match by
+   * a second mistake, and because naming the *right* files is what makes the number mean anything.
+   */
+  it("reports exactly the files it wrote", async () => {
+    const outDir = await tempDir("file-list");
+    // The real shell, not the stub: the code-split chunks only exist in the real client.
+    const r = await buildStatic({ folder: fixture, outDir, shell: staticShell, strict: true });
+    expect([...r.files].sort()).toEqual(await walk(outDir));
+    // The listing is not trivially satisfied by an empty build on either side.
+    expect(r.files.length).toBeGreaterThan(10);
+  }, 90_000);
 });

@@ -65,6 +65,11 @@ export interface BuildOptions {
 }
 
 export interface BuildResult {
+  /**
+   * Every file the build wrote, relative to `outDir` — pages, copied assets, pre-rendered figures,
+   * the search index, the SEO files, and the client bundle's own artefacts. Callers report this as
+   * a count, so anything written and left out of it makes that count a lie.
+   */
   readonly files: string[];
   readonly diagnostics: Diagnostic[];
   /**
@@ -210,11 +215,19 @@ export async function bundleClient(
   outDir: string,
   base: string,
   clientEntry: string,
-): Promise<{ clientUrl: string; cssUrl: string; tokensCssUrl?: string; kineglyphRuntimeUrl: string }> {
+): Promise<{ clientUrl: string; cssUrl: string; tokensCssUrl?: string; kineglyphRuntimeUrl: string; files: string[] }> {
   const tmpEntry = join(outDir, KINEGLYPH_ENTRY);
   await write(outDir, KINEGLYPH_ENTRY, `export * from "@kineglyph/web/bundle";\n`);
+  /**
+   * What rollup emitted, by name relative to `_pagina/`. Taken from the build's own output rather
+   * than from a directory listing, because `_pagina/` already holds the pre-rendered figures by
+   * the time this runs — and from the output rather than a fixed list of four names, because the
+   * client is code-split: the editor and the search UI are dynamic imports, and their chunks are
+   * files this build wrote just as much as `pagina.js` is.
+   */
+  const emitted = new Set<string>();
   try {
-    await viteBuild({
+    const bundled = await viteBuild({
       logLevel: "warn",
       configFile: false,
       root: dirname(clientEntry),
@@ -232,6 +245,8 @@ export async function bundleClient(
       // specifier has to be aliased rather than resolved from the importer's directory.
       resolve: { conditions: ["production"], alias: { "@kineglyph/web/bundle": resolveKineglyphBundle("import") } },
     });
+    for (const out of Array.isArray(bundled) ? bundled : [bundled])
+      if ("output" in out) for (const chunk of out.output) emitted.add(chunk.fileName);
   } finally {
     await rm(tmpEntry, { force: true });
   }
@@ -241,7 +256,10 @@ export async function bundleClient(
   const tokensSrc = resolve(clientEntry, "../tokens.css");
   const assets = join(outDir, "_pagina");
   const hasTokens = existsSync(tokensSrc);
-  if (hasTokens) await cp(tokensSrc, join(assets, "pagina.tokens.css"));
+  if (hasTokens) {
+    await cp(tokensSrc, join(assets, "pagina.tokens.css"));
+    emitted.add("pagina.tokens.css");
+  }
   // Last build's names, cleared before this build's are minted. `emptyOutDir` is off (the figures
   // and the manifest live here too), so without this a directory rebuilt in place would keep every
   // version of the client it has ever had — and the unreferenced-file report cannot see `_pagina/`.
@@ -250,17 +268,24 @@ export async function bundleClient(
   }
   const cssPath = join(assets, "pagina.css");
   const cssDigest = existsSync(cssPath) ? await sha256Hex(await readFile(cssPath)) : undefined;
-  const client = await hashInPlace(assets, "pagina.js");
-  const css = await hashInPlace(assets, "pagina.css", cssDigest);
+  /** Renames the artefact *and* keeps {@link emitted} naming the file that is now on disk. */
+  const hashed = async (name: string, digest?: string): Promise<string> => {
+    const to = await hashInPlace(assets, name, digest);
+    if (to !== name && emitted.delete(name)) emitted.add(to);
+    return to;
+  };
+  const client = await hashed("pagina.js");
+  const css = await hashed("pagina.css", cssDigest);
   // Deliberately the *full* sheet's digest — see the note above `bundleClient`.
-  const tokens = await hashInPlace(assets, "pagina.tokens.css", cssDigest);
-  const kineglyph = await hashInPlace(assets, "kineglyph.js");
+  const tokens = await hashed("pagina.tokens.css", cssDigest);
+  const kineglyph = await hashed("kineglyph.js");
   const b = base.replace(/\/$/, "");
   return {
     clientUrl: `${b}/_pagina/${client}`,
     cssUrl: `${b}/_pagina/${css}`,
     ...(hasTokens ? { tokensCssUrl: `${b}/_pagina/${tokens}` } : {}),
     kineglyphRuntimeUrl: `${b}/_pagina/${kineglyph}`,
+    files: [...emitted].map((n) => `_pagina/${n}`).sort(),
   };
 }
 
@@ -325,7 +350,10 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
     await cp(resolve(o.folder, asset), join(o.outDir, asset));
     files.push(asset);
   }
-  const urls = await bundleClient(o.outDir, base, o.shell.clientEntry);
+  // The client bundle is part of the site, so its artefacts belong in `files` like everything else
+  // this build wrote — they are what `pagina: wrote N files` was under-counting by.
+  const { files: clientFiles, ...urls } = await bundleClient(o.outDir, base, o.shell.clientEntry);
+  files.push(...clientFiles);
   // Built from the *inlined* article, so the figures' `<title>`/`<desc>` are in the HTML by the
   // time it is read — a diagram's description is indexable only in this window, between inlining
   // and the shell turning the article into files.

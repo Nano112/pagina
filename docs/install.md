@@ -101,7 +101,7 @@ npx pagina build docs --out site
 ```
 [warning] sitemap-skipped : no site_url is configured, so no sitemap.xml was written;
 set `site_url` in article.yaml or pass --site-url
-pagina: wrote 8 files
+pagina: wrote 14 files
 ```
 
 Both pages, a `404.html`, a `robots.txt`, an `llms.txt`, a search index and the hashed client
