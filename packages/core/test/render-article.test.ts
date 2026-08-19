@@ -112,10 +112,12 @@ describe("renderArticle", () => {
     const r = await renderArticle({ fs: nodeFs(fixture), strict: true });
     for (const meta of Object.values(r.manifest.pages)) {
       expect(meta.cover).toBe("/media/cover.svg");
-      expect(meta.description).toBe("A fixture article, used by pagina's own tests.");
       expect(meta.author).toBe("Fixture Author");
       expect(meta.noindex).toBeUndefined();         // the fixture is published
     }
+    // `description` is the exception, and deliberately: a page with prose of its own describes
+    // itself with it rather than inheriting one sentence about the article. See the chain below.
+    expect(r.manifest.pages["/"]!.description).toBe("Welcome. See tabs and figures.");
   });
 
   it("lets a page's front matter override the article, field by field", async () => {
@@ -158,24 +160,46 @@ describe("renderArticle", () => {
     expect(r.manifest.article.cover).toBe("https://cdn.example/hero.png");
   });
 
-  it("falls back to the first paragraph when neither page nor article has a description", async () => {
+  it("prefers the page's own opening paragraph to the article's description", async () => {
     const base = nodeFs(fixture);
     const fs: ContentFs = { ...base,
-      read: async (p) => p === "article.yaml"
-        ? (await base.read(p)).replace("description: A fixture article, used by pagina's own tests.\n", "")
-        : p === "index.md" ? `# X\n\nThe opening paragraph, which is the last resort.\n` : base.read(p),
+      read: async (p) => (p === "index.md" ? `# X\n\nThe opening paragraph, which the article does not outrank.\n` : base.read(p)),
     };
     const r = await renderArticle({ fs, strict: true });
-    expect(r.manifest.pages["/"]!.description).toBe("The opening paragraph, which is the last resort.");
+    expect(r.manifest.pages["/"]!.description).toBe("The opening paragraph, which the article does not outrank.");
+  });
+
+  it("falls back to the article's description for a page with no prose to open with", async () => {
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md" ? `# X\n\n!!! note "Only an admonition"\n    Which is not the page's own opening line.\n` : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    expect(r.manifest.pages["/"]!.description).toBe("A fixture article, used by pagina's own tests.");
+  });
+
+  it("gives two pages that declare no description of their own two different ones", async () => {
+    // The defect this order exists to prevent: with the article ahead of the excerpt, every page
+    // that wrote nothing shipped the same `<meta name="description">` and the same card subtitle.
+    const base = nodeFs(fixture);
+    const fs: ContentFs = { ...base,
+      read: async (p) => (p === "index.md" ? `# X\n\nWhat the landing page is about.\n`
+        : p === "guide/tabs.md" ? `# T\n\nWhat the tabs page is about.\n`
+        : base.read(p)),
+    };
+    const r = await renderArticle({ fs, strict: true });
+    const a = r.manifest.pages["/"]!.description;
+    const b = r.manifest.pages["/guide/tabs/"]!.description;
+    expect(a).toBe("What the landing page is about.");
+    expect(b).toBe("What the tabs page is about.");
+    expect(a).not.toBe(b);
   });
 
   it("truncates a long description on a word boundary before it reaches the manifest", async () => {
     const base = nodeFs(fixture);
     const long = `${"alpha ".repeat(60)}omega`;
     const fs: ContentFs = { ...base,
-      read: async (p) => (p === "article.yaml"
-        ? (await base.read(p)).replace("A fixture article, used by pagina's own tests.", long.trim())
-        : base.read(p)),
+      read: async (p) => (p === "index.md" ? `---\ndescription: ${long.trim()}\n---\n# X\n` : base.read(p)),
     };
     const r = await renderArticle({ fs, strict: true });
     const d = r.manifest.pages["/"]!.description!;

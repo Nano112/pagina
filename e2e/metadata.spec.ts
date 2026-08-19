@@ -39,7 +39,9 @@ test.describe("the published page's metadata", () => {
 
   test("carries title, description, canonical, OpenGraph and Twitter", async ({ page }) => {
     await expect(page).toHaveTitle("Fixture · Fixture Docs");
-    expect(await meta(page, 'meta[name="description"]')).toBe("A fixture article, used by pagina's own tests.");
+    // The landing page's own opening line, not `article.yaml`'s description: a page that has prose
+    // describes itself with it, so that pages which declare nothing do not all share one sentence.
+    expect(await meta(page, 'meta[name="description"]')).toBe("Welcome. See tabs and figures.");
     expect(await page.locator('head link[rel="canonical"]').getAttribute("href")).toBe("https://fixture.example/site/");
     expect(await meta(page, 'meta[property="og:type"]')).toBe("article");
     expect(await meta(page, 'meta[property="og:site_name"]')).toBe("Fixture Docs");

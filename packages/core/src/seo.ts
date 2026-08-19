@@ -83,7 +83,8 @@ const SKIP_TAGS = new Set(["aside", "figure", "details", "template", "nav", "hea
 const TAG = /<(\/?)([a-z][a-z0-9-]*)([^>]*)>/gi;
 
 /**
- * The first paragraph of a rendered page, as plain text — the last resort in the description chain.
+ * The first paragraph of a rendered page, as plain text: second in the description chain, behind
+ * only a description the page wrote for itself.
  *
  * Taken from the HTML rather than the markdown because the markdown may still contain snippet
  * includes, tab syntax and admonition fences, none of which is prose. Paragraphs inside an

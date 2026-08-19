@@ -29,6 +29,14 @@ The order is precedence, and the first one that applies wins.
 The third is the floor rather than the aspiration. It exists so that the answer to "what does this
 page share as" is never "nothing", and it is drawn well enough to post.
 
+The description under the title is the same one the page's `<meta name="description">` carries, and
+it is resolved the same way: the page's own `description:`, else the page's opening paragraph, else
+`article.yaml`'s. The page comes before the article deliberately. An article-level description is
+one sentence about the whole project, so taking it first gives every page that wrote nothing the
+same subtitle and the same search-result snippet; the opening paragraph is at least about the page
+it was written on. Which is a way of saying that the good cards are the ones with a real
+`description:` in front matter, and that writing one is the only work here.
+
 The card's slot — the coloured band beside the type — holds one of two things. Given a Kineglyph
 scene it holds that drawing. Given nothing it holds a mark derived from the page's slug: a gradient
 field in the article's accent, with a set of rings whose number, size and placement come out of a

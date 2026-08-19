@@ -162,7 +162,14 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     const fm = p.frontMatter;
     // The description chain, run once here so that every consumer — pagina's shell, a Laravel
     // host reading manifest.json — reaches the same answer without re-deriving it.
-    const description = fm.description ?? config.description ?? p.excerpt;
+    //
+    // The page's own opening line outranks `article.yaml`'s description, which reads backwards
+    // until you look at what the other order produces: every page that wrote no description of
+    // its own gets the article's, so a ten-page article ships ten identical meta descriptions and
+    // ten identical cards. One sentence about the whole project is true of every page and useful
+    // on none of them, while the page's first paragraph is at least about the page. An author who
+    // wants the article's line on a page can still write it there.
+    const description = fm.description ?? p.excerpt ?? config.description;
     // The page's own cover and the page's own alt text travel together: a page that overrides the
     // image but not the description would otherwise be labelled with the article cover's alt.
     const own = await resolveCover(fm.cover, f.page, o.fs, base, f.page, diagnostics, f.page);

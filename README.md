@@ -152,7 +152,7 @@ The renderer resolves all of it once, into the manifest, so a consumer never re-
 | `manifest.pages[href]` | |
 |---|---|
 | `title`, `headings`, `breadcrumbs`, `prev`, `next` | as before |
-| `description` | **resolved**: page front matter → `article.yaml` → the page's first paragraph, whitespace collapsed and truncated to 160 characters on a word boundary |
+| `description` | **resolved**: page front matter → the page's first paragraph → `article.yaml`, whitespace collapsed and truncated to 160 characters on a word boundary. The page's own opening line outranks the article's line so that pages which declare nothing do not all share one description |
 | `cover` | **resolved** site URL: page front matter → `article.yaml` |
 | `coverAlt` | **resolved** alt text: the page's `cover_alt` (only when the page also overrode `cover`) → `article.yaml`'s `cover_alt` → the article title. Present whenever `cover` is, and never `""` |
 | `card` | site URL of the **social card** a build drew for this page, when it drew one. Third choice for `og:image`, behind the page's cover and the article's |

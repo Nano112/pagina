@@ -148,9 +148,11 @@ export function serializeLlmsJson(json: LlmsJson): string {
 /**
  * One line of a markdown list, with the description as the note the convention allows after a colon.
  *
- * A page without a description of its own resolves to the *article's*, which is right for a `<meta>`
- * tag — a page has to say something — and wrong here, where it would print the same sentence after
- * every one of nine links and say nothing about any of them. Recognised by prefix rather than by
+ * A page with neither a description nor an opening paragraph resolves to the *article's*, which is
+ * right for a `<meta>` tag — a page has to say something — and wrong here, where it would print the
+ * same sentence after every such link and say nothing about any of them. That is the last rung of
+ * the chain rather than the second one, so this is now the rare case rather than the common one,
+ * and the suppression still has to be here for it. Recognised by prefix rather than by
  * equality because the page's copy has been truncated on a word boundary and the blockquote's has
  * not. `llms.json` keeps it: there it is the page's resolved description, the same string the meta
  * tag carries, and a consumer that wants to dedupe has the article's description in hand.

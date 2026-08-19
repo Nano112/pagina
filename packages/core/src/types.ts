@@ -171,7 +171,7 @@ export interface RenderedPage {
   readonly figures: readonly FigureRef[]; readonly links: readonly LinkRef[];
   /** The page's front matter, parsed. Empty when the page had none. */
   readonly frontMatter: PageFrontMatter;
-  /** The page's first paragraph as plain text — the last resort in the description chain. */
+  /** The page's first paragraph as plain text, second in the description chain. */
   readonly excerpt?: string;
   /** Whole minutes to read this page's prose. Absent when the page has none. See `reading-time.ts`. */
   readonly readingMinutes?: number;
@@ -182,7 +182,7 @@ export interface NavNode { readonly title: string; readonly href?: string; reado
  * What a shell (or a host) needs to render one page's chrome and its metadata.
  *
  * The four metadata fields are **already resolved**: page front matter wins over `article.yaml`,
- * `description` has run the whole fallback chain (page → article → first paragraph) and is
+ * `description` has run the whole fallback chain (page → the page's first paragraph → article) and is
  * truncated on a word boundary, and `cover` is a site URL (it includes `base`), not the path the
  * author typed. A consumer — pagina's own shell, or a Laravel host reading `manifest.json` — puts
  * them straight into tags without re-deriving anything.

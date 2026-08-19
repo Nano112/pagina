@@ -55,7 +55,7 @@ The fields, in full:
 | `status` | `draft` or `published` (default `draft`). A draft build gets `Disallow: /` and no sitemap |
 | `visibility` | `public`, `members` or `authors` (default `public`); a host's business, not the renderer's |
 | `category`, `tags` | free classification, carried into the manifest |
-| `description` | the fallback meta description for every page that does not carry its own |
+| `description` | the last resort meta description, for a page that carries neither its own nor an opening paragraph to derive one from |
 | `author` | carried into the article's metadata and structured data |
 | `site_url` | where the article lives, for canonical URLs. `--site-url` overrides it |
 | `cover`, `cover_alt` | a path *relative to the folder*, and its alt text |
