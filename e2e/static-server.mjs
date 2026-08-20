@@ -28,6 +28,9 @@ const repo = resolve(here, "..");
 const PORT = Number(process.env.PAGINA_STATIC_PORT ?? 4600);
 const ARTICLE = resolve(here, ".tmp/static-article");
 const API = "/api/articles/fixture";
+/** The cover-less copy, and its own contract mount: `og-cards.spec.ts` publishes *this* one. */
+const CARDS_ARTICLE = resolve(here, ".tmp/cards-article");
+const CARDS_API = "/api/articles/cards";
 /** The built site `e2e/setup.ts` produces, and the base it was built for. Keep the two in step. */
 const SITE = resolve(here, ".tmp/site");
 const SITE_BASE = "/site/";
@@ -51,6 +54,10 @@ const ASSETS = {
   // `tools/build-docs-site.sh` puts on the published site.
   "/vendor/pagina/demo.js": resolve(repo, "packages/editor/dist/demo.js"),
   "/vendor/pagina/editor.css": resolve(repo, "packages/editor/dist/editor.css"),
+  // The font social cards are set in. It sits beside `editor.js` because that is where the bundle
+  // looks for it — a card is rasterised through an `<img>`, which cannot fetch anything, so the
+  // bytes have to be inlined into the SVG and therefore fetched by the editor first.
+  "/vendor/pagina/pagina-card-font.ttf": resolve(repo, "packages/editor/dist/pagina-card-font.ttf"),
   // The theming showcase and the theme lab, served as `tools/build-docs-site.sh` publishes them:
   // five plain-`tsc` ESM modules that find each other by relative specifier. `e2e/theme-lab.spec.ts`
   // drives them over the *built* site, because "a figure re-tints with the page" is a claim about
@@ -94,6 +101,8 @@ const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".ttf": "font/ttf",
+  ".png": "image/png",
 };
 
 /**
@@ -122,7 +131,7 @@ const RESET = `<style>
 </style>`;
 
 /** The Blade view's shape: import map, stylesheet, element, `defineElement()`, publish button. */
-const page = () => `<!doctype html>
+const page = (api = API, cardFontUrl = undefined) => `<!doctype html>
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8"><title>Editing (static host)</title>
@@ -136,7 +145,7 @@ const page = () => `<!doctype html>
 <!-- \`page\` is deliberately empty: that is what \`page="{{ $page }}"\` renders for an article
      opened at its root, and reading it as a value rather than as "unset" made the editor open
      the path "", which a backend answers with its file listing. -->
-<pagina-editor data-editor backend-url="${API}" page="" base="/" theme="light"></pagina-editor>
+<pagina-editor data-editor backend-url="${api}" page="" base="/" theme="light"${cardFontUrl === undefined ? "" : ` card-font-url="${cardFontUrl}"`}></pagina-editor>
 <script type="module">
   import { defineElement } from "/vendor/pagina/editor.js";
   defineElement();
@@ -348,6 +357,11 @@ const HOST_PAGES = {
   // *article's* and not every page's. It is a route rather than an assertion on `/site-dark`
   // because "absent" is only convincing next to a picture of where it is present.
   "/site-dark-sub": () => siteUnderHostTheme("guide/tabs/index.html"),
+  // The cover-less article, open in the editor: what `og-cards.spec.ts` publishes.
+  "/cards-edit": () => page(CARDS_API),
+  // The same editor, pointed at a font that is not there. Publishing must still succeed: a picture
+  // that did not render is never allowed to cost an author their work.
+  "/cards-edit-no-font": () => page(CARDS_API, "/vendor/pagina/not-a-font.ttf"),
   "/host-reset": () => resetHostPage(["editor.css"]),
   "/host-reset-editor-first": () => resetHostPage(["editor.css", "pagina.css"]),
   "/host-reset-pagina-first": () => resetHostPage(["pagina.css", "editor.css"]),
@@ -361,10 +375,11 @@ const HOST_PAGES = {
 };
 
 const edit = viteEditMiddleware(ARTICLE, { base: API, siteBase: "/" });
+const editCards = viteEditMiddleware(CARDS_ARTICLE, { base: CARDS_API, siteBase: "/" });
 
 createServer((req, res) => {
   const path = new URL(req.url ?? "/", "http://localhost").pathname;
-  edit(req, res, () => {
+  edit(req, res, () => { editCards(req, res, () => {
     void (async () => {
       const asset = ASSETS[path];
       if (asset !== undefined) {
@@ -430,7 +445,7 @@ createServer((req, res) => {
       res.statusCode = 404;
       res.end("not found");
     })();
-  });
+  }); });
 }).listen(PORT, "127.0.0.1", () => {
   console.log(`static host on http://127.0.0.1:${PORT}/edit`);
 });

@@ -35,6 +35,19 @@ const FIXTURE = fileURLToPath(new URL("../packages/core/test/fixture/", import.m
  * then overruled when they were painted, because `pagina.css` points every `--kg-color-*` at a
  * `--pg-*`. `figure-theme.spec.ts` measures the published artefact instead of the markup.
  */
+/**
+ * The same article with **no cover**, which is the only shape that draws a social card.
+ *
+ * The fixture sets `cover:` at the article level, so every one of its pages inherits an author's
+ * image and the precedence rule correctly skips them all — which is right, and which means the
+ * fixture can say nothing at all about cards. This copy drops the cover and turns on a glyph, so
+ * both rasterisers have the same eleven pictures to draw and `og-cards.spec.ts` has something to
+ * compare.
+ */
+export const CARDS_ARTICLE = fileURLToPath(new URL(".tmp/cards-article/", import.meta.url));
+export const CARDS_SITE = fileURLToPath(new URL(".tmp/cards-site/", import.meta.url));
+export const CARDS_BASE = "/cards-site/";
+
 export const THEMED_ARTICLE = fileURLToPath(new URL(".tmp/themed-article/", import.meta.url));
 export const THEMED_SITE = fileURLToPath(new URL(".tmp/themed-site/", import.meta.url));
 export const THEMED_BASE = "/themed/";
@@ -155,6 +168,21 @@ export default async function globalSetup(): Promise<void> {
   );
   await rm(THEMED_SITE, { recursive: true, force: true });
   await buildStatic({ folder: THEMED_ARTICLE, outDir: THEMED_SITE, shell: staticShell, base: THEMED_BASE, strict: true });
+
+  // The cards article: the fixture, minus its cover, built and left ready to be published from a
+  // browser. `og-cards.spec.ts` publishes it through the editor and compares what the browser drew
+  // against what resvg drew here.
+  await rm(CARDS_ARTICLE, { recursive: true, force: true });
+  await mkdir(CARDS_ARTICLE, { recursive: true });
+  await cp(FIXTURE, CARDS_ARTICLE, { recursive: true });
+  await cp(fileURLToPath(new URL("../packages/core/test/outside/", import.meta.url)), join(CARDS_ARTICLE, "..", "outside"), { recursive: true });
+  await writeFile(
+    join(CARDS_ARTICLE, "article.yaml"),
+    `${(await readFile(join(FIXTURE, "article.yaml"), "utf8")).replace(/^cover: .*\n/m, "")}\nog:\n  template: editorial\n`,
+    "utf8",
+  );
+  await rm(CARDS_SITE, { recursive: true, force: true });
+  await buildStatic({ folder: CARDS_ARTICLE, outDir: CARDS_SITE, shell: staticShell, base: CARDS_BASE, strict: true });
 
   // Everything above is deliberate and gitignored. From here on, anything new in the working
   // directory is a leak — see `e2e/cwd-guard.ts`.

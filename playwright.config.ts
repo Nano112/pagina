@@ -51,7 +51,10 @@ export default defineConfig({
       // inline SVG in a real artefact that no dev server and no jsdom can be asked about.
       // `print.spec.ts` too: what a reader prints is the built stylesheet on a real server, and
       // `page.pdf()` needs a page a browser actually laid out.
-      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo|theme-lab|not-found|search|print)\.spec\.ts/,
+      // `og-cards.spec.ts` last: a social card is drawn with `FontFace`, an `<img>` decoding an SVG
+      // document and `canvas.toBlob`, none of which jsdom has any of. A unit test could only assert
+      // that we called `toBlob`, which was never the part in doubt.
+      testMatch: /(bundle|host-theming|admonitions|metadata|figures|figure-theme|demo|theme-lab|not-found|search|print|og-cards)\.spec\.ts/,
       use: { baseURL: `http://127.0.0.1:${String(STATIC_PORT)}` },
     },
   ],
