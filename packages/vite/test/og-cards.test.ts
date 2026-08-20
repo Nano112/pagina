@@ -17,9 +17,8 @@ import { tempDir } from "../../../test/tmp.js";
 import { renderArticle } from "@pagina/core";
 import type { ArticleConfig, RenderedArticle } from "@pagina/core";
 import { NodeContentFs } from "../src/node-fs.js";
-import { cardCacheKey, cardSlug, generateOgCards, planOgCards, withOgCards } from "../src/og-cards.js";
-import { proceduralMark, slugSeed } from "../src/og-card.js";
-import { DEFAULT_LIGHT } from "../src/og-theme.js";
+import { generateOgCards, planOgCards } from "../src/og-cards.js";
+import { DEFAULT_LIGHT, cardCacheKey, cardSlug, proceduralMark, slugSeed, withOgCards } from "@pagina/core";
 import type { CardJob } from "../src/og-render.js";
 
 /** Width and height out of a PNG's IHDR — the only honest way to ask how big a card came out. */
@@ -106,20 +105,20 @@ describe("cardCacheKey", () => {
     palette: DEFAULT_LIGHT, template: "editorial", width: 1200, height: 630, slotWidth: 392, glyphPosition: "right",
   };
   const key = (o: Partial<Parameters<typeof cardCacheKey>[0]> = {}): string =>
-    cardCacheKey({ job: base, fontDigest: "f00", fontFamily: "Instrument Sans", pagina: "0.2.0", ...o });
+    cardCacheKey({ spec: base, fontDigest: "f00", fontFamily: "Instrument Sans", pagina: "0.2.0", ...o });
 
   it("changes when any input that can change the picture changes", () => {
     const original = key();
     const differs: Record<string, string> = {
-      title: key({ job: { ...base, content: { ...base.content, title: "Other" } } }),
-      description: key({ job: { ...base, content: { ...base.content, description: "other" } } }),
-      slug: key({ job: { ...base, content: { ...base.content, slug: "cards/other/" } } }),
-      theme: key({ job: { ...base, palette: { ...DEFAULT_LIGHT, accent: "#a00000" } } }),
-      template: key({ job: { ...base, template: "figure" } }),
-      width: key({ job: { ...base, width: 1000 } }),
-      height: key({ job: { ...base, height: 500 } }),
-      slotWidth: key({ job: { ...base, slotWidth: 480 } }),
-      glyphPosition: key({ job: { ...base, glyphPosition: "left" } }),
+      title: key({ spec: { ...base, content: { ...base.content, title: "Other" } } }),
+      description: key({ spec: { ...base, content: { ...base.content, description: "other" } } }),
+      slug: key({ spec: { ...base, content: { ...base.content, slug: "cards/other/" } } }),
+      theme: key({ spec: { ...base, palette: { ...DEFAULT_LIGHT, accent: "#a00000" } } }),
+      template: key({ spec: { ...base, template: "figure" } }),
+      width: key({ spec: { ...base, width: 1000 } }),
+      height: key({ spec: { ...base, height: 500 } }),
+      slotWidth: key({ spec: { ...base, slotWidth: 480 } }),
+      glyphPosition: key({ spec: { ...base, glyphPosition: "left" } }),
       fonts: key({ fontDigest: "beef" }),
       pagina: key({ pagina: "0.3.0" }),
     };
@@ -128,16 +127,16 @@ describe("cardCacheKey", () => {
 
   it("follows the glyph's bytes, not its path", () => {
     const withGlyph = { ...base, glyph: { file: "/a/scene.mjs", alt: "a", time: "end" as const } };
-    const one = key({ job: withGlyph, glyphSource: "export default one" });
-    const two = key({ job: withGlyph, glyphSource: "export default two" });
+    const one = key({ spec: withGlyph, glyphSource: "export default one" });
+    const two = key({ spec: withGlyph, glyphSource: "export default two" });
     // A scene edited in place keeps its path and has to redraw the card that shows it.
     expect(one).not.toBe(two);
     // And the same bytes at a different path are the same picture.
-    expect(key({ job: { ...withGlyph, glyph: { ...withGlyph.glyph, file: "/b/scene.mjs" } }, glyphSource: "export default one" })).toBe(one);
+    expect(key({ spec: { ...withGlyph, glyph: { ...withGlyph.glyph, file: "/b/scene.mjs" } }, glyphSource: "export default one" })).toBe(one);
   });
 
   it("does not move for something a reader cannot see", () => {
-    expect(key({ job: { ...base, page: "/somewhere-else/" } })).toBe(key());
+    expect(key({ spec: { ...base, page: "/somewhere-else/" } })).toBe(key());
   });
 });
 

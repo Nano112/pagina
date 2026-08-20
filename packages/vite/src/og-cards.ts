@@ -3,12 +3,11 @@
  *
  * Three things happen here and they are worth telling apart.
  *
- * **Planning.** For every page, the article's `og:` and the page's are merged, the palette is baked
- * (`og-theme.ts`), and the whole lot is hashed. The hash goes in the file name, so a card is
- * content-addressed: nothing about a page changed means the file this build wants is the file that
- * is already there, and a crawler that re-fetches after a change gets a URL it has never seen.
- * The design's list — title, description, theme, template, glyph source, dimensions, fonts — is
- * {@link cardCacheKey}, and the glyph enters it as its *bytes* rather than its path.
+ * **Planning.** `@pagina/core`'s `planCards` decides which pages get a card and what each one is a
+ * picture of, reading the folder through `node:fs`. It is core's rather than this file's because
+ * the editor plans the same cards in a browser when it publishes, and the two must agree about
+ * every input to the content hash — see `og-plan.ts`. What is added here is the only question a
+ * build can answer and a browser cannot: whether the file that hash names is already on disk.
  *
  * **Drawing.** Handed to a child process, for the reason `og-worker.ts` explains at length: a
  * glyph can abort the renderer, and an abort is not a thing a `try` can hold. One process draws
@@ -25,24 +24,14 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  cardAltText, resolveOgConfig, sha256Hex,
-  type ArticleConfig, type Diagnostic, type Manifest, type PageMeta, type RenderedArticle, type ResolvedOgConfig,
+  CARD_FILE_RE, CARD_FONT_FAMILY, OG_CARD_DIR, planCards,
+  type ArticleConfig, type Diagnostic, type RenderedArticle,
 } from "@pagina/core";
 import { PAGINA_VERSION } from "./bundle.js";
-import { CARD_FONT_FAMILY } from "./og-card.js";
 import { cardFontDigest, type CardJob } from "./og-render.js";
 import { runCardJobs } from "./og-worker.js";
-import { resolveCardPalette, type CardPalette } from "./og-theme.js";
+import type { CardPalette } from "./og-theme.js";
 import { paginaTempRoot } from "./tmp.js";
-
-/** Where cards are written, under the output root. Beside the other things the build emits. */
-export const OG_CARD_DIR = "_pagina/og";
-
-/** A name this build's cards take, so a rebuild in place can clear the ones it no longer wants. */
-const CARD_FILE = /^[a-z0-9-]+\.[0-9a-f]{8}\.png$/;
-
-/** Hex characters of the cache key that go in the file name — the same 32 bits the assets use. */
-const CARD_HASH_CHARS = 8;
 
 export interface OgCardResult {
   /** Page href → the card's site URL and its alt text, for {@link withOgCards}. */
@@ -52,56 +41,8 @@ export interface OgCardResult {
   readonly diagnostics: Diagnostic[];
 }
 
-/**
- * A page's href as a file name: `/` → `index`, `/guide/nested/` → `guide-nested`.
- *
- * Flat, because `_pagina/og/` is a bucket of pictures rather than a second copy of the site tree,
- * and readable, because the one time anybody looks in this directory they are looking for one card.
- */
-export function cardSlug(href: string): string {
-  const trimmed = href.replace(/^\/+|\/+$/g, "");
-  const name = trimmed === "" ? "index" : trimmed.replace(/[^a-zA-Z0-9]+/g, "-");
-  return name.replace(/^-+|-+$/g, "").toLowerCase() || "index";
-}
 
-/**
- * Everything that can change the picture, in one string.
- *
- * Every field of it is something a reader would see change. What is deliberately *not* in it: the
- * page's href beyond the slug that already seeds the mark, the build's base URL, and the time. A
- * key that moves when nothing visible moved is a cache that never hits.
- */
-export function cardCacheKey(o: {
-  readonly job: Omit<CardJob, "out">;
-  readonly glyphSource?: string;
-  readonly fontDigest: string;
-  readonly fontFamily: string;
-  /** pagina's own version: the composition is an input too, and it changes between releases. */
-  readonly pagina: string;
-}): string {
-  return JSON.stringify({
-    v: 1,
-    pagina: o.pagina,
-    content: o.job.content,
-    palette: o.job.palette,
-    template: o.job.template,
-    width: o.job.width,
-    height: o.job.height,
-    slotWidth: o.job.slotWidth,
-    glyphPosition: o.job.glyphPosition,
-    // The glyph by its *bytes*: a scene edited in place must redraw the card that shows it.
-    glyph: o.job.glyph === undefined ? null : { source: o.glyphSource ?? "", time: o.job.glyph.time, alt: o.job.glyph.alt },
-    font: { digest: o.fontDigest, family: o.fontFamily },
-  });
-}
 
-/** The footer line: what kind of article this is, and how long the page takes to read. */
-function footerLine(article: Manifest["article"], page: PageMeta): string {
-  const parts: string[] = [];
-  if (article.category !== undefined && article.category !== "") parts.push(article.category);
-  if (page.readingMinutes !== undefined) parts.push(`${page.readingMinutes} min read`);
-  return parts.join(" · ");
-}
 
 interface PlannedCard {
   readonly href: string;
@@ -130,92 +71,37 @@ export interface PlanOgCardsOptions {
  * decision is a pure comparison of names rather than a side effect of rendering.
  */
 export async function planOgCards(o: PlanOgCardsOptions): Promise<{ readonly planned: PlannedCard[]; readonly diagnostics: Diagnostic[] }> {
-  const diagnostics: Diagnostic[] = [];
-  const planned: PlannedCard[] = [];
-  const manifest = o.article.manifest;
-  const fontDigest = await cardFontDigest();
-  const glyphSources = new Map<string, string>();
-
-  for (const [href, page] of Object.entries(manifest.pages)) {
-    const rendered = Object.values(o.article.pages).find((p) => p.href === href);
-    const og: ResolvedOgConfig = resolveOgConfig(o.config.og, rendered?.frontMatter.og);
-    if (!og.enabled) continue;
-    // Someone who drew a card gets their card, and pagina does not spend a rasteriser on a picture
-    // it is not going to reference.
-    if ((page.cover ?? manifest.article.cover) !== undefined) continue;
-
-    const { palette, diagnostics: paletteDiagnostics } = await resolveCardPalette(o.folder, og.scheme, {
-      ...(o.tokensCss === undefined ? {} : { tokensCss: o.tokensCss }),
-      ...(o.config.theme === undefined ? {} : { articleTheme: o.config.theme }),
-      ...(rendered?.frontMatter.theme === undefined ? {} : { pageTheme: rendered.frontMatter.theme }),
-      ...(rendered?.path === undefined ? {} : { pagePath: rendered.path }),
-    });
-    // Reported once per distinct message rather than once per page: a host whose accent is
-    // `oklch(…)` does not need that said forty times.
-    for (const d of paletteDiagnostics) if (!diagnostics.some((seen) => seen.message === d.message)) diagnostics.push(d);
-
-    const content = {
-      title: page.title,
-      ...(page.description === undefined ? {} : { description: page.description }),
-      siteName: manifest.article.title,
-      footer: footerLine(manifest.article, page),
-      slug: `${o.config.slug}${href}`,
-    };
-    const alt = cardAltText({
-      title: page.title,
-      ...(page.description === undefined ? {} : { description: page.description }),
-      siteName: manifest.article.title,
-      ...(og.alt === undefined ? {} : { alt: og.alt }),
-    });
-
-    let glyph: CardJob["glyph"] | undefined;
-    let glyphSource: string | undefined;
-    if (og.glyph !== undefined) {
-      const file = resolve(o.folder, og.glyph);
+  const { planned, diagnostics } = await planCards({
+    article: o.article,
+    config: o.config,
+    ...(o.tokensCss === undefined ? {} : { tokensCss: o.tokensCss }),
+    fontDigest: await cardFontDigest(),
+    fontFamily: CARD_FONT_FAMILY,
+    pagina: PAGINA_VERSION,
+    readText: async (path) => {
       try {
-        let source = glyphSources.get(file);
-        if (source === undefined) { source = await readFile(file, "utf8"); glyphSources.set(file, source); }
-        glyphSource = source;
-        glyph = { file, alt, time: og.time };
+        return await readFile(resolve(o.folder, path), "utf8");
       } catch {
-        diagnostics.push({
-          severity: "warning",
-          code: "og-glyph-missing",
-          message: `og.glyph names ${og.glyph}, which is not in the article folder — the card is drawn without it.`,
-          page: href,
-        });
+        return undefined;
       }
-    }
-
-    const job: Omit<CardJob, "out"> = {
-      page: href,
-      content,
-      palette,
-      template: og.template,
-      width: og.width,
-      height: og.height,
-      slotWidth: og.glyphWidth,
-      glyphPosition: og.glyphPosition,
-      ...(glyph === undefined ? {} : { glyph }),
-    };
-    const hash = (await sha256Hex(Buffer.from(cardCacheKey({
-      job,
-      ...(glyphSource === undefined ? {} : { glyphSource }),
-      fontDigest,
-      fontFamily: CARD_FONT_FAMILY,
-      pagina: PAGINA_VERSION,
-    }), "utf8"))).slice(0, CARD_HASH_CHARS);
-    const rel = `${OG_CARD_DIR}/${cardSlug(href)}.${hash}.png`;
-    planned.push({
-      href,
-      job: { ...job, out: join(o.outDir, rel) },
-      alt,
-      rel,
-      url: `${o.base.replace(/\/$/, "")}/${rel}`,
-      cached: existsSync(join(o.outDir, rel)),
-    });
-  }
-  return { planned, diagnostics };
+    },
+  });
+  return {
+    diagnostics,
+    planned: planned.map((card) => ({
+      href: card.href,
+      alt: card.alt,
+      rel: card.rel,
+      url: `${o.base.replace(/\/$/, "")}/${card.rel}`,
+      // The plan names a glyph the way the folder does; this rasteriser imports it, so it needs a path.
+      job: {
+        ...card.spec,
+        ...(card.spec.glyph === undefined ? {} : { glyph: { ...card.spec.glyph, file: resolve(o.folder, card.spec.glyph.file) } }),
+        out: join(o.outDir, card.rel),
+      },
+      cached: existsSync(join(o.outDir, card.rel)),
+    })),
+  };
 }
 
 /** One line of the worker's NDJSON. */
@@ -374,21 +260,11 @@ export async function generateOgCards(o: GenerateOgCardsOptions): Promise<OgCard
   if (existsSync(dir)) {
     const keep = new Set(planned.map((p) => p.rel.slice(`${OG_CARD_DIR}/`.length)));
     for (const entry of await readdir(dir)) {
-      if (CARD_FILE.test(entry) && !keep.has(entry)) await rm(join(dir, entry), { force: true });
+      if (CARD_FILE_RE.test(entry) && !keep.has(entry)) await rm(join(dir, entry), { force: true });
     }
   }
   return { cards, files: files.sort(), diagnostics };
 }
 
-/** The manifest again, with each page carrying the card drawn for it. */
-export function withOgCards(manifest: Manifest, cards: OgCardResult["cards"]): Manifest {
-  if (cards.size === 0) return manifest;
-  const pages: Record<string, PageMeta> = {};
-  for (const [href, page] of Object.entries(manifest.pages)) {
-    const card = cards.get(href);
-    pages[href] = card === undefined ? page : { ...page, card: card.url, cardAlt: card.alt };
-  }
-  return { ...manifest, pages };
-}
 
 export type { CardPalette };

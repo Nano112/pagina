@@ -23,8 +23,8 @@ import {
   createTheme, defaultTheme, figure, linearGradient, withAlpha, withFontFamily,
   type SceneDefinition, type ThemeOverride, type ThemeTokens,
 } from "@kineglyph/core";
-import { OG_CARD_HEIGHT, OG_CARD_WIDTH, OG_DESCRIPTION_BUDGET, OG_TITLE_BUDGET, clampWords, type OgGlyphPosition, type OgTemplate } from "@pagina/core";
-import type { CardPalette } from "./og-theme.js";
+import { OG_CARD_HEIGHT, OG_CARD_WIDTH, OG_DESCRIPTION_BUDGET, OG_TITLE_BUDGET, clampWords, type OgGlyphPosition, type OgTemplate } from "./og.js";
+import type { CardPalette } from "./og-palette.js";
 
 /** The one family a card is set in, shipped with the package. See `fonts/OFL.txt`. */
 export const CARD_FONT_FAMILY = "Instrument Sans";

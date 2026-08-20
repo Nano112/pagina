@@ -3,11 +3,11 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { FEED_PATH, LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, feedXml, inlineArticleFigures, llmsJson, llmsTxt, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { FEED_PATH, LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, feedXml, inlineArticleFigures, llmsJson, llmsTxt, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, withOgCards, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { emptyArticleDiagnostic, resolveArticle } from "./article.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
-import { generateOgCards, withOgCards } from "./og-cards.js";
+import { generateOgCards } from "./og-cards.js";
 import { drawnFigure, figureWidths, loadKineglyphThemes, prerenderFigures, widestPerTheme } from "./prerender.js";
 
 // `Shell`/`ShellContext` are defined in `@pagina/core` so a shell package can type itself

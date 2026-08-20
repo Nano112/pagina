@@ -18,10 +18,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { exportPng, createEmbeddedFontMeasurer, rewriteImports, type EmbeddedFontMeasurer } from "@kineglyph/export";
 import { resolveFigure, resolveScene, seekTimeline } from "@kineglyph/core";
-import { sha256Hex } from "@pagina/core";
-import type { OgGlyphPosition, OgTemplate } from "@pagina/core";
-import { FIGURE_BAND, cardScene, glyphTheme, type CardContent } from "./og-card.js";
-import type { CardPalette } from "./og-theme.js";
+import { FIGURE_BAND, cardScene, glyphTheme, sha256Hex, type CardSpec } from "@pagina/core";
 import { resolveKineglyphBundle } from "./kineglyph.js";
 
 /** The font files a card is set in: one variable family, shipped with this package. */
@@ -29,25 +26,16 @@ export const CARD_FONT_FILES: readonly string[] = [
   new URL("../fonts/InstrumentSans-VF.ttf", import.meta.url).pathname,
 ];
 
-/** One card to draw, fully resolved. Serialisable, because it crosses a process boundary. */
-export interface CardJob {
-  /** The page this card belongs to, for diagnostics. */
-  readonly page: string;
+/**
+ * One card for *this* rasteriser to draw: the shared {@link CardSpec}, plus where the PNG goes.
+ *
+ * The spec is `@pagina/core`'s and the destination is this file's, which is the whole shape of the
+ * split. A browser publishing the same card builds the same spec and hands it somewhere else.
+ * Serialisable, because it crosses a process boundary; `glyph.file` is an absolute path here.
+ */
+export interface CardJob extends CardSpec {
   /** Absolute path to write the PNG to. */
   readonly out: string;
-  readonly content: CardContent;
-  readonly palette: CardPalette;
-  readonly template: OgTemplate;
-  readonly width: number;
-  readonly height: number;
-  readonly slotWidth: number;
-  readonly glyphPosition: OgGlyphPosition;
-  readonly glyph?: {
-    /** Absolute path to the scene module. */
-    readonly file: string;
-    readonly alt: string;
-    readonly time: "start" | "end" | number;
-  };
 }
 
 /**
