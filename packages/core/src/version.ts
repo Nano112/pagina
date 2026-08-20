@@ -3,4 +3,4 @@
  *
  * See that script for why it is a literal rather than a read of `package.json`.
  */
-export const PAGINA_VERSION = "0.3.0";
+export const PAGINA_VERSION = "0.4.0";
