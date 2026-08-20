@@ -2,8 +2,8 @@
 title: Social cards
 description: >-
   Every page shares as a picture, not a bare link: an author's cover, a card composed from the
-  page's own title and theme, or a mark derived from its slug. Drawn at build time, cached by
-  everything that can change them.
+  page's own title and theme, or a mark derived from its slug. Drawn by the build and by the
+  editor, cached by everything that can change them.
 ---
 
 # Social cards
@@ -14,8 +14,9 @@ and none of their other pages. Everything else shared as a line of blue text, an
 degraded from `summary_large_image` — the wide one with a picture — to the small imageless
 `summary`.
 
-So pagina draws one. Every page of a built site now carries an `og:image` that resolves to a real
-1200×630 PNG, and there is nothing to configure to get that.
+So pagina draws one. Every page of a built site carries an `og:image` that resolves to a real
+1200×630 PNG, and there is nothing to configure to get that. A page published from the editor gets
+the same card, drawn in the browser at the moment it is published.
 
 ## Three ways to have a picture
 
@@ -101,9 +102,9 @@ A figure on a page resolves its colours at view time through `var(--kg-color-*)`
 whatever theme the reader ends up with. A card cannot do that. A crawler fetches a PNG on its own:
 no page, no stylesheet, no `--pg-*`, no `prefers-color-scheme`.
 
-So the palette is resolved during the build, from the same token contract and in the same order the
-cascade uses: pagina's own `tokens.css`, then `article.yaml`'s `theme:`, then the page's. Whichever
-half is baked is `og.scheme`, and it is `light` by default.
+So the palette is resolved when the card is generated, from the same token contract and in the same
+order the cascade uses: pagina's own `tokens.css`, then `article.yaml`'s `theme:`, then the page's.
+Whichever half is baked is `og.scheme`, and it is `light` by default.
 
 One limit, stated plainly: only hex colours can be baked. The token contract accepts any CSS
 colour, and the card's translucent ring strokes are mixed by hand, which needs channels. A host
@@ -114,15 +115,56 @@ A theme at a URL is not read either. Fetching one would make the build depend on
 is the property the whole pipeline is built to avoid. Ship the stylesheet in the article folder and
 its cards are themed with it.
 
-## Fonts, and why a card is byte-identical everywhere
+## Fonts
 
 Cards are set in [Instrument Sans](https://fonts.google.com/specimen/Instrument+Sans), a variable
-face shipped with `@pagina/vite` under the SIL Open Font License. The font files are passed to both
-halves of the render: HarfBuzz shapes with them to decide where lines break, and resvg draws with
-them, with the machine's own fonts switched off.
+face shipped under the SIL Open Font License. The font files are passed to both halves of the
+render: HarfBuzz shapes with them to decide where lines break, and resvg draws with them, with the
+machine's own fonts switched off.
 
 That is what makes a card built in CI the same bytes as a card built on a laptop. A system font
 would make it untrue, and the difference would show up months later as a card nobody can reproduce.
+
+## Where cards are drawn
+
+Two places, from one composition.
+
+`pagina build` draws them in Node with resvg, writes them to `_pagina/og/`, and serves them as
+files. A social crawler wants a URL that answers immediately rather than one that renders on demand.
+
+The editor draws them too, in the browser, when an author publishes. It has to: publishing from
+the editor renders every page and figure client-side and POSTs the result, so a site that only ever
+got cards from a build would share every newly published post as whatever picture the last build
+happened to leave behind. The browser renders the same Kineglyph scene to SVG, inlines the same font
+file as a `data:` URI so the SVG can be rasterised standalone, draws it into a canvas and uploads
+the PNG through the same `upload` endpoint as any other asset.
+
+What that buys is not only fresher cards. It means publishing asks a host for nothing but somewhere
+to put bytes — no rasteriser, no fonts, no Node.
+
+The composition, the palette ladder, the precedence rules and the cache key all live in
+`@pagina/core` and are called by both. Two renderers would agree the day they were written and drift
+by the second change to either.
+
+They are not pixel-identical, and are not meant to be. Rasterisers antialias differently, and Node's
+HarfBuzz measurement does not apply the font's variable weight axis where a browser's does — so a
+title very near a wrap boundary can take a different number of lines, and the browser's card carries
+the weights the composition asks for where the build's are drawn at the face's default instance. The
+size, the palette, the composition and the file name are the same.
+
+### Configuring the browser path
+
+The editor looks for `pagina-card-font.ttf` beside its own bundle, which is where `@pagina/editor`'s
+`dist/` puts it and where any host that publishes that directory has it. A host that serves it
+somewhere else says so:
+
+```html
+<pagina-editor backend-url="/api/articles/mine" card-font-url="/assets/instrument-sans.ttf">
+```
+
+If the font cannot be loaded, publishing continues and draws no cards. Each page keeps whatever
+`og:image` it already had, and one warning on the console says which and why. A picture that did not
+render is never allowed to cost an author their work.
 
 ## Names, caching, and what a rebuild rewrites
 
@@ -131,9 +173,13 @@ change the picture: the title, the description, the baked palette, the template,
 glyph's *bytes*, the font files, and pagina's own version. Two consequences follow. A build that
 changes nothing rewrites no PNG, and a card that does change gets a URL no crawler has cached.
 
-Cards are drawn during `pagina build` and not by the dev server. The renderer is Node rather than a
-browser, and a social crawler wants a URL that answers immediately rather than one that renders on
-demand.
+Which of the two rasterisers drew it is deliberately *not* in the hash. If it were, every publish
+would redraw what the build had just written and every build would redraw what the author had just
+published. A card is keyed on what it is a picture of.
+
+So the name is also how each side knows there is nothing to do: a build skips a card already on
+disk, and a publish skips one already at that path on the backend. Without that, a debounced save
+would redraw every card in the article on every keystroke.
 
 ## A broken glyph costs a glyph
 
