@@ -16,6 +16,7 @@ import { cardAltText, resolveOgConfig, type ResolvedOgConfig } from "./og.js";
 import { composeCardPalette, type CardPaletteSources } from "./og-palette.js";
 import { cardContentFor, cardFileName, cardCacheKey, type CardSpec } from "./og-spec.js";
 import type { ArticleConfig, Diagnostic, RenderedArticle } from "./types.js";
+import { PAGINA_VERSION } from "./version.js";
 
 /** One card the plan wants, named and hashed but not yet drawn. */
 export interface PlannedCardSpec {
@@ -40,8 +41,13 @@ export interface PlanCardsOptions {
   /** A digest of the font files the cards are set in, so a font swap invalidates every card. */
   readonly fontDigest: string;
   readonly fontFamily: string;
-  /** pagina's own version: the composition is an input too, and it changes between releases. */
-  readonly pagina: string;
+  /**
+   * Which pagina drew it: the composition is an input too, and it changes between releases.
+   *
+   * Defaults to this package's version, which is where the composition lives — and defaulting is
+   * what stops the two rasterisers picking different answers and invalidating each other forever.
+   */
+  readonly pagina?: string;
   readonly readText: ReadArticleText;
 }
 
@@ -137,7 +143,7 @@ export async function planCards(o: PlanCardsOptions): Promise<{ readonly planned
       ...(glyphSource === undefined ? {} : { glyphSource }),
       fontDigest: o.fontDigest,
       fontFamily: o.fontFamily,
-      pagina: o.pagina,
+      pagina: o.pagina ?? PAGINA_VERSION,
     })));
     planned.push({
       href,

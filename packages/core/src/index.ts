@@ -63,3 +63,4 @@ export {
   joinArticlePath, planCards,
   type PlanCardsOptions, type PlannedCardSpec, type ReadArticleText,
 } from "./og-plan.js";
+export { PAGINA_VERSION } from "./version.js";

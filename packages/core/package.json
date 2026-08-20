@@ -42,7 +42,8 @@
     "!**/*.test.*",
     "!**/*.spec.*",
     "!**/__tests__",
-    "!**/*.tsbuildinfo"
+    "!**/*.tsbuildinfo",
+    "scripts"
   ],
   "engines": {
     "node": ">=22.12"
@@ -51,7 +52,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/write-version.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
