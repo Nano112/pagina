@@ -19,9 +19,13 @@ import { ArticleStore, HttpBackend, type ArticleBackend } from "./store/index.js
 export * from "./model/index.js";
 export * from "./store/index.js";
 export {
-  publishArticle, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH, type RenderedFigures,
-  type FigureThemes, type FigureSvgs, type PublishResult,
+  publishArticle, defaultCardFontUrl, renderArticleFigures, loadFigureThemes, DEFAULT_FIGURE_WIDTH,
+  type PublishOptions, type RenderedFigures, type FigureThemes, type FigureSvgs, type PublishResult,
 } from "./ui/publish.js";
+export {
+  drawCard, embedCardFont, loadCardFont, rasterisePng, renderArticleCards,
+  type CardFont, type RenderCardsOptions, type RenderedCards,
+} from "./ui/og-cards.js";
 
 /** Options `mountEditor` takes; the custom element derives them from its attributes. */
 export interface EditorOptions {
@@ -42,6 +46,21 @@ export interface EditorOptions {
    * element, or pins a different version, points this at its own copy.
    */
   readonly modelViewerUrl?: string;
+  /**
+   * Where the font social cards are set in is served from.
+   *
+   * Defaults to `pagina-card-font.ttf` beside the editor bundle. A host that publishes `dist/` as a
+   * unit — which is what `sync-assets.sh` does — needs to say nothing.
+   */
+  readonly cardFontUrl?: string;
+  /**
+   * `tokens.css` as the shell ships it, so a publish bakes the palette the next build would bake.
+   *
+   * Defaults to `pagina.tokens.css` beside the editor bundle. Getting this wrong is not fatal, only
+   * wasteful: the card falls back to pagina's built-in defaults, and if those differ from the
+   * shell's the next build redraws what this publish just drew.
+   */
+  readonly cardTokensCss?: string;
 }
 
 /** What a mounted editor hands back to its host. */
@@ -134,8 +153,13 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
     },
     publish(): Promise<PublishResult> {
       // Renders every module/inline figure to light+dark SVG on the host page's Kineglyph runtime
-      // before shipping, so a published page shows its diagrams without running any JavaScript.
-      return publishArticle(store);
+      // before shipping, so a published page shows its diagrams without running any JavaScript —
+      // and draws each page's social card, so a site published from a browser stops sharing as
+      // whatever picture its last build happened to leave behind.
+      return publishArticle(store, {
+        ...(options.cardFontUrl === undefined ? {} : { cardFontUrl: options.cardFontUrl }),
+        ...(options.cardTokensCss === undefined ? {} : { cardTokensCss: options.cardTokensCss }),
+      });
     },
   };
 }
@@ -143,8 +167,8 @@ export function mountEditor(el: HTMLElement, options: EditorOptions = {}): Edito
 /**
  * `<pagina-editor>`: the editor as a custom element.
  *
- * Attributes: `backend-url`, `page`, `base`, `theme`, `model-viewer-url`, and `headers` (a JSON
- * object). The mounted
+ * Attributes: `backend-url`, `page`, `base`, `theme`, `model-viewer-url`, `card-font-url`, and
+ * `headers` (a JSON object). The mounted
  * store is exposed as `.store` and publishing as `.publish()`, so a Blade or Livewire page can
  * drive the editor without importing anything.
  */
@@ -196,6 +220,7 @@ export class PaginaEditorElement extends HTMLElement {
       ...(attr("page") === undefined ? {} : { page: attr("page")! }),
       ...(attr("base") === undefined ? {} : { base: attr("base")! }),
       ...(attr("model-viewer-url") === undefined ? {} : { modelViewerUrl: attr("model-viewer-url")! }),
+      ...(attr("card-font-url") === undefined ? {} : { cardFontUrl: attr("card-font-url")! }),
       ...(theme === "light" || theme === "dark" ? { theme } : {}),
       ...(headers === undefined ? {} : { headers }),
     });

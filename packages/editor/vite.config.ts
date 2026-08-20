@@ -7,7 +7,14 @@
  *
  * React is bundled (a host page must not have to install it); `kineglyph` is not, because the
  * preview has to hydrate figures on the *same* runtime instance the site's own pages use, which
- * the page's import map decides. `emptyOutDir` is off because `tsc -p tsconfig.build.json` has
+ * the page's import map decides.
+ *
+ * `@kineglyph/core` is aliased onto that same bare specifier. The social-card composer lives in
+ * `@pagina/core` — shared with the build, which is the point — and imports `@kineglyph/core` by its
+ * real package name, as a Node package must. Bundling that copy would put a second Kineglyph in the
+ * page and hand the editor two `defaultTheme`s; leaving it as a bare `@kineglyph/core` would emit a
+ * specifier no host's import map defines. Rewriting it to `kineglyph` is what makes the composer
+ * one piece of code in two runtimes rather than two pieces that resemble each other. `emptyOutDir` is off because `tsc -p tsconfig.build.json` has
  * already written the ESM/type surface into `dist/` by the time this runs.
  */
 import { fileURLToPath } from "node:url";
@@ -16,6 +23,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias: { "@kineglyph/core": "kineglyph" } },
   /**
    * The bundle runs in a plain page, and a plain page has no `process`.
    *

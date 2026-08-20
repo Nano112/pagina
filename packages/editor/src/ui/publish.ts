@@ -23,7 +23,8 @@ import {
   seekTimeline,
   withFontFamily,
 } from "kineglyph";
-import { inlineArticleFigures, type Author, type RenderedArticle } from "@pagina/core";
+import { renderArticleCards } from "./og-cards.js";
+import { inlineArticleFigures, withOgCards, type Author, type RenderedArticle } from "@pagina/core";
 import type { ArticleStore } from "../store/index.js";
 import { evaluateModule, evaluateSceneModule } from "./kineglyph.js";
 
@@ -182,10 +183,90 @@ export interface PublishResult {
 }
 
 /**
- * Renders the article, renders its figures, and ships both through the backend's publish endpoint.
+ * This bundle's own address, captured once, at module evaluation.
+ *
+ * Two formats, two answers. `dist/editor.js` is an ES module and has `import.meta.url`. The IIFE
+ * that a `<script>` host loads does not — rolldown replaces `import.meta` with `{}` there — so it
+ * falls back to `document.currentScript`, which is only the running script *while the script is
+ * running*. Reading it inside a function called later gets `null`; reading it here gets the answer.
+ */
+const BUNDLE_URL: string | undefined = (() => {
+  const url: unknown = (import.meta as { url?: unknown }).url;
+  if (typeof url === "string" && url !== "") return url;
+  const script: unknown = globalThis.document?.currentScript;
+  return script instanceof HTMLScriptElement && script.src !== "" ? script.src : undefined;
+})();
+
+/**
+ * Where the card font lives when nobody says otherwise: beside the editor bundle.
+ *
+ * That is the one location every host arrangement shares — `vendor/pagina/` for the Laravel
+ * package, `editor/` on the docs site, `_pagina/` in a built article — because it is where the
+ * bundle itself had to be put. When there is no bundle URL to work from, the answer is `undefined`
+ * and `renderArticleCards` says so and draws nothing, rather than guessing at a path and reporting
+ * a 404 as if the host had misconfigured something.
+ */
+export function defaultCardFontUrl(): string | undefined {
+  return besideBundle("pagina-card-font.ttf");
+}
+
+/** Some file published alongside this bundle, or `undefined` when we cannot tell where that is. */
+function besideBundle(name: string): string | undefined {
+  if (BUNDLE_URL === undefined) return undefined;
+  try {
+    return new URL(name, BUNDLE_URL).href;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The shell's `tokens.css`, so a publish bakes the palette the next build would bake.
+ *
+ * The build reads `client/tokens.css` off disk; the equivalent published artefact is
+ * `pagina.tokens.css`, which carries every `--pg-*` a card reads with identical values, and which
+ * every host arrangement already serves beside the bundle. Missing it is not an error, only
+ * wasteful: the palette falls back to pagina\'s built-in defaults, and if the shell had customised
+ * any of the nine card roles the next build would redraw what this publish just drew.
+ */
+async function shellTokensCss(): Promise<string | undefined> {
+  const url = besideBundle("pagina.tokens.css");
+  if (url === undefined) return undefined;
+  try {
+    const response = await fetch(url);
+    return response.ok ? await response.text() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** What a publish needs to know about the assets it draws with. */
+export interface PublishOptions {
+  /**
+   * Where the OFL font social cards are set in is served from.
+   *
+   * Defaults to `pagina-card-font.ttf` beside the editor bundle, which is where the build puts it
+   * and where a host that copied `dist/` has it. A host that serves it elsewhere says so; a host
+   * that serves it nowhere gets no cards and a warning, which is the right trade — a picture that
+   * did not render must never cost an author their publish.
+   */
+  readonly cardFontUrl?: string;
+  /** `tokens.css` as the shell ships it, so the browser bakes the palette the build would bake. */
+  readonly cardTokensCss?: string;
+}
+
+/**
+ * Renders the article, renders its figures, draws its social cards, and ships the lot through the
+ * backend's publish endpoint.
+ *
+ * The cards go up through `upload` — the same contract as any other asset — *before* the publish
+ * call, because `og:image` is read off `manifest.pages[href].card` and the manifest is what the
+ * publish carries. That ordering is the whole reason this is one function: a card uploaded after
+ * the manifest would be a file nothing points at.
+ *
  * This is what `mountEditor(...).publish()` and `<pagina-editor>.publish()` call.
  */
-export async function publishArticle(store: ArticleStore): Promise<PublishResult> {
+export async function publishArticle(store: ArticleStore, options: PublishOptions = {}): Promise<PublishResult> {
   const article = await store.renderAll();
   // Measured on the prose column when there is one, so a host that fonts its articles differently
   // from its chrome gets the font its *articles* use.
@@ -202,10 +283,22 @@ export async function publishArticle(store: ArticleStore): Promise<PublishResult
     return svg === undefined ? undefined : { svg, needsRuntime: needsRuntime[id] ?? true };
   });
   for (const diagnostic of inlined.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
-  const { publishedAt, publishedBy } = await store.publish(figures, inlined.article);
+
+  // The social cards, drawn from the *inlined* article's manifest — the one whose page metadata is
+  // final — exactly as `buildStatic` draws them from `inlined.article` for the same reason.
+  const fontUrl = options.cardFontUrl ?? defaultCardFontUrl();
+  const tokensCss = options.cardTokensCss ?? await shellTokensCss();
+  const drawn = await renderArticleCards(store, inlined.article, {
+    ...(fontUrl === undefined ? {} : { fontUrl }),
+    ...(tokensCss === undefined ? {} : { tokensCss }),
+  });
+  for (const diagnostic of drawn.diagnostics) console.warn(`pagina: ${diagnostic.message}`);
+  const published: RenderedArticle = { ...inlined.article, manifest: withOgCards(inlined.article.manifest, drawn.cards) };
+
+  const { publishedAt, publishedBy } = await store.publish(figures, published);
   return {
     publishedAt,
     ...(publishedBy === undefined ? {} : { publishedBy }),
-    article: inlined.article,
+    article: published,
   };
 }

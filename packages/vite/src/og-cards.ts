@@ -27,7 +27,6 @@ import {
   CARD_FILE_RE, CARD_FONT_FAMILY, OG_CARD_DIR, planCards,
   type ArticleConfig, type Diagnostic, type RenderedArticle,
 } from "@pagina/core";
-import { PAGINA_VERSION } from "./bundle.js";
 import { cardFontDigest, type CardJob } from "./og-render.js";
 import { runCardJobs } from "./og-worker.js";
 import type { CardPalette } from "./og-theme.js";
@@ -77,7 +76,6 @@ export async function planOgCards(o: PlanOgCardsOptions): Promise<{ readonly pla
     ...(o.tokensCss === undefined ? {} : { tokensCss: o.tokensCss }),
     fontDigest: await cardFontDigest(),
     fontFamily: CARD_FONT_FAMILY,
-    pagina: PAGINA_VERSION,
     readText: async (path) => {
       try {
         return await readFile(resolve(o.folder, path), "utf8");
