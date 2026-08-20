@@ -67,6 +67,7 @@ nav:
   - section: Publishing
     children:
       - { title: Article bundles, page: bundles.md }
+      - { title: Hosting, page: hosting.md }
       - { title: Deploying, page: deploying.md }
       - { title: Social cards, page: social-cards.md }
       - { title: Search, page: search.md }
