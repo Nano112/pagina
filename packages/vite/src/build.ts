@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/pro
 import { dirname, join, resolve } from "node:path";
 import type MarkdownIt from "markdown-it";
 import { build as viteBuild } from "vite";
-import { LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, inlineArticleFigures, llmsJson, llmsTxt, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
+import { FEED_PATH, LLMS_JSON_PATH, LLMS_TXT_PATH, PaginaBuildError, SEARCH_INDEX_PATH, buildSearchIndex, deploymentDiagnostics, feedXml, inlineArticleFigures, llmsJson, llmsTxt, robotsPlacement, serializeLlmsJson, serializeSearchIndex, sha256Hex, sitemapXml, walkReferences, type ArticleConfig, type Diagnostic, type RenderedArticle, type RobotsPlacement, type Shell, type ThemeLevel } from "@pagina/core";
 import { NodeContentFs } from "./node-fs.js";
 import { emptyArticleDiagnostic, resolveArticle } from "./article.js";
 import { resolveKineglyphBundle } from "./kineglyph.js";
@@ -413,6 +413,23 @@ export async function buildStatic(o: BuildOptions): Promise<BuildResult> {
   } else if (sitemap !== undefined) {
     await write(o.outDir, "sitemap.xml", sitemap);
     files.push("sitemap.xml");
+  }
+  // The feed. Same input as the canonical and the sitemap — an origin — and the same treatment
+  // when there isn't one: nothing is written and the build says so, rather than a `feed.xml` whose
+  // every entry addresses a page relative to a document in somebody else's reader. A docs site is
+  // silent here; a blog that cannot be subscribed to is a blog missing the thing that makes it one.
+  const feed = feedXml(withCards.manifest, seoOpts);
+  if (feed !== undefined) {
+    await write(o.outDir, FEED_PATH, feed);
+    files.push(FEED_PATH);
+  } else if (withCards.manifest.article.form === "blog" && o.mirrorOf === undefined) {
+    diagnostics.push({
+      severity: "warning",
+      code: "feed-skipped",
+      message: withCards.manifest.article.status === "published"
+        ? "no site_url is configured, so no feed.xml was written and this blog cannot be subscribed to; set `site_url` in article.yaml or pass --site-url"
+        : "the article is a draft, so no feed.xml was written",
+    });
   }
   const robots = robotsPlacement(withCards.manifest, seoOpts);
   if (robots.outPath !== undefined) {

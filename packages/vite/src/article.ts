@@ -97,9 +97,14 @@ export async function resolveArticle(o: ResolveArticleOptions): Promise<Resolved
  */
 export function emptyArticleDiagnostic(article: RenderedArticle): Diagnostic | undefined {
   if (Object.keys(article.pages).length > 0) return undefined;
+  // A blog reaches "no pages" a different way, so it gets a different sentence: `nav` is not what
+  // makes a file a page there, the folder is, and telling a blog author to write a nav sends them
+  // to fix the one file that is not the problem.
   return {
     severity: "warning",
     code: "no-pages",
-    message: "this folder has no pages: `nav` in article.yaml is empty or missing, and `nav` is what makes a markdown file a page. Add one entry per page, in reading order.",
+    message: article.manifest.article.form === "blog"
+      ? "this folder has no pages: a blog's pages are the markdown files in the folder, and there are none. Write index.md, then a post beside it."
+      : "this folder has no pages: `nav` in article.yaml is empty or missing, and `nav` is what makes a markdown file a page. Add one entry per page, in reading order.",
   };
 }

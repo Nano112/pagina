@@ -1,0 +1,24 @@
+# A blog, in the smallest form that is still a blog: three posts, one draft, one standalone page.
+#
+# `form: blog` is the only line that separates this folder from a docs article. It changes where
+# the order comes from — dates instead of `nav` — and what `nav` means, which here is the one page
+# that is not a post.
+slug: field-notes
+title: Field Notes
+form: blog
+status: published
+
+# Every URL in feed.xml is read in somebody else's reader, so the feed needs an origin the same way
+# `link rel=canonical` does. Without one, no feed is written and the build says so.
+site_url: https://field-notes.example
+
+description: Short notes on building small tools, written down before they are forgotten.
+author: R. Vasquez
+
+cover: media/banner.svg
+cover_alt: The words Field Notes, set in a ruled box
+
+# On a blog, `nav` is not reading order. It is the pages that are not posts.
+nav:
+  - title: About
+    page: about.md
