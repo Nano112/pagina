@@ -51,7 +51,7 @@ The fields, in full:
 | --- | --- |
 | `slug` | the article's identifier; a host uses it for routing, and `pack` names the bundle after it |
 | `title` | the article title, used in `<title>`, the header, and the manifest |
-| `form` | `docs`. The only value there is |
+| `form` | `docs` (default) or `blog`. A blog takes its order from dates rather than from `nav`, and writes a feed. See [A blog](blog.md) |
 | `status` | `draft` or `published` (default `draft`). A draft build gets `Disallow: /` and no sitemap |
 | `visibility` | `public`, `members` or `authors` (default `public`); a host's business, not the renderer's |
 | `category`, `tags` | free classification, carried into the manifest |

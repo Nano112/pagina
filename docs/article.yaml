@@ -59,6 +59,7 @@ nav:
   - section: The contracts
     children:
       - { title: The article folder, page: article-folder.md }
+      - { title: A blog, page: blog.md }
       - { title: Theming, page: theming.md }
   - section: Writing
     children:
