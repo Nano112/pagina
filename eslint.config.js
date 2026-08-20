@@ -17,7 +17,14 @@ export default tseslint.config(
     // `no-undef` needs the handful they actually use.
     files: ["e2e/**/*.mjs", "examples/**/*.mjs", "scripts/**/*.mjs", "packages/*/scripts/**/*.mjs"],
     languageOptions: {
-      globals: { console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly" },
+      globals: {
+        console: "readonly", process: "readonly", URL: "readonly", fetch: "readonly",
+        // Node has had the web ones as globals for several majors; `no-undef` has not been told.
+        AbortController: "readonly", Blob: "readonly", Buffer: "readonly", File: "readonly",
+        FormData: "readonly", Request: "readonly", Response: "readonly",
+        TextDecoder: "readonly", TextEncoder: "readonly",
+        setTimeout: "readonly", clearTimeout: "readonly",
+      },
     },
   },
   {

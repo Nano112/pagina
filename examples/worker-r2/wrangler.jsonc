@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pagina-articles",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-01",
+
+  "r2_buckets": [
+    { "binding": "ARTICLES", "bucket_name": "pagina-articles" }
+  ],
+
+  // SSE only. `wrangler dev` runs one isolate, so a plain `Set` of subscribers in the Worker would
+  // look correct locally and deliver to a fraction of the readers in production.
+  "durable_objects": {
+    "bindings": [{ "name": "EVENTS", "class_name": "ArticleEvents" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["ArticleEvents"] }
+  ],
+
+  "vars": {
+    "API_BASE": "/api/articles",
+    "SITE_BASE": "",
+
+    // Development only, and obviously so: two fixed tokens, in a file that is committed.
+    //
+    // `wrangler dev` reads this, which is what makes `npm run smoke` a single command with nothing
+    // to set up first. A deployment must not: run
+    //
+    //     wrangler secret put EDITORS
+    //
+    // and paste the real map, which overrides this. See `docs/hosting.md` for what a shared secret
+    // per person does and does not buy you.
+    "EDITORS": "{\"alice-dev-token\":{\"id\":\"editor:alice\",\"name\":\"Alice\",\"email\":\"alice@example.com\"},\"bob-dev-token\":{\"id\":\"editor:bob\",\"name\":\"Bob\",\"email\":\"bob@example.com\"}}"
+  },
+
+  "observability": { "enabled": true }
+}

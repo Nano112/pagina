@@ -15,3 +15,6 @@ site.pgz
 # the folder it unpacks into. Both are build output of the repository's own content.
 examples/node-host/.article/
 examples/node-host/.article.pgz
+
+# `wrangler dev` keeps its local R2 and Durable Object state here.
+examples/worker-r2/.wrangler/

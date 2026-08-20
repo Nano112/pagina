@@ -3,7 +3,16 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.{ts,tsx}", "packages/*/src/**/*.test.{ts,tsx}"],
+    /**
+     * `examples/` is in here because one of the examples is a *backend*. `examples/worker-r2` runs
+     * the same `describeBackendContract` suite the shipped backends run, and an example that
+     * implements a contract and is not held to it is the kind of snippet that has never executed.
+     */
+    include: [
+      "packages/*/test/**/*.test.{ts,tsx}",
+      "packages/*/src/**/*.test.{ts,tsx}",
+      "examples/*/test/**/*.test.{ts,tsx}",
+    ],
     /**
      * Cleans up every scratch directory the file allocated, and fails the file if it left
      * anything in the working directory. See `test/setup.ts` — the second half is a regression
