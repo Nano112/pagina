@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment jsdom
+ *
  * The blog form — the tests only it can fail.
  *
  * Everything a blog shares with a docs article (markdown, figures, covers, reading time, search,
@@ -9,10 +11,10 @@
  *
  * The feed is **parsed**, not matched against a string. A feed that "contains `<entry>`" can still
  * be a document no reader will accept, and looking at XML and deciding it seems fine is exactly how
- * an unparseable feed ships.
+ * an unparseable feed ships. That is what the jsdom environment above is for: a real XML parser,
+ * reached through `DOMParser`, which needs no dependency this repository does not already have.
  */
 import { describe, expect, it } from "vitest";
-import { JSDOM } from "jsdom";
 import { renderArticle, PaginaBuildError } from "../src/render-article.js";
 import { parseArticleConfig } from "../src/config.js";
 import { feedXml, feedUrl } from "../src/feed.js";
@@ -212,10 +214,10 @@ describe("form: blog", () => {
 describe("feed.xml", () => {
   /** Parses the feed as XML and fails loudly if it is not. */
   function parseFeed(xml: string): Document {
-    const doc = new JSDOM(xml, { contentType: "application/xml" }).window.document;
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
     const error = doc.getElementsByTagName("parsererror")[0];
     if (error !== undefined) throw new Error(`feed is not well-formed XML: ${error.textContent ?? ""}`);
-    return doc as unknown as Document;
+    return doc;
   }
 
   it("is a well-formed Atom document with an entry per post, newest first", async () => {

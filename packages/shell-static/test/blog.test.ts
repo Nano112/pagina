@@ -58,7 +58,11 @@ describe("the shell, for a blog", () => {
   });
 
   it("does not announce a feed no build wrote", () => {
-    const noOrigin: RenderedArticle = { ...blog, manifest: { ...blog.manifest, article: { ...blog.manifest.article, siteUrl: undefined } } };
+    // The key is *removed* rather than set to `undefined`: this repository typechecks with
+    // `exactOptionalPropertyTypes`, where those are two different manifests.
+    const noSiteUrl = { ...blog.manifest.article };
+    delete (noSiteUrl as { siteUrl?: string }).siteUrl;
+    const noOrigin: RenderedArticle = { ...blog, manifest: { ...blog.manifest, article: noSiteUrl } };
     expect(renderPageHtml(noOrigin, "/", ctx)).not.toContain("atom+xml");
     const draft: RenderedArticle = { ...blog, manifest: { ...blog.manifest, article: { ...blog.manifest.article, status: "draft" } } };
     expect(renderPageHtml(draft, "/", ctx)).not.toContain("atom+xml");
