@@ -74,8 +74,14 @@
     display: grid; grid-template-columns: 240px minmax(0, 1fr) 220px;
     gap: 0; max-width: 1400px; margin: 0 auto;
   }
+  /* A blog's `nav` is a list of standalone pages, and most blogs have none, so the shell omits the
+     rail rather than rendering an empty one. The grid closes over it and the whole thing narrows:
+     a two-column layout still centred on a 1400px track would leave the prose sitting off to one
+     side of a wide window, which is worse than the empty column it replaced. */
+  .pg-shell--no-nav { grid-template-columns: minmax(0, 1fr) 220px; max-width: 1120px; }
   @media (max-width: 960px) {
     .pg-shell { grid-template-columns: 1fr; }
+    .pg-shell--no-nav { grid-template-columns: 1fr; }
     .pg-shell > .pg-nav, .pg-toc { display: none; }
     .pg-nav-trigger { display: inline-flex; }
   }
@@ -186,6 +192,61 @@
     margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--pg-muted);
   }
   .pg-article-meta__sep { color: var(--pg-line-strong); }
+
+  /* The blog index -----------------------------------------------------------------------------
+   *
+   * The archive `form: blog` appends to `index.md`, and the surface where a blog either reads like
+   * a blog or reads like a docs page with dates on it. Three decisions do most of that work:
+   *
+   *   - **The date goes above the title**, not under it. On a blog the date is how a reader decides
+   *     whether they have read this one; putting it below makes them read the headline first to
+   *     find out they have. `order` moves it without changing the document, so the heading is still
+   *     the entry's first element for anything reading structure rather than layout.
+   *   - **A rule between entries, not a card around each.** A column of bordered boxes is a
+   *     dashboard; a hairline is a contents page, which is what this is.
+   *   - **It keeps the measure.** The entries are as wide as the prose on a post, so moving between
+   *     the index and a post does not move the text.
+   *
+   * These rules live in the chrome layer with the rest of pagina's own furniture, so they win over
+   * the reading layer's `ol`/`h2`/`a` styling — the list is generated navigation that happens to sit
+   * inside the content column, not something an author wrote.
+   */
+  .pg-posts { list-style: none; margin: 2.5rem 0 0; padding: 0; }
+  .pg-post {
+    display: grid; gap: 0.4rem; max-width: var(--pg-measure);
+    padding: 1.75rem 0; border-top: 1px solid var(--pg-line);
+  }
+  .pg-post:first-child { border-top: 0; padding-top: 0; }
+  .pg-post__cover { display: block; order: -2; margin-bottom: 0.5rem; }
+  .pg-post__cover img {
+    display: block; width: 100%;
+    aspect-ratio: var(--pg-post-cover-ratio, 2 / 1);
+    max-height: var(--pg-post-cover-max, 18rem);
+    object-fit: cover; border-radius: var(--pg-radius);
+    background: var(--pg-bg-raised); border: 1px solid var(--pg-line);
+  }
+  .pg-post__meta {
+    order: -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem;
+    margin: 0; font-size: 0.8rem; color: var(--pg-muted);
+  }
+  .pg-post__sep { color: var(--pg-line-strong); }
+  .pg-post__title {
+    margin: 0; font-family: var(--pg-font-display); font-size: 1.5rem; font-weight: 700;
+    line-height: 1.25; letter-spacing: -0.01em;
+  }
+  .pg-post__title a { color: var(--pg-fg); text-decoration: none; }
+  .pg-post__title a:hover, .pg-post__title a:focus-visible { color: var(--pg-accent); }
+  .pg-post__summary { margin: 0; color: var(--pg-muted); line-height: 1.6; }
+  .pg-post__tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.2rem 0 0; }
+  .pg-post__tag {
+    font-size: 0.72rem; color: var(--pg-muted);
+    border: 1px solid var(--pg-line); border-radius: 999px; padding: 0.1rem 0.55rem;
+  }
+  .pg-posts__empty { color: var(--pg-muted); }
+  /* The one visible way to follow the blog, under the archive on the front page. */
+  .pg-subscribe { margin: 2rem 0 0; max-width: var(--pg-measure); font-size: 0.85rem; }
+  .pg-subscribe a { color: var(--pg-muted); text-decoration: none; border-bottom: 1px solid var(--pg-line-strong); }
+  .pg-subscribe a:hover, .pg-subscribe a:focus-visible { color: var(--pg-accent); border-color: var(--pg-accent); }
 
   /* Pager ------------------------------------------------------------------------------------------ */
   .pg-pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.5rem; }

@@ -1,7 +1,10 @@
 export * from "./types.js";
 export { parseAuthor, parseInstant } from "./author.js";
 export type { Shell, ShellContext, ThemeLevel } from "./shell.js";
-export { parseArticleConfig, isKineglyphThemeModule, kineglyphThemeHref, kineglyphThemeHrefs, COVER_FIT, COVER_ON, THEME_INHERIT } from "./config.js";
+export { parseArticleConfig, isKineglyphThemeModule, kineglyphThemeHref, kineglyphThemeHrefs, COVER_FIT, COVER_ON, FORMS, THEME_INHERIT } from "./config.js";
+export { dateStamp, readableDate, rfc3339 } from "./dates.js";
+export { BLOG_INDEX_PAGE, byNewest, manifestPosts, postListHtml, type PostRef } from "./blog.js";
+export { FEED_PATH, feedUrl, feedXml } from "./feed.js";
 export { WORDS_PER_MINUTE, countWords, prose, readingMinutes } from "./reading-time.js";
 export { createMarkdown, renderMarkdown } from "./markdown.js";
 export { expandSnippets, SNIPPET_DIRECTIVE, joinPosix } from "./plugins/snippets.js";

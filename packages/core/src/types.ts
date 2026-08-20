@@ -53,8 +53,21 @@ export type CoverOn = "root" | "all" | "none";
  */
 export type CoverFit = "cover" | "contain";
 
+/**
+ * What kind of thing this folder is — which is to say, **where its order comes from**.
+ *
+ * `"docs"` is ordered by `nav`: somebody decided what to read first, and that decision is the
+ * article's structure. `"blog"` is ordered by date, because nobody decides that, and `nav` shrinks
+ * to what it means on a blog — the standalone pages (about, colophon) that are not posts.
+ *
+ * It is one field rather than two project types because everything else is the same: the same
+ * markdown, the same figures, the same covers, reading times, search, cards and editor. A blog is
+ * a docs site that sorts by date and can be subscribed to.
+ */
+export type ArticleForm = "docs" | "blog";
+
 export interface ArticleConfig {
-  readonly slug: string; readonly title: string; readonly form: "docs";
+  readonly slug: string; readonly title: string; readonly form: ArticleForm;
   readonly status: "draft" | "published"; readonly visibility: "public" | "members" | "authors";
   readonly category?: string; readonly tags: readonly string[];
   readonly theme?: string;
@@ -177,6 +190,26 @@ export interface PageFrontMatter {
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
+  /**
+   * When this post was written — a blog's sort key, and required for a post.
+   *
+   * It is a separate field from {@link published} rather than a spelling of it because the two
+   * fall back differently. `published` inherits `article.yaml`'s, which is right for a docs page:
+   * every page of one article was published when the article was. Inheriting it on a blog would
+   * give every undated post the same date and sort the archive into an arbitrary order that looks
+   * deliberate. So `date` is the page's own or nothing, and a post without one is an error naming
+   * the file. It does fill `published` when the page declares no `published` of its own, because a
+   * post's `article:published_time` is exactly this date.
+   */
+  readonly date?: string;
+  /**
+   * Written, not published: out of the index, the feed and the sitemap, but still built.
+   *
+   * "Still built" is the useful half. A draft has a URL and can be read and shared — which is what
+   * makes it reviewable — it simply is not announced anywhere. A page that would not build until
+   * it was finished could not be looked at until it was finished.
+   */
+  readonly draft?: boolean;
   /** Keeps this page out of `sitemap.xml` and gives it `<meta name="robots" content="noindex">`. */
   readonly noindex?: boolean;
   readonly tags?: readonly string[];
@@ -239,8 +272,18 @@ export interface PageMeta {
   readonly author?: string;
   readonly published?: string;
   readonly updated?: string;
+  /**
+   * This post's own date — the blog index's sort key and the feed's `published`.
+   *
+   * Present only when the page declared one. Unlike {@link published} it never inherits the
+   * article's date: see {@link PageFrontMatter.date} for why an inherited sort key is worse than a
+   * missing one.
+   */
+  readonly date?: string;
+  /** True for a post the author marked `draft`. Absent from the index, the feed and the sitemap. */
+  readonly draft?: boolean;
   readonly tags?: readonly string[];
-  /** True for a page the author marked `noindex`, and for every page of a draft article. */
+  /** True for a page the author marked `noindex`, for a draft post, and for every page of a draft article. */
   readonly noindex?: boolean;
   /**
    * Whole minutes to read this page — at least 1, absent when the page has no prose.
@@ -280,6 +323,14 @@ export interface ArticleMeta extends Omit<ArticleConfig, "nav" | "snippets" | "c
 export interface Manifest {
   readonly article: ArticleMeta;
   readonly nav: readonly NavNode[];
+  /**
+   * A blog's posts, newest first — hrefs into {@link pages}. Absent for `form: docs`.
+   *
+   * Emitted rather than re-derived because four things read this order and none of them may
+   * disagree: the index page's list, the feed, the older/newer pager, and a host reading
+   * `manifest.json` that has no renderer of its own. Drafts and undated posts are already out.
+   */
+  readonly posts?: readonly string[];
   readonly pages: Readonly<Record<string, PageMeta>>;   // keyed by href
   readonly figures: Readonly<Record<string, { readonly page: string; readonly kind: FigureRef["kind"]; readonly scene?: string; readonly staticBase: string }>>;
   readonly assets: readonly string[];

@@ -71,7 +71,7 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     }
     return { [key]: v };
   };
-  const date = (key: "published" | "updated"): Record<string, string> => {
+  const date = (key: "published" | "updated" | "date"): Record<string, string> => {
     const v = o[key];
     if (v === undefined || v === null) return {};
     const d = dateish(v);
@@ -102,6 +102,16 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     if (typeof o["noindex"] !== "boolean") bad("front matter: noindex must be true or false");
     else noindex = { noindex: o["noindex"] };
   }
+  // `draft: true` is checked rather than coerced, because the coercion is the trap: `draft: "no"`
+  // and `draft: 0` are both truthy strings-and-numbers to a JavaScript test, so an author trying to
+  // *un*-draft a post would have published it either way, and one of those two spellings would have
+  // quietly kept it hidden. A warning names the page; the post stays published, which is the safe
+  // direction for a key that only ever removes things.
+  let draft: Record<string, boolean> = {};
+  if (o["draft"] !== undefined && o["draft"] !== null) {
+    if (typeof o["draft"] !== "boolean") bad("front matter: draft must be true or false");
+    else draft = { draft: o["draft"] };
+  }
   let tags: Record<string, readonly string[]> = {};
   if (o["tags"] !== undefined && o["tags"] !== null) {
     if (!Array.isArray(o["tags"]) || o["tags"].some((t) => typeof t !== "string")) bad("front matter: tags must be a list of strings");
@@ -116,7 +126,8 @@ export function parseFrontMatter(text: string, page: string): { readonly meta: P
     meta: {
       ...text_("title"), ...text_("description"), ...text_("cover"), ...text_("author"),
       ...text_("theme"),
-      ...coverAlt, ...coverFit, ...date("published"), ...date("updated"), ...noindex, ...tags,
+      ...coverAlt, ...coverFit, ...date("published"), ...date("updated"), ...date("date"),
+      ...noindex, ...draft, ...tags,
       ...(og.og === undefined ? {} : { og: og.og }),
     },
     body,

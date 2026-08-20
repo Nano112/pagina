@@ -5,6 +5,8 @@ import { articleExcluder } from "./exclude.js";
 import { renderPage, pageSlug } from "./render-page.js";
 import { hrefOf, resolveRelative } from "./links.js";
 import { truncateWords } from "./seo.js";
+import { BLOG_INDEX_PAGE, byNewest, postListHtml, type PostRef } from "./blog.js";
+import { dateStamp } from "./dates.js";
 
 export class PaginaBuildError extends Error {
   constructor(readonly diagnostics: readonly Diagnostic[]) {
@@ -118,17 +120,50 @@ async function resolveTheme(
 export async function renderArticle(o: RenderArticleOptions): Promise<RenderedArticle> {
   const strict = o.strict ?? true;
   const config = parseArticleConfig(await o.fs.read("article.yaml"));
+  const isBlog = config.form === "blog";
   const diagnostics: Diagnostic[] = [];
+  // Hoisted: a blog asks this the same question the asset sweep does at the bottom of this
+  // function, and a `.md` file the folder excludes must not become a post either.
+  const excluded = articleExcluder(config.exclude, o.exclude ?? []);
   const flat = flatten(config.nav);
   const present: Flat[] = [];
   for (const f of flat) {
     if (await o.fs.exists(f.page)) present.push(f);
     else diagnostics.push({ severity: "error", code: "nav-missing-file", message: `nav references ${f.page}, which does not exist`, page: f.page });
   }
-  const navPages = new Set(present.map((f) => f.page));
+  /**
+   * A blog's pages come from the **folder**, not from `nav`.
+   *
+   * That inversion is the whole of the form. On a docs site `nav` is what makes a markdown file a
+   * page, and a file nobody listed is a file nobody meant to publish. On a blog the opposite is
+   * true: writing a post *is* the act of publishing it, and having to add a line to `article.yaml`
+   * afterwards is the step that gets forgotten. So every `.md` in the folder is a post, except the
+   * index and except the pages `nav` names — which on a blog means the standalone ones (about,
+   * colophon), the pages that are not posts and never appear in the archive.
+   */
+  const navNamed = new Set(flat.map((f) => f.page));
+  const postPaths: string[] = [];
+  let hasIndex = false;
+  if (isBlog) {
+    const found = (await o.fs.list(".")).filter((p) => /\.md$/i.test(p) && !excluded(p)).sort();
+    hasIndex = found.includes(BLOG_INDEX_PAGE);
+    for (const p of found) if (p !== BLOG_INDEX_PAGE && !navNamed.has(p)) postPaths.push(p);
+    if (!hasIndex)
+      diagnostics.push({
+        severity: "error",
+        code: "blog-no-index",
+        message: `a blog needs an index.md: it is the page served at "/", and the list of posts is appended to whatever you write there. Create index.md with the blog's title and opening words — an empty file works too.`,
+      });
+  }
+  // Source order for rendering; the index's list and the pager are re-sorted by date below.
+  const ordered = [...(hasIndex ? [BLOG_INDEX_PAGE] : []), ...present.map((f) => f.page), ...postPaths];
+  // Every page of the article, so a link from one post to another is rewritten as a page link
+  // rather than left pointing at a `.md` file. On a docs site this is `nav`; on a blog `nav` names
+  // a fraction of the pages, and using it here would break exactly the links posts make to posts.
+  const navPages = new Set(ordered);
   const pages: Record<string, RenderedPage> = {};
-  for (const f of present) {
-    const r = await renderPage({ fs: o.fs, config, path: f.page, navPages, ...(o.md === undefined ? {} : { md: o.md }), ...(o.base === undefined ? {} : { base: o.base }) });
+  for (const path of ordered) {
+    const r = await renderPage({ fs: o.fs, config, path, navPages, ...(o.md === undefined ? {} : { md: o.md }), ...(o.base === undefined ? {} : { base: o.base }) });
     pages[r.page.href] = r.page;
     diagnostics.push(...r.diagnostics);
   }
@@ -155,11 +190,74 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
   const articleTheme = await resolveTheme(config.theme, "", o.fs, base, "article.yaml", diagnostics);
   const draft = config.status !== "published";
 
+  // Breadcrumbs come from `nav`, which is where an article's shape is written down. A blog post is
+  // in no nav, so its trail is the post itself — one crumb, which is the honest depth of a blog.
+  const crumbsOf = new Map(present.map((f) => [f.page, f.crumbs] as const));
+
+  /**
+   * The pager, decided before the metas are assembled — and it points the opposite way on a blog.
+   *
+   * In docs, `prev`/`next` are positions in `nav`: the previous and the next thing to read, which
+   * is a sequence a person chose. On a blog there is no such sequence, only a chronology, so the
+   * arrows mean **newer** and **older** — and they run down the index, so `prev` is the entry above
+   * this one (newer) and `next` is the entry below it (older). The shell relabels them; nothing
+   * else has to know, because `rel="prev"`/`rel="next"` still describe the order the pages are
+   * presented in, which is what those tokens mean.
+   *
+   * The index page and the standalone pages get no pager at all. An "older post" link on the
+   * colophon is a link to a sequence the page is not part of.
+   */
+  const pager = new Map<string, { readonly prev?: string; readonly next?: string }>();
+  const postOrder: string[] = [];
+  if (isBlog) {
+    const dated: { path: string; href: string; date: string }[] = [];
+    for (const path of postPaths) {
+      const href = hrefOf(path);
+      const fm = pages[href]!.frontMatter;
+      if (fm.draft === true) continue;
+      if (fm.date === undefined) {
+        // Not a warning. A post with no date is absent from the index, absent from the feed and
+        // absent from the sitemap, so it is a post nobody can find — the exact failure the blog
+        // form exists to prevent, and one that is invisible from the built site. Three ways out,
+        // because the file is one of three things and only the author knows which.
+        diagnostics.push({
+          severity: "error",
+          code: "blog-post-no-date",
+          message: `${path} has no \`date\`, so nothing can place it: it would be left out of the index, the feed and the sitemap. Add \`date: 2026-08-20\` to its front matter — or \`draft: true\` while it is unfinished, or list it under \`nav\` in article.yaml if it is a standalone page rather than a post.`,
+          page: path,
+        });
+        continue;
+      }
+      if (dateStamp(fm.date) === Number.NEGATIVE_INFINITY)
+        diagnostics.push({
+          severity: "warning",
+          code: "blog-date-unreadable",
+          message: `${path} has \`date: ${fm.date}\`, which is not a date pagina can order by, so this post sorts last and is left out of the feed. Write it as \`2026-08-20\`.`,
+          page: path,
+        });
+      dated.push({ path, href, date: fm.date });
+    }
+    const sorted = byNewest(dated);
+    postOrder.push(...sorted.map((d) => d.href));
+    for (const [i, d] of sorted.entries())
+      pager.set(d.path, {
+        ...(i > 0 ? { prev: sorted[i - 1]!.href } : {}),
+        ...(i < sorted.length - 1 ? { next: sorted[i + 1]!.href } : {}),
+      });
+  } else {
+    for (const [i, f] of present.entries())
+      pager.set(f.page, {
+        ...(i > 0 ? { prev: hrefOf(present[i - 1]!.page) } : {}),
+        ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}),
+      });
+  }
+
   const metas: Record<string, PageMeta> = {};
-  for (const [i, f] of present.entries()) {
-    const href = hrefOf(f.page);
+  for (const path of ordered) {
+    const href = hrefOf(path);
     const p = pages[href]!;
     const fm = p.frontMatter;
+    const f = { page: path, crumbs: crumbsOf.get(path) ?? [{ title: p.title, href }] };
     // The description chain, run once here so that every consumer — pagina's shell, a Laravel
     // host reading manifest.json — reaches the same answer without re-deriving it.
     //
@@ -173,7 +271,13 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     // The page's own cover and the page's own alt text travel together: a page that overrides the
     // image but not the description would otherwise be labelled with the article cover's alt.
     const own = await resolveCover(fm.cover, f.page, o.fs, base, f.page, diagnostics, f.page);
-    const cover = own ?? articleCover;
+    // On a **blog** the article cover is the blog's banner, and a banner reprinted at the top of
+    // every post is the magazine-front-page problem `cover_on` already solved for docs — except
+    // that a blog wants `cover_on: all`, so suppressing the header is not the lever here. The lever
+    // is inheritance: a post shows its own picture or none, and the banner stays on the index where
+    // it belongs. `og:image` still falls back to it (see `seo.ts`), because a post shared with no
+    // artwork at all is worse than one shared with the blog's.
+    const cover = own ?? (isBlog && path !== BLOG_INDEX_PAGE ? undefined : articleCover);
     // Never empty and never the filename: an author's words if there are any, else the article
     // title, which is at least true about what the image is introducing.
     const coverAlt = (own === undefined ? undefined : fm.coverAlt) ?? config.coverAlt ?? config.title;
@@ -187,14 +291,20 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     // level down, and it is the reason this is a second field rather than a replacement.
     const theme = await resolveTheme(fm.theme, f.page, o.fs, base, f.page, diagnostics, f.page);
     const author = fm.author ?? config.author;
-    const published = fm.published ?? config.published;
+    // A post's `date` *is* its publication date, so it fills `published` — which is what
+    // `article:published_time`, the JSON-LD and the article header all already read. What it must
+    // not do is inherit the article's, which is why the two stay separate fields: see
+    // `PageFrontMatter.date`.
+    const published = fm.published ?? fm.date ?? config.published;
     const updated = fm.updated ?? config.updated;
     const tags = fm.tags ?? config.tags;
-    const noindex = fm.noindex === true || draft;
+    // A draft is a page a crawler must not index, for the same reason a draft article's pages are:
+    // it is readable so it can be reviewed, not so it can be found.
+    const isDraftPost = fm.draft === true;
+    const noindex = fm.noindex === true || draft || isDraftPost;
     metas[href] = {
       title: p.title, headings: p.headings, breadcrumbs: f.crumbs,
-      ...(i > 0 ? { prev: hrefOf(present[i - 1]!.page) } : {}),
-      ...(i < present.length - 1 ? { next: hrefOf(present[i + 1]!.page) } : {}),
+      ...pager.get(path),
       ...(description === undefined ? {} : { description: truncateWords(description) }),
       ...(cover === undefined ? {} : { cover, coverAlt, ...(coverFit === undefined ? {} : { coverFit }) }),
       ...(theme === undefined ? {} : { theme }),
@@ -202,9 +312,28 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
       ...(p.readingMinutes === undefined ? {} : { readingMinutes: p.readingMinutes }),
       ...(published === undefined ? {} : { published }),
       ...(updated === undefined ? {} : { updated }),
+      ...(fm.date === undefined ? {} : { date: fm.date }),
+      ...(isDraftPost ? { draft: true } : {}),
       ...(tags.length === 0 ? {} : { tags }),
       ...(noindex ? { noindex: true } : {}),
     };
+  }
+  /**
+   * The blog's archive, written onto the index page.
+   *
+   * Appended to what the author wrote rather than replacing it, and appended *after* the metas are
+   * final because the list is made of them — every title, date, description, cover and reading time
+   * in it is the same value the post's own page will use, resolved once. A list assembled from a
+   * second pass over the pages is a list that can disagree with them.
+   *
+   * It goes on the page's `html` and not into its `headings` or `readingMinutes`, which were taken
+   * before this ran: a table of contents listing every post is not a table of this page's contents,
+   * and a list of links is not prose to be timed.
+   */
+  if (isBlog && hasIndex) {
+    const posts: PostRef[] = postOrder.map((href) => ({ href, path: href, meta: metas[href]! }));
+    const index = pages["/"]!;
+    pages["/"] = { ...index, html: index.html + postListHtml(posts, base) };
   }
   // Figure ids key the manifest and name the pre-rendered SVGs, so two pages claiming the same
   // id would silently overwrite each other's figures.
@@ -218,11 +347,12 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
   const figures: Manifest["figures"] = Object.fromEntries(Object.values(pages).flatMap((p) => p.figures.map((f) => [f.id, { page: p.href, kind: f.kind, ...(f.scene === undefined ? {} : { scene: f.scene }), staticBase: `${base}/_pagina/figures/${pageSlug(p.href)}/${f.id}` }])));
   // What gets copied into the output — which is to say, what gets published. The rule used to be
   // "everything that is not a page", which publishes whatever happens to be sitting in the folder.
-  const excluded = articleExcluder(config.exclude, o.exclude ?? []);
   const assets = (await o.fs.list(".")).filter((f) => !/\.md$/i.test(f) && f !== "article.yaml" && !excluded(f));
   // The landing page is the first page in nav order — the one a reader arrives at, and the one
-  // `coverOn: "root"` names. Emitted so no consumer has to re-walk `nav` to find it.
-  const rootHref = present.length === 0 ? "/" : hrefOf(present[0]!.page);
+  // `coverOn: "root"` names. Emitted so no consumer has to re-walk `nav` to find it. A blog's is
+  // always `/`: its `nav` is a list of standalone pages, and the page a reader arrives at is the
+  // index, which is not in it.
+  const rootHref = isBlog || present.length === 0 ? "/" : hrefOf(present[0]!.page);
   // The whole article's reading time is the sum of the pages', not a recount of the concatenation:
   // a card that says "12 min" and a page list whose numbers add to 11 is a card nobody trusts.
   const totalMinutes = Object.values(metas).reduce((n, m) => n + (m.readingMinutes ?? 0), 0);
@@ -242,7 +372,11 @@ export async function renderArticle(o: RenderArticleOptions): Promise<RenderedAr
     ...(config.updated === undefined ? {} : { updated: config.updated }),
     ...(config.kineglyph === undefined ? {} : { kineglyph: config.kineglyph }),
   };
-  const manifest: Manifest = { article, nav: toNav(config.nav), pages: metas, figures, assets };
+  const manifest: Manifest = {
+    article, nav: toNav(config.nav),
+    ...(isBlog ? { posts: postOrder } : {}),
+    pages: metas, figures, assets,
+  };
   if (strict && diagnostics.some((d) => d.severity === "error")) throw new PaginaBuildError(diagnostics);
   return { manifest, pages, diagnostics };
 }

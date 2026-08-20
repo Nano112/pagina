@@ -1,4 +1,4 @@
-import { pageSeo, renderSeoHtml, type NavNode, type PageMeta, type RenderedArticle, type ThemeLevel } from "@pagina/core";
+import { feedUrl, pageSeo, readableDate, renderSeoHtml, type NavNode, type PageMeta, type RenderedArticle, type ThemeLevel } from "@pagina/core";
 
 /** Context a page render pass gets. The five required fields mirror `@pagina/core`'s
  * `ShellContext` exactly; `kineglyphThemeUrl` is computed by `staticShell` internally (see
@@ -110,24 +110,6 @@ function cascadeStylesheetsHtml(article: RenderedArticle, href: string): string 
 }
 
 /**
- * A date as a reader reads it, spelled out rather than left as an ISO stamp.
- *
- * Written by hand rather than through `Intl`: the shell renders on whatever Node a build runs on
- * and reads in whatever browser opens the page, and an ICU build difference would make the same
- * article's HTML differ between two machines. A value that is not a date pagina understands is
- * passed through unchanged — it is still the author's, and `datetime` keeps the machine-readable
- * half either way.
- */
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-function readableDate(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (m === null) return iso;
-  const month = MONTHS[Number(m[2]) - 1];
-  if (month === undefined) return iso;
-  return `${String(Number(m[3]))} ${month} ${m[1]!}`;
-}
-
-/**
  * The cover, as a band across the whole page.
  *
  * A cover is the first thing on the page and behaves like one: it is emitted *outside* the shell
@@ -176,12 +158,12 @@ function coverHtml(meta: PageMeta, article: RenderedArticle["manifest"]["article
  * and no prose each drop their own part and leave the rest intact — an article with only a title
  * renders a header that is only a title, not an empty box with separators in it.
  */
-function articleHeaderHtml(meta: PageMeta, titleHtml: string): string {
+function articleHeaderHtml(meta: PageMeta, titleHtml: string, opts: { readonly readingTime?: boolean } = {}): string {
   const date = meta.published ?? meta.updated;
   const items = [
     date === undefined ? "" : `<time class="pg-article-meta__item" datetime="${esc(date)}">${esc(readableDate(date))}</time>`,
     meta.author === undefined ? "" : `<span class="pg-article-meta__item">${esc(meta.author)}</span>`,
-    meta.readingMinutes === undefined ? "" : `<span class="pg-article-meta__item">${String(meta.readingMinutes)} min read</span>`,
+    meta.readingMinutes === undefined || opts.readingTime === false ? "" : `<span class="pg-article-meta__item">${String(meta.readingMinutes)} min read</span>`,
   ].filter((s) => s !== "");
   const metaRow = items.length === 0
     ? ""
@@ -283,14 +265,20 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
       : `<nav class="pg-toc" aria-label="On this page"><p class="pg-toc__label">On this page</p><ul>${toc
           .map((h) => `<li class="pg-toc__item pg-toc__item--${h.level}"><a href="${esc(`${withBase(ctx.base, href)}#${h.id}`)}">${esc(h.text)}</a></li>`)
           .join("")}</ul></nav>`;
+  // The arrows point the other way on a blog, which is the point of the form rather than a detail
+  // of it. In docs they are positions in a reading order somebody chose; on a blog there is no such
+  // order, only a chronology, so the same two links mean **newer** and **older**. `renderArticle`
+  // has already pointed `prev` up the index (newer) and `next` down it (older), so only the words
+  // change here — and the words are what a reader is actually navigating by.
+  const isBlog = article.manifest.article.form === "blog";
   const prev =
     meta.prev === undefined
       ? ""
-      : `<a class="pg-pager__link pg-pager__link--prev" rel="prev" href="${esc(withBase(ctx.base, meta.prev))}"><span>Previous</span>${esc(article.manifest.pages[meta.prev]!.title)}</a>`;
+      : `<a class="pg-pager__link pg-pager__link--prev" rel="prev" href="${esc(withBase(ctx.base, meta.prev))}"><span>${isBlog ? "Newer" : "Previous"}</span>${esc(article.manifest.pages[meta.prev]!.title)}</a>`;
   const next =
     meta.next === undefined
       ? ""
-      : `<a class="pg-pager__link pg-pager__link--next" rel="next" href="${esc(withBase(ctx.base, meta.next))}"><span>Next</span>${esc(article.manifest.pages[meta.next]!.title)}</a>`;
+      : `<a class="pg-pager__link pg-pager__link--next" rel="next" href="${esc(withBase(ctx.base, meta.next))}"><span>${isBlog ? "Older" : "Next"}</span>${esc(article.manifest.pages[meta.next]!.title)}</a>`;
   const crumbs = meta.breadcrumbs
     .map((c) => (c.href ? `<a href="${esc(withBase(ctx.base, c.href))}">${esc(c.title)}</a>` : `<span>${esc(c.title)}</span>`))
     .join(`<span class="pg-crumbs__sep">/</span>`);
@@ -310,9 +298,13 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   // children under `justify-content: space-between` spread themselves across the row, which put
   // "Edit this page" hard against the site title on a narrow header and left the toggle marooned;
   // one group with a gap is the arrangement a header actually has.
+  // A blog's `nav` is a list of standalone pages, and most blogs have none — so the rail is not a
+  // thing that is empty, it is a thing that is absent, and the grid closes over it. Rendering an
+  // empty 240px column with a border down one side is the tell of a docs layout pretending.
+  const hasNav = article.manifest.nav.length > 0;
   const header = ctx.chrome === false
     ? ""
-    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><div class="pg-header__actions">${navigationTriggerHtml()}${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></div></header>`;
+    : `<header class="pg-header"><a class="pg-header__title" href="${esc(withBase(ctx.base, "/"))}">${esc(a.title)}</a><div class="pg-header__actions">${hasNav ? navigationTriggerHtml() : ""}${editLink}${searchTriggerHtml(ctx)}<button type="button" class="pg-theme-toggle" data-pagina-theme-toggle aria-label="Toggle colour scheme"><span class="pg-theme-toggle__thumb"></span></button></div></header>`;
   // The article header, above the content and under the breadcrumbs, on the pages `cover_on`
   // names. `?? "root"` is for a manifest assembled by hand rather than by `renderArticle` — the
   // default has to be the same one `article.yaml` documents, wherever the manifest came from.
@@ -321,8 +313,11 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
   const wantsHeader = coverOn === "all" || (coverOn === "root" && isRoot);
   const lifted = wantsHeader ? liftLeadingH1(page.html) : { rest: page.html };
   const contentHtml = lifted.rest;
+  // "1 min read" on a blog's front page is the reading time of a two-sentence introduction, sitting
+  // directly above a list of posts that each carry their own. It is the one number on that page
+  // that measures nothing a reader cares about.
   const articleHeader = wantsHeader
-    ? articleHeaderHtml(meta, lifted.h1 ?? `<h1>${esc(meta.title)}</h1>`)
+    ? articleHeaderHtml(meta, lifted.h1 ?? `<h1>${esc(meta.title)}</h1>`, isBlog && isRoot ? { readingTime: false } : {})
     : "";
   const cover = wantsHeader ? coverHtml(meta, a, isRoot) : "";
   // Every tag pagina emits for this page — title, description, robots, OpenGraph, Twitter,
@@ -332,8 +327,26 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
     ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }),
     ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
   }));
+  // A blog announces its feed on every page. This is the whole of how anyone subscribes: a reader
+  // is pointed at the site, not at `feed.xml`, and every feed reader in use looks for exactly this
+  // element. `feedUrl` answers `undefined` on the builds that write no feed — a draft, a mirror, a
+  // folder with no `site_url` — so the page never advertises a file that is not there.
+  const feed = feedUrl(article.manifest, {
+    base: ctx.base,
+    ...(ctx.siteUrl === undefined ? {} : { siteUrl: ctx.siteUrl }),
+    ...(ctx.mirrorOf === undefined ? {} : { mirrorOf: ctx.mirrorOf }),
+  });
+  const feedLink = feed === undefined
+    ? ""
+    : `\n<link rel="alternate" type="application/atom+xml" href="${esc(feed)}" title="${esc(a.title)}">`;
+  // And once more where a person can see it. `<link rel="alternate">` is addressed to software; a
+  // reader who wants to follow the blog has to be given something to click, and the front page is
+  // where they are when they decide.
+  const subscribe = feed === undefined || !isBlog || !isRoot
+    ? ""
+    : `<p class="pg-subscribe"><a href="${esc(feed)}">Subscribe by feed</a></p>`;
   const siteNavigation = navHtml(article.manifest.nav, href, ctx.base);
-  const mobileNavigation = ctx.chrome === false
+  const mobileNavigation = ctx.chrome === false || !hasNav
     ? ""
     : `<div class="pg-nav-modal" data-pg-nav-modal hidden><section class="pg-nav-modal__panel" id="pg-nav-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-nav-dialog-title"><header class="pg-nav-modal__header"><h2 id="pg-nav-dialog-title">Pages</h2><button type="button" class="pg-nav-modal__close" data-pg-nav-close aria-label="Close page navigation">Close</button></header><nav class="pg-nav pg-nav--modal" aria-label="Pages">${siteNavigation}</nav></section></div>`;
   return `<!doctype html>
@@ -343,13 +356,13 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
 ${seo}
 ${THEME_INIT_SCRIPT}
 <script type="importmap">{"imports":{"kineglyph":"${escInScriptJson(ctx.kineglyphRuntimeUrl)}"}}</script>
-${stylesheetHtml(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}
+${stylesheetHtml(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStylesheetsHtml(article, href)}${feedLink}
 </head>
 <body>
 ${header}${mobileNavigation}${cover}
-<div class="pg-shell">
-<nav class="pg-nav" aria-label="Site">${siteNavigation}</nav>
-<main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${articleHeader}<article class="pg-content">${contentHtml}</article><nav class="pg-pager">${prev}${next}</nav></main>
+<div class="pg-shell${hasNav ? "" : " pg-shell--no-nav"}">
+${hasNav ? `<nav class="pg-nav" aria-label="Site">${siteNavigation}</nav>` : ""}
+<main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${articleHeader}<article class="pg-content">${contentHtml}</article>${subscribe}<nav class="pg-pager">${prev}${next}</nav></main>
 ${tocHtml}
 </div>
 <script type="module" src="${esc(ctx.clientUrl)}"></script>${modelViewer}

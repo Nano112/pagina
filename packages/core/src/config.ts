@@ -1,7 +1,9 @@
 import { parse } from "yaml";
 import { parseOgConfig } from "./og.js";
-import type { ArticleConfig, CoverFit, CoverOn, NavEntry } from "./types.js";
+import type { ArticleConfig, ArticleForm, CoverFit, CoverOn, NavEntry } from "./types.js";
 
+/** Every value `form` may take. See {@link ArticleForm}. */
+export const FORMS: readonly ArticleForm[] = ["docs", "blog"];
 /** Every value `cover_on` may take, in the order the doc lists them. */
 export const COVER_ON: readonly CoverOn[] = ["root", "all", "none"];
 /** Every value `cover_fit` may take. `contain` is the default — see {@link CoverFit}. */
@@ -164,8 +166,8 @@ export function parseArticleConfig(text: string): ArticleConfig {
   const raw = parse(text) as unknown;
   if (raw === null || typeof raw !== "object") fail("(root)", "must be a mapping");
   const o = raw as Record<string, unknown>;
-  const form = str(o.form ?? "docs", "form");
-  if (form !== "docs") fail("form", `must be "docs" (got "${form}")`);
+  const form = str(o.form ?? "docs", "form") as ArticleForm;
+  if (!FORMS.includes(form)) fail("form", `must be ${FORMS.join("|")} (got "${form as string}")`);
   const status = (o.status ?? "draft") as string;
   if (status !== "draft" && status !== "published") fail("status", "must be draft|published");
   const visibility = (o.visibility ?? "public") as string;
@@ -176,7 +178,14 @@ export function parseArticleConfig(text: string): ArticleConfig {
   // A cover belongs to the article, so the default is its landing page and nowhere else. A typo
   // here is an error rather than a silent fallback: `cover_on: rooot` would otherwise hide the
   // header on every page and look exactly like the bug this option exists to fix.
-  const coverOn = (o.cover_on ?? "root") as string;
+  //
+  // A **blog** defaults to `all` instead. The reasoning that makes `root` right for docs — a
+  // reference page three levels in must not reprint the hero — is the reasoning that makes it
+  // wrong here: every post is its own front page, with its own title, date and picture, and a blog
+  // whose posts opened with an unlabelled wall of prose would be the docs default leaking into a
+  // form it was never argued for. What a post does *not* inherit is the blog's own cover; see
+  // `render-article.ts`.
+  const coverOn = (o.cover_on ?? (form === "blog" ? "all" : "root")) as string;
   if (!COVER_ON.includes(coverOn as CoverOn)) fail("cover_on", `must be ${COVER_ON.join("|")} (got "${coverOn}")`);
   // `contain` by default, for the reason `CoverFit` gives: pagina never decodes the image, so it
   // cannot tell a photograph from a wordmark, and only one of the two answers is destructive.
@@ -202,7 +211,7 @@ export function parseArticleConfig(text: string): ArticleConfig {
   return {
     slug: str(o.slug, "slug"),
     title: str(o.title, "title"),
-    form: "docs",
+    form,
     status,
     visibility: visibility as ArticleConfig["visibility"],
     ...(o.category === undefined ? {} : { category: str(o.category, "category") }),
