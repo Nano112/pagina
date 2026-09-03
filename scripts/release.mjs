@@ -152,12 +152,19 @@ if (step === "check" || step === "pack" || step === "publish") {
 }
 
 if (step === "publish") {
-  try {
-    const who = execFileSync("npm", ["whoami"], { encoding: "utf8" }).trim();
-    console.log(`\npublishing as ${who}`);
-  } catch {
-    console.error("\nnpm whoami failed — run `npm login` first. Nothing was published.");
-    process.exit(1);
+  // On GitHub Actions the registry authenticates the workflow's OIDC token (npm "trusted
+  // publishing"), so there is no logged-in user to name and `npm whoami` would fail. Locally,
+  // a missing login should still stop before the first publish rather than after.
+  if (process.env.GITHUB_ACTIONS === "true") {
+    console.log("\npublishing from GitHub Actions via npm trusted publishing (OIDC)");
+  } else {
+    try {
+      const who = execFileSync("npm", ["whoami"], { encoding: "utf8" }).trim();
+      console.log(`\npublishing as ${who}`);
+    } catch {
+      console.error("\nnpm whoami failed — run `npm login` first. Nothing was published.");
+      process.exit(1);
+    }
   }
   const dry = process.env.RELEASE_DRY_RUN === "1" ? ["--dry-run"] : [];
   // A 2FA-protected account needs a one-time password. npm's own prompt only appears on a TTY,

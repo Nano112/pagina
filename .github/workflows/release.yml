@@ -1,0 +1,77 @@
+# Publish @pagina/* to npm on a version tag, with no npm token anywhere.
+#
+# Each package on npmjs.com names this repository and this workflow file as its "trusted
+# publisher". At run time the job presents GitHub's OIDC token (permissions.id-token) and the
+# registry accepts it in place of a login, then attaches provenance linking the tarball to
+# this commit. Rotating or leaking a token is not a thing that can happen here.
+#
+# To release: bump every packages/*/package.json to the same version, merge to main, then
+#
+#   git tag -a v0.4.0 -m "0.4.0" && git push origin v0.4.0
+#
+# The tag must equal the package versions; the guard below refuses otherwise.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # the OIDC token npm trusts
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      # Trusted publishing needs npm 11.5.1 or newer; pin to whatever is current rather than
+      # trusting the runner image's bundled copy.
+      - name: Update npm
+        run: npm install -g npm@latest && npm --version
+
+      - name: Tag must match the package versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for f in packages/*/package.json; do
+            v="$(node -p "require('./$f').version")"
+            if [ "$v" != "$tag" ]; then
+              echo "::error::$f is $v but the tag is v$tag"
+              exit 1
+            fi
+          done
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Resolve the Playwright version
+        run: echo "PLAYWRIGHT_VERSION=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_ENV"
+
+      - name: Restore the Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Install Chromium
+        run: |
+          npx playwright install-deps chromium
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            npx playwright install chromium
+          fi
+
+      # check (clean, ci, full test suite, tarball audit) then publish in dependency order.
+      - name: Check and publish
+        run: node scripts/release.mjs publish

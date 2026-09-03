@@ -9,6 +9,22 @@ who runs `npm install @pagina/cli` gets a CLI that cannot build a page with a fi
 [Kineglyph's RELEASING.md](https://github.com/Nano112/kineglyph/blob/main/RELEASING.md), then come
 back here.
 
+## How a release ships (trusted publishing)
+
+Releases are published by `.github/workflows/release.yml`, not from a laptop. Each `@pagina/*`
+package on npmjs.com lists this repository and that workflow file as its **trusted publisher**,
+so the job authenticates with GitHub's OIDC token: no npm token exists to store, rotate or leak,
+and every tarball carries provenance pointing at the tagged commit.
+
+1. Set every `packages/*/package.json` to the new version and merge to `main`.
+2. `npm run release:check` locally if you want the answer before CI has it.
+3. Tag and push: `git tag -a v0.4.0 -m "0.4.0" && git push origin v0.4.0`.
+
+The workflow refuses a tag that does not equal the package versions, re-runs the whole check
+(`npm ci`, build, typecheck, lint, unit, e2e, tarball audit), then publishes in dependency order.
+A local `node scripts/release.mjs publish` still works for a logged-in account without 2FA
+enforcement; with security keys it cannot, which is the reason the workflow exists.
+
 ## Why `npm run adopt:kineglyph` exists
 
 Today every `@kineglyph/*` reference in this repository is an *optional* peer dependency with a
