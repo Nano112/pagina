@@ -39,7 +39,7 @@
    * font-relative, so the same token means one thing on a paragraph, another inside a smaller
    * `figcaption`, and another again on a host element that caps the column in a different size.
    */
-  .pg-content { max-width: var(--pg-measure); container-type: inline-size; }
+  .pg-content { max-width: var(--pg-measure); container-type: inline-size; overflow-wrap: anywhere; }
   .pg-content h1, .pg-content h2, .pg-content h3, .pg-content h4 {
     font-family: var(--pg-font-display); font-weight: 700; line-height: 1.25; scroll-margin-top: 4rem;
   }
@@ -64,7 +64,7 @@
    * time — is given its own scroll box rather than being squeezed into the column. `pre` has
    * worked this way from the start; figures join the same rule rather than growing a second
    * mechanism, because "wide thing, scrolls sideways" should read as one idea. */
-  .pg-content pre { overflow: auto; overscroll-behavior-x: contain; }
+  .pg-content pre { overflow: auto; overscroll-behavior-x: contain; overflow-wrap: normal; }
   /*
    * A figure's scroll box is stated unscoped, on the same selector as the floor that makes it
    * necessary (`.kg-frame > svg`'s `min-width`, below). The two used to be written apart — the

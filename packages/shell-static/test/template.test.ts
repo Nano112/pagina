@@ -39,6 +39,19 @@ const nastyArticle: RenderedArticle = {
 };
 
 describe("renderPageHtml", () => {
+  it("provides native mobile menus with site hierarchy and on-page links even without chrome", () => {
+    const html = renderPageHtml(article, "/g/page/", { ...ctx, base: "/docs/", chrome: false });
+    const menus = [...html.matchAll(/<details class="pg-mobile-menu">([\s\S]*?)<\/details>/g)].map((m) => m[1]!);
+    expect(menus).toHaveLength(2);
+    expect(menus[0]).toContain("<summary>Browse docs</summary>");
+    expect(menus[0]).toContain('aria-label="Site"');
+    expect(menus[0]).toContain('href="/docs/g/page/" aria-current="page"');
+    expect(menus[0]).toContain('class="pg-nav__label">G');
+    expect(menus[1]).toContain("<summary>On this page</summary>");
+    expect(menus[1]).toContain('href="/docs/g/page/#a"');
+    expect(renderPageHtml(article, "/", ctx)).not.toContain("<summary>On this page</summary>");
+  });
+
   it("emits import map, nav with current marker, toc, prev/next and content", () => {
     const html = renderPageHtml(article, "/g/page/", ctx);
     expect(html).toContain(`<script type="importmap">{"imports":{"kineglyph":"/_pagina/kineglyph.js"}}</script>`);

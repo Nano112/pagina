@@ -278,6 +278,9 @@ export function renderPageHtml(article: RenderedArticle, href: string, ctx: Shel
       : `<nav class="pg-toc" aria-label="On this page"><p class="pg-toc__label">On this page</p><ul>${toc
           .map((h) => `<li class="pg-toc__item pg-toc__item--${h.level}"><a href="${esc(`${withBase(ctx.base, href)}#${h.id}`)}">${esc(h.text)}</a></li>`)
           .join("")}</ul></nav>`;
+  // Native disclosure keeps both navigation surfaces usable with keyboard and without JS.
+  // Reuse the same escaped links; only the desktop rail classes are removed in the menu.
+  const mobileNav = `<div class="pg-mobile-nav"><details class="pg-mobile-menu"><summary>Browse docs</summary><nav aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav></details>${tocHtml === "" ? "" : `<details class="pg-mobile-menu"><summary>On this page</summary>${tocHtml.replace('class="pg-toc"', 'class="pg-mobile-toc"')}</details>`}</div>`;
   const prev =
     meta.prev === undefined
       ? ""
@@ -338,6 +341,7 @@ ${stylesheetHtml(ctx)}${(ctx.theme ?? "full") === "none" ? "" : cascadeStyleshee
 </head>
 <body>
 ${header}${cover}
+${mobileNav}
 <div class="pg-shell">
 <nav class="pg-nav" aria-label="Site">${navHtml(article.manifest.nav, href, ctx.base)}</nav>
 <main class="pg-main"><nav class="pg-crumbs" aria-label="Breadcrumb">${crumbs}</nav>${articleHeader}<article class="pg-content">${contentHtml}</article><nav class="pg-pager">${prev}${next}</nav></main>

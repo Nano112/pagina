@@ -6,12 +6,9 @@ import "./pagina.css";
 // The bare `kineglyph` specifier is resolved by the page's import map in production and by
 // `@pagina/vite`'s dev-server alias in dev; it must stay a bare import here (never
 // `@kineglyph/web/bundle` directly) or the client bundle would inline a second copy of the
-// runtime instead of sharing the one the import map points at. This static import cannot be
-// try/caught (an import-map misconfiguration is a page-level error, not something this module
-// can recover from) — everything below that does NOT depend on it resolving (tabs, code-copy,
-// theme toggle, HMR bridge) is wired up before the guarded `mountAll` call further down, so a
-// runtime load failure or a figure throwing doesn't take those features down with it.
-import { mountAll, mountAllKineglyphLabs, defaultTheme, inheritTheme, overrideTheme, registerTheme, themeByName, type ThemeTokens, type EmbeddedFigure, type KineglyphLabController } from "kineglyph";
+// runtime instead of sharing the one the import map points at. Only types are eager: the
+// runtime is imported below, after wiring page controls, and only on figure/lab pages.
+import type { ThemeTokens, EmbeddedFigure, KineglyphLabController } from "kineglyph";
 // pagina's editorial default: a figure in prose is a picture, and the instrument is opted into
 // with `data-instrument="true"`. See the module for why that opinion lives here and not in the
 // library.
@@ -30,7 +27,8 @@ const current = (): Theme => (root.dataset.theme === "dark" ? "dark" : "light");
 // The `<head>` inline script already set `data-theme` from localStorage/prefers-color-scheme
 // before this module loads (avoids a flash of the wrong theme); nothing to do here but read it.
 
-let themes: Themes = { light: defaultTheme, dark: defaultTheme };
+let runtime: typeof import("kineglyph");
+let themes: Themes;
 // Populated once `mountAll` (below) settles; starts empty so the toggle works immediately even
 // if mounting is slow, fails, or never resolves.
 let figures: EmbeddedFigure[] = [];
@@ -54,7 +52,7 @@ const figureTheme = (element: HTMLElement): ThemeTokens | undefined => {
   if (name === undefined || name.trim() === "") return undefined;
   // `inheritTheme()` rather than `undefined`, so an explicit `inherit` on a figure escapes the
   // article's declaration instead of falling back to it.
-  return themeByName(name.trim()) ?? inheritTheme();
+  return runtime.themeByName(name.trim()) ?? runtime.inheritTheme();
 };
 
 /** What a figure should be showing right now: its own declaration, or the page's scheme. */
@@ -170,6 +168,14 @@ hot?.on("kineglyph:update", (d) => document.dispatchEvent(new CustomEvent("kineg
 
 // --- kineglyph theme + mount (async; guarded so a failure here never disables the above) ----
 
+// Keep the import map even on prose pages: author modules (including math) may use it.
+// A map does not fetch its targets. This conditional dynamic import is the network boundary.
+if (document.querySelector("figure.kg[data-scene], [data-kineglyph], [data-kineglyph-lab]") !== null) {
+try {
+  runtime = await import("kineglyph");
+  const { mountAll, mountAllKineglyphLabs, defaultTheme, themeByName, overrideTheme, registerTheme } = runtime;
+  themes = { light: defaultTheme, dark: defaultTheme };
+
 const kgThemeUrl = root.dataset.kgTheme;
 if (kgThemeUrl !== undefined && kgThemeUrl !== "") {
   try {
@@ -241,4 +247,8 @@ try {
   });
 } catch (e) {
   console.warn("pagina: kineglyph mount failed", e);
+}
+} catch (e) {
+  console.warn("pagina: kineglyph runtime failed to load", e);
+}
 }

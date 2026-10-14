@@ -80,6 +80,17 @@
   .pg-nav__link:hover { color: var(--pg-accent); }
   .pg-nav__link[aria-current="page"] { color: var(--pg-accent); font-weight: 600; }
 
+  /* Native contents and site-navigation fallback, including when chrome is disabled. */
+  .pg-mobile-nav { display: none; padding: 0.5rem 1.25rem; border-bottom: 1px solid var(--pg-line); }
+  .pg-mobile-menu { overflow-wrap: anywhere; }
+  .pg-mobile-menu > summary { cursor: pointer; padding: 0.7rem 0; font-weight: 600; }
+  .pg-mobile-menu > summary:focus-visible { outline: 2px solid var(--pg-accent); outline-offset: 2px; }
+  .pg-mobile-menu nav { padding: 0.5rem 0 1rem; }
+  .pg-mobile-toc ul { list-style: none; padding: 0; margin: 0; }
+  @media (max-width: 960px) {
+    .pg-mobile-nav { display: block; }
+  }
+
   .pg-main { min-width: 0; padding: 1.5rem 2rem; }
 
   .pg-crumbs { font-size: 0.85rem; color: var(--pg-muted); margin-bottom: 1rem; }
@@ -181,12 +192,13 @@
   @media print {
     @page { margin: 18mm 16mm; }
 
-    .pg-header, .pg-nav, .pg-toc, .pg-pager, .pg-crumbs { display: none; }
+    .pg-header, .pg-nav, .pg-mobile-nav, .pg-toc, .pg-pager, .pg-crumbs { display: none; }
 
     /* The three-column grid becomes the one column that is left. `position: sticky` is measured
        against a viewport, and a sheet of paper is not one — left in place it pins the element to
        the first page and leaves a hole on the rest. */
     .pg-shell { display: block; max-width: none; margin: 0; }
+
     .pg-main { padding: 0; }
 
     /* The cover is the author's picture, not chrome, so it prints — but a hero sized for a screen
